@@ -613,7 +613,8 @@ function playerCtx() {
   };
   return {
     id: cur.id, title: songTitle(), artist: songArtist(), prefs: cur.prefs, rec: cur.rec, tuning: tun(),
-    chart: { ...(c || {}), links, audio: (cur.chart && cur.chart.audio) || (cur.shipped && cur.shipped.audio) || null }, disp,
+    chart: { ...(c || {}), links, audio: (cur.chart && cur.chart.audio) || (cur.shipped && cur.shipped.audio) || null,
+      stems: (cur.chart && cur.chart.stems) || (cur.shipped && cur.shipped.stems) || null }, disp,
     modesHtml: modesSeg("player"),
     sideHtml: c && hasChords(c) ? `<div class='h2'>Chords</div><div class='boxes'>${boxesHtml(c, disp)}</div>` : "",
     wireSide: (v) => v.querySelectorAll(".box[data-chord]").forEach((b) => b.addEventListener("click", () => openChord([b.dataset.chord]))),

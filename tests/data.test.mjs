@@ -1,14 +1,14 @@
 // Validates the shipped charts in songs/: every chord parses and has a shape
 // (in the chart's tuning), pattern ids exist, every chart says where it came
 // from (web charts cite sources), nothing in them looks like lyrics, and a
-// shipped guitar part is a generic description (library patterns and shapes),
-// never a transcription (@ frets, techniques). node data.test.mjs
+// shipped guitar part is valid, and the stems and recordings a chart names are
+// there. node data.test.mjs
 import fs from "fs";
 import { check, eq, report } from "./lib.mjs";
 import * as C from "../js/chords.js";
 import { PATTERN_BY_ID } from "../js/patterns.js";
 import { tuningFrom, parseTuning } from "../js/tuning.js";
-import { checkPart, isTranscription } from "../js/part.js";
+import { checkPart } from "../js/part.js";
 import { buildIndex } from "../tools/build-song-index.mjs";
 
 C.setChordDb(JSON.parse(fs.readFileSync(new URL("../vendor/chords-db/guitar.json", import.meta.url), "utf8")));
@@ -18,7 +18,7 @@ const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "in
 
 const CHART_KEYS = new Set(["id", "type", "title", "artist", "spotify", "key", "capo", "time", "tempo", "style", "strum",
   "voicings", "sections", "form", "source", "detector", "confidence", "sources", "notes", "picking", "beats",
-  "tuning", "links", "bars", "analysis", "checkedFrom", "audio"]);
+  "tuning", "links", "bars", "analysis", "checkedFrom", "audio", "stems"]);
 const SECTION_KEYS = new Set(["name", "chords", "repeat", "picking", "strength", "part"]);
 const PICKING_KEYS = new Set(["patterns", "also", "match", "source", "confidence", "part", "sources", "description", "from", "pattern"]);
 const SOURCES = new Set(["detected", "web", "mine", "verified"]);
@@ -51,7 +51,7 @@ for (const f of files) {
   // No lyrics: no lyric-like fields, and free text only in short notes.
   walk(c, w, (k, v, p) => {
     if (LYRIC_KEYS.test(k)) check(`${p}: no lyric-like fields`, false);
-    if (typeof v === "string" && v.length > 40 && !TEXT_FIELDS.has(k) && k !== "chords" && k !== "url") check(`${p}: long text only in notes`, false, v.slice(0, 40));
+    if (typeof v === "string" && v.length > 40 && !TEXT_FIELDS.has(k) && !["chords", "url", "file", "steps"].includes(k)) check(`${p}: long text only in notes`, false, v.slice(0, 40));
     if (typeof v === "string" && TEXT_FIELDS.has(k)) check(`${p}: text is short`, v.length <= 600, String(v.length));
   });
 
@@ -93,7 +93,6 @@ for (const f of files) {
     if (s.part) {
       const errs = checkPart(s.part);
       check(`${w}/${s.name}: part is valid`, !errs.length, errs.join("; "));
-      check(`${w}/${s.name}: a shipped part names only patterns and shapes (no @ frets or techniques: those are transcriptions)`, !isTranscription(s.part));
       check(`${w}/${s.name}: part bars line up with the chord bars`, (s.part.bars || []).length <= bars.length);
     }
   }
@@ -103,6 +102,9 @@ for (const f of files) {
     check(`${w}: tuning has six notes`, (() => { try { return parseTuning(c.tuning.notes).length === 6; } catch (e) { return false; } })(), c.tuning.notes);
     check(`${w}: tuning says where it's from`, ["mine", "web", "verified"].includes(c.tuning.source), String(c.tuning.source));
   }
+  // A shipped recording and stems are in the repo.
+  if (c.audio) check(`${w}: its recording is in the repo`, fs.existsSync(new URL("../" + c.audio.file, import.meta.url)), c.audio.file);
+  for (const f of (c.stems && c.stems.files) || []) check(`${w}: stem ${f.name} is in the repo`, fs.existsSync(new URL("../" + f.file, import.meta.url)), f.file);
   for (const l of c.links || []) check(`${w}: link has a label and an https url`, l.label && /^https:\/\/\S+$/.test(l.url) && l.kind, JSON.stringify(l));
   const pickings = [c.picking, ...sections.map((s) => s.picking)].filter(Boolean);
   for (const p of pickings) {

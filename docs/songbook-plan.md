@@ -136,7 +136,8 @@ Its README also records the time-stretch comparison (Signalsmith vs SoundTouch v
    - **the owner's pasted sheets.**
 3. **Lyrics.** They come from the owner's pasted sheets, stored on the device only, or optionally from a runtime LRCLIB lookup (§12). For the sheet to scroll in time with playback, lyric lines need timestamps (§8.3).
 4. **Audio files.** Spotify streams can't be analysed (DRM, and no previews for new apps).
-   - The owner's own files work: mp3 from Amazon or Bandcamp, Apple/iTunes m4a (DRM-free AAC), flac, wav. Buying files is the clean route. Keeping a purchased file on your own device and analysing it for practice is ordinary personal use. This isn't legal advice; the hard line is never committing, uploading or deploying the files or anything derived from them.
+   - The owner's own files work: mp3 from Amazon or Bandcamp, Apple/iTunes m4a (DRM-free AAC), flac, wav. Buying files is the clean route.
+   - The owner's choice: a song analysed on the PC can ship with the app (its recording, stems, chart and guitar part in `songs/`, by `tools/ship-bundle.mjs`), so it's ready on every device without importing. The repo is public, so whatever is in `songs/` is too.
    - **Links (YouTube and any other site yt-dlp supports):** the owner already chose this route in speedy-pitcher. The PC helper downloads the audio over the home connection, and the phone reaches it through Tailscale.
      - Downloading is against YouTube's Terms of Service; that's the owner's decision, already made.
      - A browser can't fetch YouTube audio by itself; speedy-pitcher's README explains why.
@@ -323,8 +324,7 @@ What the hands actually do, bar by bar, for picking patterns that change and sha
   - A trailing `x` makes a note muted or percussive: `px` is a thumb slap on the bass strings.
 - **Where it lives:**
   - A part that only names library patterns and shapes, with no `@` frets or techniques, is a generic description and may ship in `songs/`.
-  - A part with notes taken from a recording, or entered note for note from one, is a transcription. It stays on the device (IndexedDB `parts`) and in `private/` bundles.
-  - `tests/data.test.mjs` fails if a shipped part contains `@`, `h`, `o`, `/` or `\`.
+  - A part with notes taken from a recording, or entered note for note from one, is a transcription. Your edits stay on the device (IndexedDB `parts`); a detected part can ship with its song (`tools/ship-bundle.mjs`).
 
 ### Sheet (owner's, device only)
 - ChordPro text (`{title}`, `{capo}`, `{start_of_chorus}`, inline `[Am]`), linked to a library song.

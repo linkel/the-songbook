@@ -19,6 +19,21 @@
    "pickingSource": "web"
   },
   {
+   "id": "bodas-de-galisteo",
+   "type": "song",
+   "title": "Bodas de Galisteo",
+   "artist": "Daniel Fríes",
+   "style": null,
+   "source": "detected",
+   "confidence": "low",
+   "hasChords": true,
+   "capo": 0,
+   "key": "F",
+   "tuning": null,
+   "patterns": [],
+   "pickingSource": null
+  },
+  {
    "id": "candy-man",
    "type": "song",
    "title": "Candy Man",
@@ -197,10 +212,10 @@
    "artist": "Estella Dawn",
    "style": null,
    "source": "detected",
-   "confidence": "low",
+   "confidence": "medium",
    "hasChords": true,
    "capo": 0,
-   "key": "Ebm",
+   "key": "F#",
    "tuning": null,
    "patterns": [],
    "pickingSource": null

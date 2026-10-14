@@ -16,7 +16,9 @@ can use this helper too: put the same address in its Settings.
 
 Downloading from YouTube is against YouTube's Terms of Service; that's your
 call, and you've made it. Audio goes between your PC and your phone and nowhere
-else. The analysis bundles stay in `private/songs/` (gitignored) and on the phone.
+else. The analysis bundles go in `private/songs/` (gitignored); to ship a song with
+the app, recording, stems, chart and guitar part included, run
+`node tools/ship-bundle.mjs private/songs/<song>` (or `--all`) and commit `songs/`.
 
 ## What the analysis uses
 

@@ -7,9 +7,10 @@
 // Everything that follows the music (lanes, chord now, the synced sheet, the
 // app guitar) works in song time, mapped through the engine's schedule, so it
 // stays locked at any speed and across loop jumps.
-// With stems from the PC helper, the mixer has a row per stem instead of the
-// one recording row: all of them go through one stretcher, so they stay in
-// sync at any speed and pitch.
+// With stems from the PC helper (kept on this device, or shipped with the song
+// in songs/stems/), the mixer has a row per stem instead of the one recording
+// row: all of them go through one stretcher, so they stay in sync at any
+// speed and pitch.
 
 import { FileEngine } from "./engine.js";
 import { YouTubeEngine, parseYouTubeId, youTubeTitle } from "./youtube.js";
@@ -140,7 +141,7 @@ export async function playRecording(ctx) {
     // Yours on this device (or its stems), else the one that comes with the app.
     const s = S;
     const meta = await recordingMeta(s.id);
-    if (s.stems === undefined) s.stems = await stemsMeta(s.id);
+    if (s.stems === undefined) s.stems = await findStems(s);
     if (S !== s) return;
     if (!meta && !s.stems && s.ctx.chart && s.ctx.chart.audio) await loadShipped(); else await loadFile();
   }
@@ -156,6 +157,17 @@ function mixOf(key) {
   if (!S.set.mix[key]) S.set.mix[key] = { vol: 1, on: true };
   return S.set.mix[key];
 }
+
+// The song's stems: yours on this device, else the ones shipped with it.
+async function findStems(s) {
+  const mine = await stemsMeta(s.id);
+  if (mine) return mine;
+  const sh = s.ctx.chart && s.ctx.chart.stems;
+  return sh && sh.files && sh.files.length
+    ? { shipped: true, file: sh.from, detector: sh.detector, stems: sh.files.map((f) => ({ name: f.name, label: f.label, url: f.file })) }
+    : null;
+}
+const shippedAudio = (s) => !!(s.ctx.chart && s.ctx.chart.audio);
 
 export function closePlayer() {
   if (!S) return;
@@ -260,7 +272,7 @@ async function autoLoad() {
   const want = S.set.source;
   const s = S;
   const meta = s.ctx.rec || await recordingMeta(s.id);
-  s.stems = await stemsMeta(s.id);
+  s.stems = await findStems(s);
   if (S !== s) return;
   const bundled = S.ctx.chart && S.ctx.chart.audio;
   if (S.stems && want !== "youtube") return loadFile();
@@ -296,8 +308,9 @@ async function loadShipped() {
 // browser wouldn't store); otherwise the recording kept on this device.
 async function loadFile(direct = null, directMeta = null) {
   const s = S;
-  if (s.stems === undefined) s.stems = await stemsMeta(s.id);
-  const useStems = !direct && !!s.stems && (s.set.stems || !(await recordingMeta(s.id)));
+  if (s.stems === undefined) s.stems = await findStems(s);
+  // Stems unless you chose the full mix (and there is one: yours, or the song's own).
+  const useStems = !direct && !!s.stems && (s.set.stems || (!(await recordingMeta(s.id)) && !shippedAudio(s)));
   s.loading = useStems ? "Reading the stems…" : "Reading the recording…";
   s.error = null;
   if (s.view) render();
@@ -348,7 +361,13 @@ async function loadFile(direct = null, directMeta = null) {
 // The helper's stems -> channels for the engine, a layout saying which
 // channels are which stem, and a waveform of them all together.
 async function decodeStems(id) {
-  const files = await getStems(id);
+  const files = S.stems && S.stems.shipped
+    ? await Promise.all(S.stems.stems.map(async (x) => {
+      const r = await fetch(x.url.split("/").map(encodeURIComponent).join("/"));
+      if (!r.ok) throw new Error(`Couldn't get the ${x.label} stem` + (navigator.onLine ? "." : ": you're offline, and it isn't saved yet."));
+      return { name: x.name, label: x.label, blob: await r.blob() };
+    }))
+    : await getStems(id);
   if (!files) throw new Error("The stems aren't on this device any more. Analyse on the PC again, or switch the mixer to Full mix.");
   const c = audioContext();
   const stereo = stereoStems();
@@ -381,7 +400,9 @@ async function decodeStems(id) {
 async function setStems(on) {
   S.set.stems = on;
   persist();
-  await loadFile();
+  // The full mix: yours on this device, else the recording that comes with the song.
+  if (!on && !(await recordingMeta(S.id)) && shippedAudio(S)) await loadShipped();
+  else await loadFile();
 }
 
 async function loadYouTube(id) {
@@ -1051,7 +1072,7 @@ function sourceDetails() {
     const timedFrom = S.timed && S.timed.file;
     return `<div class='card set-group'>
       <div class='set-row'><div style='min-width:0'><div class='set-label'>Recording</div>
-        <div class='meta ellipsis'>${!m ? (S.playingStems ? "Just the stems from your PC: add the recording for the full mix." : "") : `${esc(m.name)} · ${fmtBytes(m.size)} · ${m.source === "app" ? "comes with the app" : m.source === "unsaved" ? "not kept on this device" : "on this device"}`}</div></div>
+        <div class='meta ellipsis'>${!m ? (shippedAudio(S) ? `${esc(S.ctx.chart.audio.file.split("/").pop())} · comes with the app` : S.playingStems ? "Just the stems from your PC: add the recording for the full mix." : "") : `${esc(m.name)} · ${fmtBytes(m.size)} · ${m.source === "app" ? "comes with the app" : m.source === "unsaved" ? "not kept on this device" : "on this device"}`}</div></div>
         <label class='btn outline small file-btn'>${m ? "Change" : "Add"}${FILE_INPUT}</label></div>
       ${S.timed ? (timedFrom && m && timedFrom !== m.name ? `<p class='note'>The chords' bar times come from ${esc(timedFrom)}; analyse this file to line them up.</p>` : "")
         : `<div class='set-row'><div><div class='set-label'>Chords</div><div class='meta'>Analyse the recording for chord and section lanes, loops by bar and the app guitar.</div></div>
@@ -1180,7 +1201,7 @@ function syncMixer() {
   const box = S.view.querySelector(".mixer");
   if (!box) return;
   const guitarOk = !!S.timed && S.kind === "file";
-  const hasRec = !!(S.meta && S.meta.source !== "unsaved");
+  const hasRec = !!(S.meta && S.meta.source !== "unsaved") || shippedAudio(S);
   const seg = S.stems && S.kind === "file" ? `<div class='seg small-seg' role='group' aria-label='Play the recording or its stems' style='margin-bottom:8px'>
       <button data-stems='0' class='${S.playingStems ? "" : "on"}' aria-pressed='${!S.playingStems}' ${hasRec ? "" : "disabled"}>Full mix</button>
       <button data-stems='1' class='${S.playingStems ? "on" : ""}' aria-pressed='${!!S.playingStems}'>Stems</button></div>` : "";

@@ -1,4 +1,5 @@
-# Your listening data, recordings, stems and analysis results. Never commit.
+# Your listening data, and recordings and analysis bundles not shipped (yet).
+# tools/ship-bundle.mjs copies a song's recording, stems and part into songs/.
 private/
 
 node_modules/

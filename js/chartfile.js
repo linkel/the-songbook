@@ -31,7 +31,7 @@ export function shippableChart(c) {
   const a = c.analysis;
   if (a) {
     out.analysis = {};
-    for (const k of ["bpm", "bpb", "phase", "tuning", "profile", "duration"]) if (a[k] !== undefined && a[k] !== null) out.analysis[k] = typeof a[k] === "number" ? r3(a[k]) : a[k];
+    for (const k of ["bpm", "bpb", "phase", "tuning", "profile", "duration", "segments"]) if (a[k] !== undefined && a[k] !== null) out.analysis[k] = typeof a[k] === "number" ? r3(a[k]) : a[k];
     if (a.keys) out.analysis.keys = Object.fromEntries(Object.entries(a.keys).map(([p, k]) => [p, { key: k.key, scale: k.scale }]));
   }
   if (out.source === "detected" && !out.detector) out.detector = "the Songbook's analyser";

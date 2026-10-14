@@ -1,0 +1,984 @@
+{
+  "type": "song",
+  "spotify": null,
+  "capo": 0,
+  "voicings": {},
+  "sources": [],
+  "form": [
+    "Start"
+  ],
+  "id": "bodas-de-galisteo",
+  "title": "Bodas de Galisteo",
+  "artist": "Daniel Fríes",
+  "key": "F",
+  "time": "4/4",
+  "tempo": 73,
+  "sections": [
+    {
+      "name": "Start",
+      "chords": "Dm | C | Bb F | F | Am Dm/A | Dm/A | C | Dm Am | Am Bb | Bb F | Dm7 | Dm7 Fdim/B | Em7/B | Edim7 Dm | Dm Am | Am C/G | C | Bb | C7 | C#dim7 Bb | Am | Am | Am | Bb | F Bb | C Dm | Am | F | Gm Bb | A7 Asus4 | Dm C | Bb | F Dm | Bb | Dm C | C7 F | Dm Bb | F Dm | Am Bb | F | Dm/A Gm | C Dm | Am | Bb | F | Gm A7 | Bbm | F | Bb | F",
+      "part": {
+        "source": "detected",
+        "detector": "basic-pitch notes on the guitar stem, strings and frets by the Songbook's own pass (parts.py)",
+        "fingers": "inferred",
+        "bars": [
+          {
+            "steps": "pB a - ao0 - - m p5",
+            "match": null,
+            "shape": "x30231",
+            "confidence": 0.84
+          },
+          {
+            "steps": "- pA i - - - - pB@1+i4@3",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.76
+          },
+          {
+            "steps": "pA@3+i+m - i@5+m - i p6 - pB@3",
+            "match": null,
+            "shape": "110331",
+            "confidence": 0.77
+          },
+          {
+            "steps": "- - - - - p5+pA@2 p5+m -",
+            "match": null,
+            "shape": "10321x",
+            "confidence": 0.78
+          },
+          {
+            "steps": "m@3 - - - - a@0 a pA pA+pB+a - - -",
+            "match": null,
+            "shape": "x00211",
+            "confidence": 0.79
+          },
+          {
+            "steps": "- - - - i@0 a@5 - a - - pA+a@1 -",
+            "match": null,
+            "shape": "x00233",
+            "confidence": 0.71
+          },
+          {
+            "steps": "pB a pB+i pB - - - -",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.85
+          },
+          {
+            "steps": "pB+pA a a@0 - m@3 p5 pB@2+m p5",
+            "match": null,
+            "shape": "x00211",
+            "confidence": 0.71
+          },
+          {
+            "steps": "- - - - - - - pB pA@3+pB m@3 - -",
+            "match": null,
+            "shape": "x12210",
+            "confidence": 0.82
+          },
+          {
+            "steps": "i@5+m - i p6 pB@3 p6 - -",
+            "match": null,
+            "shape": "110331",
+            "confidence": 0.9
+          },
+          {
+            "steps": "- - - pB pA m+a - - - - - -",
+            "match": null,
+            "shape": "xx0211",
+            "confidence": 0.85
+          },
+          {
+            "steps": "a@6 a pA@4 a@1 - - - pB@2+m@0",
+            "match": null,
+            "shape": "xx0218",
+            "confidence": 0.78
+          },
+          {
+            "steps": "m m - - - a p6+a@10 a@12",
+            "match": null,
+            "shape": "020009",
+            "confidence": 0.78
+          },
+          {
+            "steps": "pA@11 m@8+a@6 - - - - - - pA a - i@2",
+            "match": null,
+            "shape": "0-1-0-0-2-10",
+            "confidence": 0.81
+          },
+          {
+            "steps": "p5@12+a - a@13 p5 - a@8 a@5 -",
+            "match": null,
+            "shape": "x00231",
+            "confidence": 0.75
+          },
+          {
+            "steps": "i@2 a@1 - i a - - -",
+            "match": null,
+            "shape": "x02010",
+            "confidence": 0.79
+          },
+          {
+            "steps": "pA@3+m@3 - pA@2+m - - - pA -",
+            "match": null,
+            "shape": "x30010",
+            "confidence": 0.73
+          },
+          {
+            "steps": "pB pB@1+m i@5+m i p6 - pB+pA@3+i@2 m+a",
+            "match": null,
+            "shape": "130330",
+            "confidence": 0.74
+          },
+          {
+            "steps": "pB a@6 - - a i a@5 a i a@3 a i",
+            "match": null,
+            "shape": "x32310",
+            "confidence": 0.77
+          },
+          {
+            "steps": "pB@4+a@6 i+m@5 i+a p6+i+a pA@2+i+a@3 pB+m m+a@9 pB@0+i+m",
+            "match": null,
+            "shape": "015330",
+            "confidence": 0.75
+          },
+          {
+            "steps": "a@12 - - - - - - -",
+            "match": null,
+            "shape": "x02210",
+            "confidence": 0.98
+          },
+          {
+            "steps": "- - - - - - i@10+a@10 -",
+            "match": null,
+            "shape": "x02210",
+            "confidence": 0.77
+          },
+          {
+            "steps": "a - m@3+a@6 m@2 m+a@5 - i@3 pA@0",
+            "match": null,
+            "shape": "x02210",
+            "confidence": 0.71
+          },
+          {
+            "steps": "pB+pA i+m - - m i@5 - pA i - - p6",
+            "match": null,
+            "shape": "113331",
+            "confidence": 0.78
+          },
+          {
+            "steps": "i - - - pB@3 p5 - p5@1 - a - a@0 - - p5 pA@2+m@3",
+            "match": null,
+            "shape": "103211",
+            "confidence": 0.81
+          },
+          {
+            "steps": "pB pA@2+i - - - pA+i@2+a@1 a pA+pB@0",
+            "match": null,
+            "shape": "x30010",
+            "confidence": 0.71
+          },
+          {
+            "steps": "m pA pA - - - - pB@1",
+            "match": null,
+            "shape": "x02210",
+            "confidence": 0.7
+          },
+          {
+            "steps": "m m pA+i pB p5@3 - pB@3 i+m@2",
+            "match": null,
+            "shape": "10333x",
+            "confidence": 0.73
+          },
+          {
+            "steps": "m - a - p5+pA@3+m@2 - m -",
+            "match": null,
+            "shape": "310030",
+            "confidence": 0.87
+          },
+          {
+            "steps": "a - pB+i+m - m@3 - a -",
+            "match": null,
+            "shape": "x02020",
+            "confidence": 0.83
+          },
+          {
+            "steps": "pB pB@3 - m a a@1 p5+a p5",
+            "match": null,
+            "shape": "x30230",
+            "confidence": 0.73
+          },
+          {
+            "steps": "i i@2 pA pB - pA@0 pA@2 pA i p6 p6 i@3",
+            "match": null,
+            "shape": "113031",
+            "confidence": 0.94
+          },
+          {
+            "steps": "i@2 i pA@3 m@3 pA a@1 a i@5",
+            "match": null,
+            "shape": "100010",
+            "confidence": 0.71
+          },
+          {
+            "steps": "pB+a@5 pA@2+a p6+i@5 pB@1+m pA+i pA+p6 p6@3+pA+pB pB@1+pA@0",
+            "match": null,
+            "shape": "103330",
+            "confidence": 0.74
+          },
+          {
+            "steps": "pB@2 pB - m a a@1 p5 a p5 pA pA@2 pB",
+            "match": null,
+            "shape": "x33030",
+            "confidence": 0.91
+          },
+          {
+            "steps": "pB@1 pA pA@0 pA pA@3 i p6 p6 i@3 i@2 i pA@3",
+            "match": null,
+            "shape": "132010",
+            "confidence": 0.95
+          },
+          {
+            "steps": "pB@0+m pA+a@1 pA@5+a pB@2+a@5 pA+a p6+i@5+m p5+pB pA@3+pB+p6",
+            "match": null,
+            "shape": "113230",
+            "confidence": 0.72
+          },
+          {
+            "steps": "pB p5@3 pA@3 i m a pA+a@1 - p5+a - - pA",
+            "match": null,
+            "shape": "100210",
+            "confidence": 0.89
+          },
+          {
+            "steps": "pA+pB m@1 pA pA - - - - pB@1 pA@3+i+m - i@5+m - - - p6+i",
+            "match": null,
+            "shape": "102330",
+            "confidence": 0.77
+          },
+          {
+            "steps": "pB p5@3 - - - - p5+pA@2+m -",
+            "match": null,
+            "shape": "10321x",
+            "confidence": 0.78
+          },
+          {
+            "steps": "m pB+a pA+pB+a - a@10 pA+i+a@6 i+a@3 pA+a",
+            "match": null,
+            "shape": "x00031",
+            "confidence": 0.78
+          },
+          {
+            "steps": "pB i pB - - pA pA+a a@0",
+            "match": null,
+            "shape": "x30011",
+            "confidence": 0.84
+          },
+          {
+            "steps": "- - m@3 pB m pA pB+i4 -",
+            "match": null,
+            "shape": "x02210",
+            "confidence": 0.87
+          },
+          {
+            "steps": "- pA pB pA@3+i+m i@5+m m@1 - pB",
+            "match": null,
+            "shape": "x12331",
+            "confidence": 0.71
+          },
+          {
+            "steps": "pB+i p5@3 pB - - pB@3 pA@2+i@3+m@2 -",
+            "match": null,
+            "shape": "10321x",
+            "confidence": 0.75
+          },
+          {
+            "steps": "m - a - p5@0+i+m@2 - m m@4",
+            "match": null,
+            "shape": "310030",
+            "confidence": 0.83
+          },
+          {
+            "steps": "pB - pB@1+pA+i+m - a - a@3 -",
+            "match": null,
+            "shape": "x03321",
+            "confidence": 0.89
+          },
+          {
+            "steps": "pA+a@5 - a i+m pA p5@3 pB -",
+            "match": null,
+            "shape": "103211",
+            "confidence": 0.69
+          },
+          {
+            "steps": "- - - pB m+a - - - - - - -",
+            "match": null,
+            "shape": "x10331",
+            "confidence": 0.8
+          },
+          {
+            "steps": "pB+i5 p5 - - - - - - - - - - - - - -",
+            "match": null,
+            "shape": "13321x",
+            "confidence": 0.98
+          }
+        ]
+      }
+    }
+  ],
+  "source": "detected",
+  "detector": "ChordMini BTC (aa6e3a8), beat_this ?, Demucs htdemucs_6s, on the PC helper",
+  "confidence": "low",
+  "notes": "Detected from your recording on the PC: a draft. Check it by ear with Play along.",
+  "style": null,
+  "strum": null,
+  "beats": [
+    0.04,
+    0.84,
+    1.72,
+    1.88,
+    2.44,
+    2.78,
+    2.94,
+    3.84,
+    4.42,
+    4.98,
+    5.58,
+    6.2,
+    6.76,
+    7.32,
+    7.84,
+    8.4,
+    9,
+    9.54,
+    9.68,
+    10.46,
+    11.54,
+    12.08,
+    12.66,
+    13.2,
+    13.78,
+    14.26,
+    14.42,
+    15.3,
+    16.42,
+    17.08,
+    17.52,
+    18.12,
+    19.12,
+    19.2,
+    19.28,
+    19.74,
+    20.3,
+    20.9,
+    21.62,
+    22.78,
+    23.22,
+    23.32,
+    23.96,
+    24.24,
+    24.48,
+    25.34,
+    25.9,
+    26.86,
+    26.98,
+    27.54,
+    28.1,
+    28.64,
+    29.18,
+    29.74,
+    30.5,
+    31.38,
+    32.14,
+    32.54,
+    33.72,
+    34.98,
+    35.22,
+    35.9,
+    36.02,
+    37.08,
+    37.46,
+    37.54,
+    38.56,
+    38.94,
+    40.34,
+    41.02,
+    41.62,
+    44.22,
+    44.88,
+    45.1,
+    45.48,
+    46.24,
+    48.18,
+    49.84,
+    50.6,
+    50.8,
+    51.8,
+    52.76,
+    54.02,
+    55.4,
+    55.94,
+    57.12,
+    58.26,
+    59.02,
+    60.08,
+    60.6,
+    61.88,
+    62.66,
+    63.34,
+    64.06,
+    64.64,
+    64.76,
+    65.74,
+    66.54,
+    67.4,
+    68.82,
+    69.6,
+    71.46,
+    73.26,
+    73.36,
+    73.98,
+    74.58,
+    74.7,
+    75.44,
+    77.18,
+    77.94,
+    79.4,
+    80.32,
+    81.08,
+    81.92,
+    82.78,
+    83.56,
+    84.42,
+    85.3,
+    86.08,
+    86.9,
+    87.6,
+    88.24,
+    88.92,
+    89.84,
+    90.76,
+    91.68,
+    92.62,
+    93.5,
+    94.12,
+    94.42,
+    95.92,
+    96.22,
+    97.68,
+    97.98,
+    100.66,
+    101.56,
+    102.46,
+    103.36,
+    104.26,
+    105.12,
+    106,
+    106.86,
+    107.72,
+    108.6,
+    110.36,
+    112.1,
+    113,
+    113.86,
+    114.76,
+    115.68,
+    116.54,
+    117.44,
+    118.26,
+    119.74,
+    120.36,
+    121.46,
+    122.24,
+    122.98,
+    123.62,
+    124.48,
+    125.74,
+    127.88,
+    128.52,
+    129.74,
+    130.84,
+    131.9,
+    132.7,
+    132.92,
+    133.84,
+    133.92,
+    134.56,
+    135.12,
+    135.98,
+    137.02,
+    137.28,
+    137.9,
+    138.68,
+    138.9,
+    140.04,
+    140.76,
+    141.48,
+    142.26,
+    143.1,
+    143.9,
+    144.78,
+    145.76,
+    146.66,
+    147.56,
+    148.68,
+    149.62,
+    151.26,
+    152.28,
+    153.1,
+    153.24,
+    154.2,
+    155.16,
+    155.36,
+    156.181
+  ],
+  "bars": [
+    {
+      "t": 0.04,
+      "n": 3,
+      "chords": [
+        "Dm"
+      ]
+    },
+    {
+      "t": 1.88,
+      "n": 4,
+      "chords": [
+        "C"
+      ]
+    },
+    {
+      "t": 3.84,
+      "n": 4,
+      "chords": [
+        "Bb",
+        "F"
+      ]
+    },
+    {
+      "t": 6.2,
+      "n": 4,
+      "chords": [
+        "F"
+      ]
+    },
+    {
+      "t": 8.4,
+      "n": 4,
+      "chords": [
+        "Am",
+        "Dm/A"
+      ]
+    },
+    {
+      "t": 10.46,
+      "n": 4,
+      "chords": [
+        "Dm/A"
+      ]
+    },
+    {
+      "t": 13.2,
+      "n": 4,
+      "chords": [
+        "C"
+      ]
+    },
+    {
+      "t": 15.3,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Am"
+      ]
+    },
+    {
+      "t": 18.12,
+      "n": 4,
+      "chords": [
+        "Am",
+        "Bb"
+      ]
+    },
+    {
+      "t": 19.74,
+      "n": 4,
+      "chords": [
+        "Bb",
+        "F"
+      ]
+    },
+    {
+      "t": 22.78,
+      "n": 4,
+      "chords": [
+        "Dm7"
+      ]
+    },
+    {
+      "t": 24.24,
+      "n": 4,
+      "chords": [
+        "Dm7",
+        "Fdim/B"
+      ],
+      "sure": false
+    },
+    {
+      "t": 26.86,
+      "n": 4,
+      "chords": [
+        "Em7/B"
+      ],
+      "sure": false
+    },
+    {
+      "t": 28.64,
+      "n": 4,
+      "chords": [
+        "Edim7",
+        "Dm"
+      ],
+      "sure": false
+    },
+    {
+      "t": 31.38,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Am"
+      ]
+    },
+    {
+      "t": 34.98,
+      "n": 4,
+      "chords": [
+        "Am",
+        "C/G"
+      ],
+      "sure": false
+    },
+    {
+      "t": 37.08,
+      "n": 4,
+      "chords": [
+        "C"
+      ]
+    },
+    {
+      "t": 38.94,
+      "n": 4,
+      "chords": [
+        "Bb"
+      ]
+    },
+    {
+      "t": 44.22,
+      "n": 4,
+      "chords": [
+        "C7"
+      ]
+    },
+    {
+      "t": 46.24,
+      "n": 4,
+      "chords": [
+        "C#dim7",
+        "Bb"
+      ],
+      "sure": false
+    },
+    {
+      "t": 50.8,
+      "n": 4,
+      "chords": [
+        "Am"
+      ]
+    },
+    {
+      "t": 55.4,
+      "n": 4,
+      "chords": [
+        "Am"
+      ]
+    },
+    {
+      "t": 59.02,
+      "n": 4,
+      "chords": [
+        "Am"
+      ],
+      "sure": false
+    },
+    {
+      "t": 62.66,
+      "n": 4,
+      "chords": [
+        "Bb"
+      ]
+    },
+    {
+      "t": 64.76,
+      "n": 4,
+      "chords": [
+        "F",
+        "Bb"
+      ]
+    },
+    {
+      "t": 68.82,
+      "n": 4,
+      "chords": [
+        "C",
+        "Dm"
+      ]
+    },
+    {
+      "t": 73.36,
+      "n": 4,
+      "chords": [
+        "Am"
+      ]
+    },
+    {
+      "t": 75.44,
+      "n": 4,
+      "chords": [
+        "F"
+      ]
+    },
+    {
+      "t": 80.32,
+      "n": 4,
+      "chords": [
+        "Gm",
+        "Bb"
+      ],
+      "sure": false
+    },
+    {
+      "t": 83.56,
+      "n": 4,
+      "chords": [
+        "A7",
+        "Asus4"
+      ]
+    },
+    {
+      "t": 86.9,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "C"
+      ],
+      "sure": false
+    },
+    {
+      "t": 89.84,
+      "n": 4,
+      "chords": [
+        "Bb"
+      ],
+      "sure": false
+    },
+    {
+      "t": 93.5,
+      "n": 4,
+      "chords": [
+        "F",
+        "Dm"
+      ]
+    },
+    {
+      "t": 96.22,
+      "n": 4,
+      "chords": [
+        "Bb"
+      ]
+    },
+    {
+      "t": 101.56,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "C"
+      ]
+    },
+    {
+      "t": 105.12,
+      "n": 4,
+      "chords": [
+        "C7",
+        "F"
+      ]
+    },
+    {
+      "t": 108.6,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 113.86,
+      "n": 4,
+      "chords": [
+        "F",
+        "Dm"
+      ]
+    },
+    {
+      "t": 117.44,
+      "n": 4,
+      "chords": [
+        "Am",
+        "Bb"
+      ]
+    },
+    {
+      "t": 121.46,
+      "n": 4,
+      "chords": [
+        "F"
+      ]
+    },
+    {
+      "t": 124.48,
+      "n": 4,
+      "chords": [
+        "Dm/A",
+        "Gm"
+      ],
+      "sure": false
+    },
+    {
+      "t": 129.74,
+      "n": 4,
+      "chords": [
+        "C",
+        "Dm"
+      ]
+    },
+    {
+      "t": 132.92,
+      "n": 4,
+      "chords": [
+        "Am"
+      ]
+    },
+    {
+      "t": 135.12,
+      "n": 4,
+      "chords": [
+        "Bb"
+      ]
+    },
+    {
+      "t": 137.9,
+      "n": 4,
+      "chords": [
+        "F"
+      ]
+    },
+    {
+      "t": 140.76,
+      "n": 4,
+      "chords": [
+        "Gm",
+        "A7"
+      ],
+      "sure": false
+    },
+    {
+      "t": 143.9,
+      "n": 4,
+      "chords": [
+        "Bbm"
+      ]
+    },
+    {
+      "t": 147.56,
+      "n": 4,
+      "chords": [
+        "F"
+      ]
+    },
+    {
+      "t": 152.28,
+      "n": 4,
+      "chords": [
+        "Bb"
+      ]
+    },
+    {
+      "t": 155.16,
+      "n": 2,
+      "chords": [
+        "F"
+      ]
+    }
+  ],
+  "analysis": {
+    "bpm": 73.06,
+    "bpb": 4,
+    "phase": 3,
+    "tuning": -1,
+    "profile": "temperley",
+    "duration": 159.335,
+    "segments": [
+      {
+        "name": "Start",
+        "bars": [
+          0,
+          49
+        ]
+      }
+    ],
+    "keys": {
+      "krumhansl": {
+        "key": "F",
+        "scale": "major"
+      },
+      "temperley": {
+        "key": "F",
+        "scale": "major"
+      }
+    }
+  },
+  "stems": {
+    "detector": "ChordMini BTC (aa6e3a8), beat_this ?, Demucs htdemucs_6s, on the PC helper",
+    "from": "Bodas de Galisteo.mp3",
+    "files": [
+      {
+        "name": "vocals",
+        "label": "Vocals",
+        "file": "songs/stems/bodas-de-galisteo/vocals.m4a"
+      },
+      {
+        "name": "guitar",
+        "label": "Guitar",
+        "file": "songs/stems/bodas-de-galisteo/guitar.m4a"
+      },
+      {
+        "name": "bass",
+        "label": "Bass",
+        "file": "songs/stems/bodas-de-galisteo/bass.m4a"
+      },
+      {
+        "name": "drums",
+        "label": "Drums",
+        "file": "songs/stems/bodas-de-galisteo/drums.m4a"
+      },
+      {
+        "name": "other",
+        "label": "Other",
+        "file": "songs/stems/bodas-de-galisteo/other.m4a"
+      }
+    ]
+  },
+  "audio": {
+    "file": "songs/audio/Bodas de Galisteo.mp3",
+    "label": "Your recording. The chords' bar times fit it."
+  }
+}
