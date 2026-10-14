@@ -11,6 +11,7 @@ const run = (file) => {
 
 run("unit.test.mjs");
 run("data.test.mjs");
+run("sheet.test.mjs");
 try {
   const res = await fetch(BASE + "index.html");
   if (!res.ok) throw new Error(res.status);

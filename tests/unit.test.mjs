@@ -108,4 +108,16 @@ eq("upstroke high to low, top strings", up.map((n) => n.string), [1, 2, 3, 4]);
 check("strum is staggered", down.every((n, i) => i === 0 || n.at > down[i - 1].at));
 eq("meter", [meter("4/4"), meter("3/4"), meter("6/8"), meter("12/8")].map((m) => m.beats), [4, 3, 2, 4]);
 
+/* ---- song identity (library.js) ---- */
+const L = await import("../js/library.js");
+eq("normTitle drops versions and features", ["Landslide - 2004 Remaster", "Song (feat. Someone)", "The Song [Live]", "Café del Mar", "Hey - You"].map(L.normTitle),
+  ["landslide", "song", "song", "cafe del mar", "hey you"]);
+eq("normArtist takes the first artist", ["The Animals", "A, B", "Simon & Garfunkel"].map(L.normArtist), ["animals", "a", "simon garfunkel"]);
+check("same song, same id", L.songIdFor("House Of The Rising Sun", "The Animals") === L.songIdFor("The House of the Rising Sun", "Animals"));
+check("different songs, different ids", L.songIdFor("Song A", "X") !== L.songIdFor("Song B", "X"));
+check("non-Latin titles get ids", /^s[0-9a-z]+$/.test(L.songIdFor("노래", "가수")) && L.songIdFor("노래", "가수") !== L.songIdFor("다른 노래", "가수"));
+let bad = null; try { L.validateExport({ liked: [{ title: 1 }] }); } catch (e) { bad = e.message; }
+check("validateExport rejects broken files", !!bad, String(bad));
+check("validateExport accepts the import tool's format", L.validateExport({ fetched: "x", liked: [{ title: "a", artist: "b" }], playlists: [] }).liked.length === 1);
+
 report("unit");

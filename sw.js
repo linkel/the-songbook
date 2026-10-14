@@ -1,5 +1,5 @@
 // Bump the version on every change, so installed copies pick up the update.
-const CACHE = "songbook-v1";
+const CACHE = "songbook-v2";
 
 // The app shell and shipped data. Large optional assets (WASM, models) are not
 // listed: they're cached the first time they're fetched.
@@ -21,6 +21,8 @@ const ASSETS = [
   "js/library.js",
   "js/songs.js",
   "js/sheet.js",
+  "js/song.js",
+  "js/chordpro.js",
   "js/ui.js",
   "vendor/chords-db/guitar.json",
   "songs/index.json",
