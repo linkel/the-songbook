@@ -14,7 +14,7 @@ const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "in
 
 const CHART_KEYS = new Set(["id", "type", "title", "artist", "spotify", "key", "capo", "time", "tempo", "style", "strum",
   "voicings", "sections", "form", "source", "detector", "confidence", "sources", "notes", "picking", "beats",
-  "tuning", "links", "bars", "analysis", "checkedFrom"]);
+  "tuning", "links", "bars", "analysis", "checkedFrom", "audio"]);
 const SECTION_KEYS = new Set(["name", "chords", "repeat", "picking", "strength"]);
 const PICKING_KEYS = new Set(["patterns", "also", "match", "source", "confidence", "part", "sources", "description", "from", "pattern"]);
 const SOURCES = new Set(["detected", "web", "mine", "verified"]);

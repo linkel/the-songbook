@@ -198,6 +198,28 @@ async function autoLoad() {
   if (want !== "youtube" && meta) return loadFile();
   if (want === "youtube" && S.set.youtube) return loadYouTube(S.set.youtube.id);
   if (meta) return loadFile();
+  // A recording that comes with the app (songs/audio/): fetched once, then kept on this device.
+  if (S.ctx.chart && S.ctx.chart.audio) return loadShipped();
+}
+
+async function loadShipped() {
+  const s = S, a = s.ctx.chart.audio;
+  s.loading = "Getting the recording that comes with the app…";
+  if (s.view) render();
+  try {
+    const r = await fetch(a.file.split("/").map(encodeURIComponent).join("/"));
+    if (!r.ok) throw new Error(r.status);
+    const blob = await r.blob();
+    if (S !== s) return;
+    s.meta = await saveRecording(s.id, new File([blob], a.file.split("/").pop(), { type: blob.type || "audio/mpeg" }), { source: "app" });
+    s.loading = null;
+    await loadFile();
+  } catch (e) {
+    // Not there (offline, or not deployed): the usual choices instead.
+    if (S !== s) return;
+    s.loading = null;
+    if (s.view) render();
+  }
 }
 
 async function loadFile() {
@@ -743,7 +765,7 @@ function render() {
 }
 
 function sourceBadge() {
-  if (S.kind === "file") return `<span class='badge mine'>${S.meta && S.meta.source === "helper" ? "Downloaded" : "Your file"}</span>`;
+  if (S.kind === "file") return `<span class='badge mine'>${S.meta && S.meta.source === "helper" ? "Downloaded" : S.meta && S.meta.source === "app" ? "With the app" : "Your file"}</span>`;
   if (S.kind === "youtube") return "<span class='badge pick'>YouTube</span>";
   return "";
 }
@@ -763,8 +785,10 @@ function sourceHtml() {
   const yts = youTubeLinks();
   const helper = helperUrl();
   return `<div class='card set-group'>
+    ${S.ctx.chart && S.ctx.chart.audio ? `<div class='set-row'><div><div class='set-label'>The recording with the app</div><div class='meta'>${esc(S.ctx.chart.audio.label || "")}</div></div>
+      <button class='btn primary small' data-act='shipped'>Load</button></div>` : ""}
     <div class='set-row'><div><div class='set-label'>Your recording</div><div class='meta'>mp3, m4a, wav or flac from Files. Kept on this device; speed and pitch work on it.</div></div>
-      <label class='btn primary small file-btn'>Choose file${FILE_INPUT}</label></div>
+      <label class='btn ${S.ctx.chart && S.ctx.chart.audio ? "outline" : "primary"} small file-btn'>Choose file${FILE_INPUT}</label></div>
     ${yts.map((y) => `<div class='set-row'><div style='min-width:0'><div class='set-label ellipsis'>${esc(y.label || "YouTube")}</div>
         <div class='meta'>In YouTube's player: speed and loops. Pitch needs the audio${helper ? ", which the helper can download" : ""}.</div></div>
       <div class='row-btns'><button class='btn outline small' data-yt='${esc(y.id)}'>Play</button>
@@ -1054,6 +1078,7 @@ function act(a, el) {
   else if (a === "loop-bars") loopBars(4);
   else if (a === "save-loop") saveLoopDialog();
   else if (a === "match") matchTuning();
+  else if (a === "shipped") loadShipped();
   else if (a === "formant") { S.set.formant = !S.set.formant; applyPitch(); }
   else if (a === "reset-pitch") { S.set.semis = 0; S.set.cents = 0; S.note = ""; applyPitch(); if (S.ctx.onPitch) S.ctx.onPitch(); }
   kick();

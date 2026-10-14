@@ -50,6 +50,8 @@ async function newPage(w = 375, h = 752, scheme = "dark") {
   const lib = fixtureLibrary();
   await context.route("**/private/**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(lib) }));
   await context.route("https://www.youtube.com/iframe_api", (r) => r.fulfill({ status: 200, contentType: "text/javascript", body: FAKE_YT }));
+  // Late July's bundled clip (songs/audio/): absent unless a test serves a stand-in.
+  await context.route("**/songs/audio/**", (r) => r.fulfill({ status: 404, body: "" }));
   await context.route("https://www.youtube.com/oembed**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ title: "A tutorial (stand-in)" }) }));
   const page = await context.newPage();
   const errors = [];
@@ -419,6 +421,26 @@ await section("youtube", async () => {
   await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "youtube"; }, null, { timeout: 8000 });
   check("youtube: reopens on YouTube after a reload", true);
   check("youtube: no page errors", errors.length === 0, errors.join("; "));
+  await context.close();
+});
+
+/* ---- A recording that comes with the app (a stand-in for Late July's clip) ---- */
+await section("bundled audio", async () => {
+  const { context, page, errors } = await newPage();
+  const wav = Buffer.from(await page.evaluate(async () => {
+    const g = await import("/tests/gen-song.js");
+    const { signal } = await g.renderSong({ bpm: 118, bars: ["D", "G", "D", "A"], repeat: 1 });
+    return Array.from(g.wavBytes(signal));
+  }));
+  let asked = null;
+  await context.route("**/songs/audio/**", (r) => { asked = r.request().url(); r.fulfill({ status: 200, contentType: "audio/wav", body: wav }); });
+  await show(page, "#/song/late-july/player");
+  await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "file" && s.duration > 0; }, null, { timeout: 20000 });
+  check("bundled: loads Late July's clip by itself", asked && asked.includes("/songs/audio/Late%20July"), asked);
+  eq("bundled: with the chords' bar times", (await P(page)).timed, true);
+  eq("bundled: kept on the device", (await page.evaluate(() => import("/js/recordings.js").then((m) => m.recordingMeta("late-july")))).source, "app");
+  check("bundled: labelled", (await page.textContent(".topbar .badge")).includes("With the app"));
+  check("bundled: no page errors", errors.length === 0, errors.join("; "));
   await context.close();
 });
 

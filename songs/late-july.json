@@ -1897,5 +1897,9 @@
         "scale": "major"
       }
     }
+  },
+  "audio": {
+    "file": "songs/audio/Late July (from 1-45).mp3",
+    "label": "From 1:45, after the spoken intro. The chords are timed to it."
   }
 }
