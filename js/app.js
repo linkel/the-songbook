@@ -10,7 +10,7 @@ import { renderBatch } from "./batch.js";
 import { onAudioState, resumeAudio, StringVoices, strum, warmNotes, audioContext } from "./audio.js";
 import { esc, toast, hideToast, popoverOpen, closePopover } from "./ui.js";
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.3.1";
 
 const views = {
   songs: document.getElementById("view-songs"),

@@ -15,7 +15,7 @@ const ROOTS = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
 const QUALS = [["", "maj"], ["m", "m"], ["7", "7"], ["m7", "m7"], ["maj7", "maj7"], ["sus4", "sus4"], ["sus2", "sus2"]];
 const MAX_MB = 80;
 
-// rv: { id, ctx, meta, raw: { ticks, chords, strength, beatChroma, keys, bpm, ... },
+// rv: { id, ctx, meta, raw: { ticks, chroma (or chords + strength in older charts), keys, bpm, ... },
 //       factor, bpb, phase, bars, mono, running, steps, error, strum, from }
 let rv = null;
 let pa = null;
@@ -40,9 +40,10 @@ export async function openReview(view, ctx) {
     closeReview();
     rv = { id: ctx.id, raw: null, factor: 1, bpb: 4, phase: 0, bars: [], mono: null, running: false, steps: {}, error: null, strum: false, from: 0 };
     const c = ctx.chart;
-    if (c && c.analysis && c.analysis.beatChords && c.beats) {
+    if (c && c.analysis && (c.analysis.chroma || c.analysis.beatChords) && c.beats) {
       const a = c.analysis;
-      rv.raw = { ticks: a.ticks || c.beats, chords: a.beatChords, strength: a.beatStrength || [], keys: a.keys, bpm: a.bpm, bpmConfidence: a.bpmConfidence, version: a.version, duration: a.duration };
+      rv.raw = { ticks: a.ticks || c.beats, chords: a.beatChords, strength: a.beatStrength || [], chroma: a.chroma || null,
+        keys: a.keys, bpm: a.bpm, bpmConfidence: a.bpmConfidence, version: a.version, duration: a.duration };
       rv.factor = a.factor || 1;
       rv.bpb = a.bpb || 4;
       rv.phase = a.phase || 0;
@@ -60,6 +61,8 @@ export async function openReview(view, ctx) {
 /* ---- Derived ---- */
 
 const capo = () => rv.ctx.prefs.capo || 0;
+// The recording's tuning (cents from A440), so the strum-along matches it.
+const tuningCents = () => (rv.raw && rv.raw.chroma && rv.raw.chroma.tuning) || 0;
 
 function soundingKey() {
   const k = rv.raw && keyName(rv.raw.keys && rv.raw.keys.edma);
@@ -116,11 +119,16 @@ export function chartFromRaw(raw, { id, title, artist, file, bpb = null, factor 
   const bs = bars || makeBars(beats, { bpb, phase: ph });
   const tk = beats.length ? beats.map((b) => b.t0).concat(beats[beats.length - 1].t1) : [];
   const chart = detectedChart(bs, tk, { bpm: raw.bpm * factor, bpmConfidence: raw.bpmConfidence, keys: raw.keys, profile: "edma",
-    version: raw.version, duration: raw.duration, file, bpb, phase: ph, at: new Date().toISOString() });
-  Object.assign(chart.analysis, {
-    ticks: raw.ticks.map((t) => Math.round(t * 1000) / 1000), beatChords: raw.chords, beatStrength: raw.strength.map((x) => Math.round(x * 1000) / 1000),
-    factor, version: raw.version,
-  });
+    version: raw.version, duration: raw.duration, file, bpb, phase: ph, at: new Date().toISOString(),
+    tuning: raw.chroma ? raw.chroma.tuning : null, oldDetector: !raw.chroma });
+  const r2 = (v) => v.map((x) => Math.round(x * 100) / 100);
+  Object.assign(chart.analysis, { ticks: raw.ticks.map((t) => Math.round(t * 1000) / 1000), factor, version: raw.version });
+  // What the bars were named from, so bar lines and tempo can change later without the audio.
+  if (raw.chroma) {
+    chart.analysis.chroma = { tuning: raw.chroma.tuning, treble: raw.chroma.treble.map(r2), bass: raw.chroma.bass.map(r2), energy: r2(raw.chroma.energy) };
+  } else {
+    Object.assign(chart.analysis, { beatChords: raw.chords, beatStrength: raw.strength.map((x) => Math.round(x * 1000) / 1000) });
+  }
   Object.assign(chart, { id, title, artist });
   if (checked) markChecked(chart);
   return chart;
@@ -227,7 +235,12 @@ function stepsHtml() {
     let v = "";
     if (!rv.running && r) {
       if (k === "tempo") v = `${Math.round(r.bpm * rv.factor)} bpm`;
-      if (k === "key") { const kn = soundingKey(); v = kn ? prettyChord(kn) + (/m$/.test(kn) ? "" : " major") : "?"; }
+      if (k === "key") {
+        const kn = soundingKey();
+        v = kn ? prettyChord(kn) + (/m$/.test(kn) ? "" : " major") : "?";
+        const cents = Math.round(tuningCents());
+        if (Math.abs(cents) >= 5) v += ` · tuned ${cents > 0 ? "+" : "−"}${Math.abs(cents)}¢`;
+      }
       if (k === "chords") v = `${rv.bars.length} bars`;
       if (k === "decode") v = r.duration ? fmtTime(r.duration) : "";
     } else if (p !== undefined && !done) v = Math.round(p * 100) + "%";
@@ -413,7 +426,7 @@ async function togglePlay(from) {
   if (p.playing) { rv.from = p.position; p.stop(); return; }
   try {
     const mono = await ensureMono();
-    await p.start(mono, playBars(), ticks(), { from: from ?? rv.from ?? 0, strum: rv.strum, capo: capo() });
+    await p.start(mono, playBars(), ticks(), { from: from ?? rv.from ?? 0, strum: rv.strum, capo: capo(), cents: tuningCents() });
   } catch (e) {
     toast(e.message, 3500);
   }

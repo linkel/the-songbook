@@ -1,6 +1,8 @@
 // Analysis accuracy on songs rendered by the app's own synth (tests/gen-song.js):
 // tempo within ±2 bpm (or ×2 / ÷2), the key right (or its relative major or
-// minor), and at least 85% of bars with the right triad. Also: the play-along
+// minor), and at least 85% of bars with the right triad; plain triads aren't
+// named as 7ths or sus chords; 7ths, sus and slash chords come out by name in
+// most bars; the tuning of a detuned recording is found. Also: the play-along
 // highlight lands within 50 ms of the bar times, and recordings round-trip
 // through on-device storage. Nothing is written to disk. node analysis.test.mjs
 import { chromium } from "playwright-core";
@@ -42,7 +44,8 @@ for (const s of SONGS) {
     const meter = D.findMeter(beats);
     const bars = D.makeBars(beats, meter);
     const keys = Object.fromEntries(Object.entries(res.keys).map(([p, k]) => [p, D.keyName(k)]));
-    return { bpm: res.bpm, keys, meter, acc: gen.barAccuracy(bars, truth, (n) => C.simplifyChord(n || "")),
+    const exact = (n) => { const c = C.parseChord(n || ""); return c && !c.nc ? `${c.root}:${c.q}:${c.bass ?? c.root}` : n; };
+    return { bpm: res.bpm, keys, meter, acc: gen.barAccuracy(bars, truth, (n) => C.simplifyChord(n || "")), exact: gen.barAccuracy(bars, truth, exact), tuning: res.chroma.tuning,
       form: D.findSections(bars).form, ms, seconds: res.duration };
   }, s);
   const okTempo = [1, 2, 0.5].some((f) => Math.abs(r.bpm - s.bpm * f) <= 2);
@@ -51,6 +54,8 @@ for (const s of SONGS) {
   check(`${s.name}: key ${r.keys.edma} (or the relative)`, r.keys.edma === s.key || r.keys.edma === relativeOf(s.key), JSON.stringify(r.keys));
   for (const [p, k] of Object.entries(r.keys)) if (k === s.key || k === relativeOf(s.key)) profileHits[p]++;
   check(`${s.name}: ${Math.round(r.acc * 100)}% of bars right (>= 85%)`, r.acc >= 0.85);
+  check(`${s.name}: plain chords named plainly in ${Math.round(r.exact * 100)}% of bars (>= 85%)`, r.exact >= 0.85);
+  check(`${s.name}: tuning ${r.tuning} cents (within 6)`, Math.abs(r.tuning) <= 6);
   if (s.meter) eq(`${s.name}: meter`, r.meter.bpb, s.meter);
   if (s.phase !== undefined) eq(`${s.name}: beat 1 after the pickup`, r.meter.phase, s.phase);
   // The ring-out after the last bar may add a short "End".
@@ -59,6 +64,51 @@ for (const s of SONGS) {
 }
 console.log(`  Key profiles right (or relative) out of ${SONGS.length}: ${JSON.stringify(profileHits)}`);
 check("edma does at least as well as the others", profileHits.edma >= Math.max(profileHits.bgate, profileHits.temperley) - 1, JSON.stringify(profileHits));
+
+// 7ths, sus and slash chords, named exactly.
+const RICH = [
+  { name: "C Am7 Fmaj7 G/B", bpm: 96, bars: ["C", "Am7", "Fmaj7", "G/B"], key: "C" },
+  { name: "Gm F Ebmaj7 Eb", bpm: 100, bars: ["Gm", "F", "Ebmaj7", "Eb"], key: "Gm" },
+  { name: "Dsus4 D Dsus2 D", bpm: 90, bars: ["Dsus4", "D", "Dsus2", "D"], key: "D" },
+  { name: "Cmaj7 Dm7 Em7 G7", bpm: 104, bars: ["Cmaj7", "Dm7", "Em7", "G7"], key: "C" },
+  // A first inversion with a thin voicing (xx2010: E G C E) shares two notes
+  // with the minor chord on its bass (Em), and sometimes reads as it.
+  { name: "C C/E F G", bpm: 96, bars: ["C", "C/E", "F", "G"], key: "C", min: 0.75 },
+  { name: "D D/F# G A", bpm: 110, bars: ["D", "D/F#", "G", "A"], key: "D" },
+];
+let richRight = 0, richAll = 0;
+for (const s of RICH) {
+  const r = await page.evaluate(async (s) => {
+    const gen = await import("/tests/gen-song.js");
+    const A = await import("/js/analysis.js");
+    const D = await import("/js/detect.js");
+    const C = await import("/js/chords.js");
+    const { signal, truth } = await gen.renderSong({ ...s, repeat: 3 });
+    const res = await A.analyseSignal(signal);
+    const beats = D.beatChords(res);
+    const bars = D.makeBars(beats, D.findMeter(beats));
+    const exact = (n) => { const c = C.parseChord(n || ""); return c && !c.nc ? `${c.root}:${c.q}:${c.bass ?? c.root}` : n; };
+    return { exact: gen.barAccuracy(bars, truth, exact), triad: gen.barAccuracy(bars, truth, (n) => C.simplifyChord(n || "")),
+      names: [...new Set(bars.map((b) => b.chords.join(" ")))].join(" | ") };
+  }, s);
+  richRight += r.exact; richAll++;
+  const min = s.min || 0.85;
+  check(`${s.name}: right root and triad in ${Math.round(r.triad * 100)}% of bars (>= ${min * 100}%)`, r.triad >= min, r.names);
+  console.log(`  ${s.name}: ${Math.round(r.exact * 100)}% of bars named exactly (${r.names})`);
+}
+check(`7ths, sus and slash chords named exactly in ${Math.round(richRight / richAll * 100)}% of bars (>= 70%)`, richRight / richAll >= 0.7);
+
+// A recording tuned 30 cents sharp.
+const tuned = await page.evaluate(async () => {
+  const gen = await import("/tests/gen-song.js");
+  const A = await import("/js/analysis.js");
+  const { signal } = await gen.renderSong({ bpm: 100, bars: ["G", "C", "D", "G"], repeat: 2 });
+  const k = Math.pow(2, 30 / 1200);
+  const out = new Float32Array(Math.floor(signal.length / k));
+  for (let i = 0; i < out.length; i++) { const x = i * k, j = Math.floor(x), f = x - j; out[i] = signal[j] * (1 - f) + (signal[j + 1] || 0) * f; }
+  return (await A.analyseSignal(out)).chroma.tuning;
+});
+check(`a recording 30 cents sharp: tuning ${tuned} (within 6)`, Math.abs(tuned - 30) <= 6);
 
 function transpose(name, n) {
   const NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];

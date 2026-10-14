@@ -4,6 +4,9 @@ import { check, eq, report } from "./lib.mjs";
 import * as D from "../js/detect.js";
 import * as T from "../js/tags.js";
 import * as C from "../js/chords.js";
+import * as R from "../js/chordrec.js";
+await import("../js/chroma.js");
+const SC = globalThis.SongbookChroma;
 
 C.setChordDb(JSON.parse(fs.readFileSync(new URL("../vendor/chords-db/guitar.json", import.meta.url), "utf8")));
 
@@ -73,6 +76,64 @@ const det2 = ab(["Eb", "Bb", "F", "Bb"]);
 eq("disagreeing bars are marked", D.compareWithChart(det2, cited, 0, C.transposeChord).bars, [true, true, false, true]);
 const capoChart = { sections: [{ name: "V", chords: "C | G/B | Am7 | G/B" }], form: ["V"], capo: 3 };
 eq("cited shapes with a capo compare at sounding pitch", D.compareWithChart(det2.slice(0, 2), capoChart, 3, C.transposeChord).agree, 2);
+
+/* ---- naming chords from chroma ---- */
+// Chroma is indexed from A; a made-up chroma with given notes loud.
+const NOTE = { A: 0, Bb: 1, B: 2, C: 3, Db: 4, D: 5, Eb: 6, E: 7, F: 8, Gb: 9, G: 10, Ab: 11 };
+const chroma = (notes, rest = 0.05) => { const v = new Array(12).fill(rest); for (const [n, x] of Object.entries(notes)) v[NOTE[n]] = x; return v; };
+const bassOn = (n) => chroma({ [n]: 1 }, 0.02);
+eq("a triad is a triad", R.nameChroma(chroma({ G: 1, Bb: 0.8, D: 0.9 }), bassOn("G")).chord, "Gm");
+eq("a weak extra note doesn't make a 7th", R.nameChroma(chroma({ C: 1, E: 0.8, G: 0.9, B: 0.2 }), bassOn("C")).chord, "C");
+eq("maj7 when the 7th is there", R.nameChroma(chroma({ Eb: 1, G: 0.8, Bb: 0.7, D: 0.9 }), bassOn("Eb")).chord, "Ebmaj7");
+eq("dominant 7th", R.nameChroma(chroma({ G: 1, B: 0.8, D: 0.8, F: 0.8 }), bassOn("G")).chord, "G7");
+eq("m7", R.nameChroma(chroma({ A: 1, C: 0.8, E: 0.8, G: 0.8 }), bassOn("A")).chord, "Am7");
+eq("sus4 with no third", R.nameChroma(chroma({ D: 1, G: 0.9, A: 0.9 }), bassOn("D")).chord, "Dsus4");
+eq("the bass picks the root: Ebmaj7 vs Gm", R.nameChroma(chroma({ G: 1, Bb: 0.8, D: 0.9, Eb: 0.7 }), bassOn("Eb")).chord, "Ebmaj7");
+eq("bass on the third makes a slash chord", R.nameChroma(chroma({ D: 1, Gb: 0.8, A: 0.9 }), bassOn("Gb")).chord, "D/F#");
+// D and A with both F and F# half there: D in D major, Dm in F major.
+const amb = chroma({ D: 1, A: 0.9, F: 0.5, Gb: 0.5 });
+eq("the key tips a close call toward its chords", [R.nameChroma(amb, bassOn("D"), "D").chord, R.nameChroma(amb, bassOn("D"), "F").chord], ["D", "Dm"]);
+eq("keyScale of G minor includes F# (for D7)", [...R.keyScale("Gm")].sort((a, b) => a - b), [0, 2, 3, 5, 6, 7, 9, 10]);
+const named = R.nameChroma(chroma({ G: 1, Bb: 0.8, D: 0.9 }), bassOn("G"));
+check("strength and margin reported", named.strength > 0.6 && named.margin > 0.04, JSON.stringify(named));
+eq("median of beats ignores a passing note", R.combineRows([chroma({ C: 1, E: 1 }, 0), chroma({ C: 1, E: 1, A: 1 }, 0), chroma({ C: 1, E: 1 }, 0)])[NOTE.A], 0);
+// Viterbi: a single odd beat inside a run of one chord doesn't flip it.
+const run = [...Array(6)].map((_, i) => (i === 3 ? chroma({ E: 1, G: 0.7, B: 0.6, C: 0.6 }) : chroma({ C: 1, E: 0.8, G: 0.9 })));
+eq("one odd beat is smoothed over", R.labelBeats(run, run.map(() => bassOn("C"))).map((l) => l.chord), Array(6).fill("C"));
+eq("quiet beats are no chord", R.labelBeats([chroma({ C: 1, E: 1, G: 1 }), chroma({ C: 1, E: 1, G: 1 })], null, [1, 0.01])[1].chord, null);
+// beatChords with chroma: families for bar lines, named bars.
+const rawC = { ticks: [...Array(17)].map((_, i) => i * 0.5), keys: { edma: { key: "A#", scale: "major" } },
+  chroma: { tuning: 0, treble: [], bass: [], energy: [] } };
+for (const [notes, b] of [[{ G: 1, Bb: 0.8, D: 0.9 }, "G"], [{ F: 1, A: 0.8, C: 0.9 }, "F"], [{ Eb: 1, G: 0.8, Bb: 0.7, D: 0.9 }, "Eb"], [{ Eb: 1, G: 0.8, Bb: 0.8 }, "Eb"]]) {
+  for (let k = 0; k < 4; k++) { rawC.chroma.treble.push(chroma(notes)); rawC.chroma.bass.push(bassOn(b)); rawC.chroma.energy.push(1); }
+}
+const cb = D.beatChords(rawC);
+eq("beat families", [cb[0].chord, cb[8].chord, cb[12].chord], ["Gm", "Eb", "Eb"]);
+const cbars = D.makeBars(cb, { bpb: 4, phase: 0 });
+eq("bars named from chroma", cbars.map((b) => b.chords.join(" ")), ["Gm", "F", "Ebmaj7", "Eb"]);
+check("chroma bars are sure", cbars.every((b) => b.sure), JSON.stringify(cbars.map((b) => [b.strength, b.sure])));
+eq("÷2 keeps chroma", !!D.rescaleBeats(cb, 0.5)[0].treble, true);
+eq("a detected chart names the new detector", /chord profiles/.test(D.detectedChart(cbars, rawC.ticks, { bpm: 120, keys: rawC.keys, version: "x", tuning: -3 }).detector), true);
+eq("the tuning is kept", D.detectedChart(cbars, rawC.ticks, { bpm: 120, keys: rawC.keys, tuning: -3 }).analysis.tuning, -3);
+
+/* ---- chroma DSP ---- */
+// A pure tone at 220 Hz (A3), tuned 20 cents sharp, through the whole front end.
+{
+  const sr = 44100, secs = 3, f = 220 * Math.pow(2, 20 / 1200);
+  const x = new Float32Array(sr * secs);
+  for (let i = 0; i < x.length; i++) x[i] = 0.5 * Math.sin(2 * Math.PI * f * i / sr) + 0.25 * Math.sin(2 * Math.PI * 2 * f * i / sr) + 0.12 * Math.sin(2 * Math.PI * 3 * f * i / sr);
+  const res = SC.beatChroma(x, [0.5, 1.5, 2.5]);
+  check(`tuning of a tone 20 cents sharp: ${res.tuning}`, Math.abs(res.tuning - 20) <= 5);
+  const top = res.treble[0].indexOf(Math.max(...res.treble[0]));
+  eq("its note is A in the chroma, harmonics folded back", top, NOTE.A);
+  check("the fifth from its 3rd harmonic stays small", res.treble[0][NOTE.E] < 0.35 * res.treble[0][NOTE.A], JSON.stringify(res.treble[0]));
+}
+{
+  const fft = SC.makeFFT(8);
+  const re = Float64Array.from([1, 0, 0, 0, 0, 0, 0, 0]), im = new Float64Array(8);
+  fft(re, im);
+  eq("FFT of an impulse is flat", [...re].map((v) => Math.round(v * 1e6) / 1e6), [1, 1, 1, 1, 1, 1, 1, 1]);
+}
 
 /* ---- tags ---- */
 const enc = (s) => [...new TextEncoder().encode(s)];

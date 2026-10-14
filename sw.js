@@ -1,5 +1,5 @@
 // Bump the version on every change, so installed copies pick up the update.
-const CACHE = "songbook-v3";
+const CACHE = "songbook-v4";
 
 // The app shell and shipped data. Large optional assets (vendor/essentia's
 // WASM, later models) are not listed: they're cached the first time they're fetched.
@@ -26,6 +26,8 @@ const ASSETS = [
   "js/analysis.js",
   "js/analysis-worker.js",
   "js/detect.js",
+  "js/chroma.js",
+  "js/chordrec.js",
   "js/recordings.js",
   "js/review.js",
   "js/playalong.js",

@@ -27,7 +27,7 @@ export class PlayAlong extends EventTarget {
   get position() { return this.playing ? audibleTime() - this.origin : this.pausedAt || 0; }
 
   // mono: Float32Array at 44.1 kHz. bars: [{ t, n, chords, frets: [frets per chord] }].
-  // beats: beat times. opts: { from, strum, capo }.
+  // beats: beat times. opts: { from, strum, capo, cents (the recording's tuning) }.
   async start(mono, bars, beats, opts = {}) {
     this.stop();
     const c = audioContext();
@@ -40,6 +40,7 @@ export class PlayAlong extends EventTarget {
     this.bars = bars;
     this.beats = beats;
     this.opts = opts;
+    this.voices.cents = opts.cents || 0;
     const from = Math.max(0, Math.min(opts.from || 0, this.buffer.duration - 0.05));
     if (opts.strum) {
       const midis = [];

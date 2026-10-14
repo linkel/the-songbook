@@ -1,12 +1,15 @@
-// Turning the analyser's output (a chord per beat) into a chart: chords snap
-// to beats, "N" (no chord) is filled from its neighbours, beat 1 is estimated
-// from where the chords change, each half bar takes its majority chord,
-// doubtful bars are marked, and repeated 8- or 4-bar blocks become sections.
-// Pure functions: node tests them on made-up arrays.
+// Turning the analyser's output into a chart: a chord per beat (named from
+// bass and treble chroma by js/chordrec.js, or essentia's own per-beat chords
+// in charts saved before), gaps filled from neighbours, beat 1 estimated from
+// where the chords change, each half bar named from its beats' chroma (or its
+// majority chord), doubtful bars marked, and repeated 8- or 4-bar blocks
+// turned into sections. Pure functions: node tests them on made-up arrays.
 
 import { parseChord, chordName, guessKey, simplifyChord } from "./chords.js";
+import { labelBeats, nameChroma, combineRows } from "./chordrec.js";
 
-export const DETECTOR = "essentia.js ChordsDetectionBeats";
+export const DETECTOR = "Songbook chord profiles on NNLS-style chroma, beats and key by essentia.js";
+export const OLD_DETECTOR = "essentia.js ChordsDetectionBeats";
 
 // "A#m" (essentia spells with sharps) -> "Bbm"; "N" or junk -> null.
 export function cleanChord(name) {
@@ -15,11 +18,25 @@ export function cleanChord(name) {
 }
 
 // One entry per beat interval: { t0, t1, chord, strength }, with gaps filled
-// from the previous chord (or the next, at the start).
-export function beatChords({ ticks, chords, strength }) {
+// from the previous chord (or the next, at the start). With chroma, `chord`
+// is the beat's triad family (for finding bar lines), `full` the beat's own
+// chord, and each beat keeps its chroma and the key for naming bars.
+export function beatChords(raw) {
+  const { ticks } = raw;
   const out = [];
-  for (let i = 0; i + 1 < ticks.length; i++) {
-    out.push({ t0: ticks[i], t1: ticks[i + 1], chord: cleanChord(chords[i]), strength: strength[i] ?? 0 });
+  if (raw.chroma && raw.chroma.treble) {
+    const { treble, bass, energy } = raw.chroma;
+    const key = keyName(raw.keys && raw.keys[raw.profile || "edma"]);
+    const labels = labelBeats(treble, bass, energy, key);
+    for (let i = 0; i + 1 < ticks.length && i < labels.length; i++) {
+      out.push({ t0: ticks[i], t1: ticks[i + 1], chord: labels[i].family, full: labels[i].chord, strength: labels[i].strength,
+        treble: treble[i], bass: bass && bass[i], key });
+    }
+  } else {
+    const { chords, strength } = raw;
+    for (let i = 0; i + 1 < ticks.length; i++) {
+      out.push({ t0: ticks[i], t1: ticks[i + 1], chord: cleanChord(chords[i]), strength: strength[i] ?? 0 });
+    }
   }
   let last = null;
   for (const b of out) { if (b.chord) last = b.chord; else if (last) { b.chord = last; b.filled = true; } }
@@ -103,17 +120,32 @@ export function makeBars(beats, { bpb = 4, phase = 0 } = {}) {
       chords = [m.chord];
       share = m.share;
     }
-    const strength = bs.reduce((s, b) => s + (b.strength || 0), 0) / bs.length;
+    let strength = bs.reduce((s, b) => s + (b.strength || 0), 0) / bs.length;
+    let sure = share >= 0.6 && strength >= WEAK;
+    // With chroma, each part of the bar is named from all its beats together.
+    if (bs[0].treble && chords.filter(Boolean).length) {
+      const n = chords.filter(Boolean).length;
+      const named = [];
+      for (let p = 0; p < n; p++) {
+        const part = bs.slice(Math.round(p * bs.length / n), Math.round((p + 1) * bs.length / n));
+        named.push(nameChroma(combineRows(part.map((x) => x.treble)), combineRows(part.map((x) => x.bass)), bs[0].key));
+      }
+      chords = named.map((x) => x.chord);
+      strength = named.reduce((s, x) => s + x.strength, 0) / n;
+      sure = named.every((x) => x.margin >= SURE_MARGIN) && strength >= WEAK;
+    }
     bars.push({ t: bs[0].t0, t1: bs[bs.length - 1].t1, n: bs.length, beat: from, chords: chords.filter(Boolean),
-      strength: Math.round(strength * 1000) / 1000, sure: share >= 0.6 && strength >= WEAK });
+      strength: Math.round(strength * 1000) / 1000, sure });
   };
   if (phase > 0) add(0, phase);
   for (let i = phase; i < beats.length; i += bpb) add(i, Math.min(beats.length, i + bpb));
   return bars.filter((b) => b.chords.length);
 }
 
-// Below this mean strength a bar shows "?".
+// Below this mean strength a bar shows "?"; with chroma, also when the best
+// chord is barely ahead of the best one with another root or triad.
 export const WEAK = 0.45;
+export const SURE_MARGIN = 0.04;
 
 const barKey = (b) => b.chords.join(" ");
 
@@ -186,7 +218,9 @@ export function rescaleBeats(beats, factor) {
       const a = beats[i], b = beats[i + 1];
       if (!b) { out.push(a); break; }
       const w = (b.strength || 0) > (a.strength || 0) && b.chord !== a.chord ? b : a;
-      out.push({ t0: a.t0, t1: b.t1, chord: w.chord, strength: (a.strength + b.strength) / 2 });
+      const m = { t0: a.t0, t1: b.t1, chord: w.chord, full: w.full, strength: (a.strength + b.strength) / 2 };
+      if (a.treble) Object.assign(m, { treble: a.treble.map((x, k) => (x + b.treble[k]) / 2), bass: a.bass && a.bass.map((x, k) => (x + b.bass[k]) / 2), key: a.key });
+      out.push(m);
     }
     return out;
   }
@@ -229,14 +263,15 @@ export function detectedChart(bars, ticks, meta) {
     sections: sections.map(({ name, chords }) => ({ name, chords })),
     form,
     source: "detected",
-    detector: `${DETECTOR} (essentia ${meta.version || "?"})`,
+    detector: `${meta.oldDetector ? OLD_DETECTOR : DETECTOR} (essentia ${meta.version || "?"})`,
     confidence: sure >= 0.85 ? "medium" : "low",
     sources: [],
     notes: "Detected from your recording: a draft. Check it by ear with Play along.",
     beats: ticks.map((t) => Math.round(t * 1000) / 1000),
     bars: bars.map((b) => ({ t: Math.round(b.t * 1000) / 1000, n: b.n, chords: b.chords, strength: b.strength, sure: b.sure, edited: !!b.edited })),
     analysis: { bpm: meta.bpm, bpmConfidence: meta.bpmConfidence, keys: meta.keys, profile: meta.profile || "edma",
-      bpb: meta.bpb || 4, phase: meta.phase || 0, duration: meta.duration, file: meta.file || null, at: meta.at || null },
+      bpb: meta.bpb || 4, phase: meta.phase || 0, duration: meta.duration, file: meta.file || null, at: meta.at || null,
+      tuning: meta.tuning ?? null },
   };
 }
 

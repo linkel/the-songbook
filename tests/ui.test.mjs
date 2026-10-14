@@ -708,8 +708,8 @@ await section("compare", async () => {
   check("compares with the cited chart", !!m && +m[1] / +m[2] >= 0.85, m ? m[0] : "no comparison");
   check("capo suggestion offered", (await page.$$(".suggest")).length === 1 && (await page.textContent(".suggest")).includes("capo 3"));
   await page.click("[data-act=capo]");
-  // The detector knows major and minor triads only: G/B and Am7 come out as G and Am.
-  eq("capo 3: shapes as triads", (await page.$$eval(".bar[data-bar]", (b) => b.slice(0, 4).map((x) => x.textContent.replace("?", "").trim()))), ["C", "G", "Am", "G"]);
+  // Slash chords and 7ths come out by name.
+  eq("capo 3: shapes, slash chords and 7ths included", (await page.$$eval(".bar[data-bar]", (b) => b.slice(0, 4).map((x) => x.textContent.replace("?", "").trim()))), ["C", "G/B", "Am7", "G/B"]);
   await page.click("[data-act=save]");
   await page.waitForTimeout(600);
   check("your chart and the cited chart, side by side", (await page.$$("[data-which]")).length === 2);

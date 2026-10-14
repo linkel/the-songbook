@@ -57,7 +57,9 @@ export async function renderSong({ bpm, bars, repeat = 4, bpb = 4, lead = 0.5, d
   const play = (name, t) => {
     const v = bestVoicing(name);
     const midis = voicingMidi(v.frets);
-    const root = parseChord(name).root;
+    const c = parseChord(name);
+    // The bass plays the slash note when there is one.
+    const root = c.bass !== null ? c.bass : c.root;
     return { midis, root };
   };
   // The upbeat: the last bar's (last) chord, on the beats before bar 1.
