@@ -1,12 +1,12 @@
-// On-device data: IndexedDB "songbook" (library, charts, sheets, lyricTiming,
+// On-device data: IndexedDB "songbook" (library, charts, sheets, lyricTiming, parts,
 // arrangements, loops, songPrefs, recordings), plus the shipped charts in songs/.
 // The database name and every localStorage key start with "songbook" because
 // Pimapeggio and speedy-pitcher share this origin on GitHub Pages.
 // The IndexedDB helpers follow speedy-pitcher's js/library.js.
 
 const DB_NAME = "songbook";
-const DB_VERSION = 2;
-export const STORES = ["library", "charts", "sheets", "lyricTiming", "arrangements", "loops", "songPrefs", "recordings"];
+const DB_VERSION = 3;
+export const STORES = ["library", "charts", "sheets", "lyricTiming", "arrangements", "parts", "loops", "songPrefs", "recordings"];
 
 let dbp = null;
 

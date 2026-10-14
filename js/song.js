@@ -10,20 +10,27 @@ import { recordingMeta, fmtBytes } from "./recordings.js";
 import { openReview, closeReview, resetReview } from "./review.js";
 import {
   displayChord, transposeChord, transposeKey, guessKey, splitBars, voicingsFor, pimaChord, suggestCapo,
-  prettyChord, simplifyChord,
+  prettyChord, simplifyChord, specFrets, fretsSpec, voicingMidi, chordPcs,
 } from "./chords.js";
 import { parseChordPro, importText, docChords, sheetChart } from "./chordpro.js";
 import { sheetHtml } from "./sheet.js";
-import { chordBoxSvg } from "./diagram.js";
-import { ChartPlayer } from "./chartplay.js";
+import { chordBoxSvg, fretPickerHtml, wireFretPicker } from "./diagram.js";
+import { songTuning, tuningFrom, PRESETS, parseTuning, nameFor, stringNames } from "./tuning.js";
+import { ChartPlayer, meter } from "./chartplay.js";
 import { StringVoices, strum, resumeAudio, warmNotes, plainStrum, audioContext } from "./audio.js";
-import { PATTERN_BY_ID, OPEN_MIDI } from "./patterns.js";
+import { PATTERN_BY_ID, noteSound } from "./patterns.js";
 import { esc, sourceBadge, sourceSentence, pickingLabel, patternName, ICONS, toast, showPopover, closePopover } from "./ui.js";
 import { invalidateSongs } from "./songs.js";
-import { openPlayer, leavePlayerView, closePlayer, pitchShift, playerNow, onPlayerFrame, togglePlayer as toggleRecording, playRecording } from "./player.js";
+import { openPlayer, leavePlayerView, closePlayer, pitchShift, playerNow, onPlayerFrame, togglePlayer as toggleRecording, playRecording,
+  setPartLayer, setPartAB, partAB } from "./player.js";
+import { findSections } from "./detect.js";
 import { lyricLines, getTiming, saveTiming, lineAt, findSyncedLyrics, alignToSheet, sheetFromTiming } from "./lyrics.js";
 import { lrclibOn } from "./prefs.js";
-import { patternFor, patternBadge, sectionBars, fingersHtml, diagramSvg, notationHtml, patternListHtml, pimapeggioLink, pimapeggioAvailable } from "./picking.js";
+import { patternFor, patternBadge, sectionBars, fingersHtml, diagramSvg, notationHtml, patternListHtml, pimapeggioLink, pimapeggioAvailable, HOME } from "./picking.js";
+import { loadParts, saveSectionPart, checkedPart } from "./part.js";
+import { helperUrl } from "./helper-client.js";
+import { pcJob, onPcJob, startPcJob, clearPcJob } from "./pcjob.js";
+import { stripHtml, openBarEditor, partPlayBars, barAsPattern, barChord } from "./partedit.js";
 
 const MODES = [["sheet", "Sheet"], ["chords", "Chords"], ["picking", "Picking"], ["player", "Player"]];
 const READY = new Set(["sheet", "chords", "picking", "edit", "analyse", "player"]);
@@ -91,6 +98,10 @@ function makeDisp(b) {
   return (name) => displayChord(name, b, view);
 }
 
+// The tuning the song is played in (yours, else the chart's), with every
+// shape, diagram and note in it.
+const tun = () => songTuning(cur.chart || cur.shipped, cur.prefs);
+
 // The source's own voicings apply when the shapes are its own.
 function voicingMap(b) {
   const shift = (b.capo || 0) + tr() - capoNow();
@@ -130,8 +141,8 @@ function playBars() {
     ...bar,
     chords: bar.names.map((n) => {
       const d = disp(n);
-      const v = voicingsFor(d, vm)[0];
-      return { name: d, frets: v ? v.frets : null, pima: v ? pimaChord(d, { [d]: v.spec }) : null };
+      const v = voicingsFor(d, vm, tun())[0];
+      return { name: d, frets: v ? v.frets : null, pima: v ? pimaChord(d, { [d]: v.spec }, tun()) : null };
     }),
   }));
 }
@@ -162,8 +173,8 @@ const tempo = () => cur.prefs.tempo || (cur.chart && cur.chart.tempo) || (cur.sC
 export async function openSong(view, id, mode, arg = null) {
   if (!cur || cur.id !== id) {
     stopAll();
-    const [entry, device, shipped, sheet, rec, timing] = await Promise.all([
-      getEntry(id), get("charts", id).catch(() => null), shippedChart(id).catch(() => null), getSheet(id), recordingMeta(id), getTiming(id)]);
+    const [entry, device, shipped, sheet, rec, timing, parts] = await Promise.all([
+      getEntry(id), get("charts", id).catch(() => null), shippedChart(id).catch(() => null), getSheet(id), recordingMeta(id), getTiming(id), loadParts(id)]);
     const chart = device || shipped;
     if (!entry && !chart && !sheet) {
       view.innerHTML = `<div class='topbar'><a class='back' href='#/songs' aria-label='Back'>${ICONS.back}</a>
@@ -174,7 +185,7 @@ export async function openSong(view, id, mode, arg = null) {
     }
     const doc = sheet ? parseChordPro(sheet.chordpro) : null;
     const sChart = doc ? sheetChart(doc, sheet) : null;
-    cur = { id, entry, chart, device, shipped, rec, sheet, doc, sChart, timing, prefs: null, mode: null, view, showCited: false, sync: null };
+    cur = { id, entry, chart, device, shipped, rec, sheet, doc, sChart, timing, parts, prefs: null, mode: null, view, showCited: false, sync: null, partSel: 0 };
     cur.prefs = await loadPrefs(id, chart || sChart);
   }
   cur.view = view;
@@ -217,7 +228,7 @@ function render() {
   if (cur.mode === "analyse") {
     stopAll();
     openReview(cur.view, {
-      id: cur.id, title: songTitle(), artist: songArtist(), chart: cur.device, shipped: cur.shipped,
+      id: cur.id, title: songTitle(), artist: songArtist(), chart: cur.device, shipped: cur.shipped, tuning: tun(),
       cited: hasChords(cur.shipped) ? cur.shipped : null, prefs: cur.prefs,
       setCapo: (c) => { cur.prefs.capo = c; savePrefs(cur.id, cur.prefs); },
       onSaved: async () => { const id = await reload(); location.hash = `#/song/${encodeURIComponent(id)}/chords`; },
@@ -304,22 +315,202 @@ function pickPlan() {
   const si = pickSection(b);
   const sec = b && b.sections ? b.sections[si] : null;
   const pf = patternFor(cur.chart || b, sec, cur.prefs);
-  const bars = hasChords(b) ? sectionBars(b, si, makeDisp(b), voicingMap(b)) : [];
-  return { b, si, sec, pf, bars };
+  const bars = hasChords(b) ? sectionBars(b, si, makeDisp(b), voicingMap(b), tun()) : [];
+  // The section's guitar part: yours on this device, else the chart's.
+  const devicePart = sec && cur.parts && cur.parts[sec.name];
+  const part = devicePart || (sec && sec.part) || null;
+  const ctx = part && bars.length ? partCtx(b, sec, bars, part, devicePart ? "device" : "chart") : null;
+  return { b, si, sec, pf, bars, part, ctx };
+}
+
+// What the part editor (js/partedit.js) works on.
+function partCtx(b, sec, bars, part, partFrom) {
+  const ctx = {
+    bars, part, partFrom, sectionName: sec.name, beats: meter((b && b.time) || "4/4").beats, tuning: tun(), capo: capoNow(),
+    hear: (frets) => hear(frets),
+  };
+  // Saving keeps the edit on this device; the editor carries on with it.
+  ctx.save = async (p) => {
+    cur.parts = await saveSectionPart(cur.id, sec.name, p);
+    ctx.part = p;
+    ctx.partFrom = "device";
+    render();
+    if (player && player.playing && cur.mode === "picking") player.setBars(partPlayBars(ctx));
+  };
+  ctx.playBar = async (i) => {
+    const pl = getPlayer();
+    if (pl.playing) pl.stop();
+    await pl.start({ bars: [partPlayBars(ctx)[i]], parts: true, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), countIn: false, loop: false, open: tun().open });
+  };
+  return ctx;
+}
+
+/* ---- A part played along with the recording (plan §8.4 step 8: review) ---- */
+
+// The recording's bars grouped into the sections they belong to: [{ name, bars: [bar indexes] }].
+function timedSpans(c) {
+  const segs = c.analysis && Array.isArray(c.analysis.segments) && c.analysis.segments.length ? c.analysis.segments : null;
+  if (segs && segs.every((x) => x.bars[1] < c.bars.length)) return segs.map((x) => ({ name: x.name, bars: Array.from({ length: x.bars[1] - x.bars[0] + 1 }, (_, k) => x.bars[0] + k) }));
+  const { form, spans } = findSections(c.bars);
+  return form.map((name, i) => ({ name, bars: spans[i] }));
+}
+
+// Every note of every section's part, in song time, at the recording's pitch
+// (the player shifts it with the recording): [{ t, string, midi, level, sec, bar }].
+function partAlongEvents() {
+  const c = timedChart();
+  if (!c || !Array.isArray(c.bars) || !c.bars.length || typeof c.bars[0].t !== "number") return [];
+  const k = soundingKey(c);
+  const shapeKey = k ? transposeKey(k.key, -capoNow()) : null;
+  const disp0 = (name) => displayChord(name, c, { transpose: 0, capo: capoNow(), simple: false, shapeKey });
+  const vm = voicingMap(c);
+  const events = [];
+  for (const span of timedSpans(c)) {
+    const si = (c.sections || []).findIndex((s) => s.name === span.name);
+    if (si < 0) continue;
+    const sec = c.sections[si];
+    const part = (cur.parts && cur.parts[sec.name]) || sec.part;
+    if (!part) continue;
+    const bars = sectionBars(c, si, disp0, vm, tun());
+    const ctx = partCtx(c, sec, bars, part, "device");
+    const pb = partPlayBars(ctx);
+    span.bars.forEach((bi, kk) => {
+      const tb = c.bars[bi], b = pb[kk];
+      if (!tb || !b || !b.part) return;
+      const t0 = tb.t, t1 = c.bars[bi + 1] ? c.bars[bi + 1].t : t0 + 2;
+      const n = b.part.steps.length;
+      b.part.steps.forEach((st, j) => {
+        const ch = b.chords[Math.min(b.chords.length - 1, Math.floor(j * b.chords.length / n))];
+        if (!ch || !ch.pima) return;
+        const t = t0 + (t1 - t0) * j / n;
+        const level = 0.36 / Math.sqrt(Math.max(1, st.length));
+        for (const nt of st) {
+          const x = noteSound(nt, ch.pima, HOME, capoNow(), tun().open);
+          const l = (nt.f === "p" ? level * 1.15 : level) * (x.mute ? 0.5 : 1);
+          events.push({ t, string: x.string, midi: x.midi, level: l, mute: x.mute, sec: sec.name, bar: kk });
+          if (x.to) events.push({ t: t + (t1 - t0) / n / 2, string: x.string, midi: x.to.midi, level: l * 0.7, sec: sec.name, bar: kk });
+        }
+      });
+    });
+  }
+  return events.sort((a, b) => a.t - b.t);
+}
+
+async function playPartAlong() {
+  const ev = partAlongEvents();
+  if (!ev.length) { toast("The chart's bars need times for that: analyse your recording first."); return; }
+  setPartLayer(cur.id, ev);
+  const pn = playerNow();
+  if (player && player.playing) player.stop();
+  if (pn && pn.id === cur.id && pn.playing) { await toggleRecording(); updatePartAlong(); return; }
+  await playRecording(playerCtx());
+  setPartAB(cur.partAB || "both");
+  updatePartAlong();
+}
+
+function updatePartAlong() {
+  if (!cur || cur.mode !== "picking") return;
+  const pn = playerNow();
+  const b = cur.view.querySelector("[data-act=part-along]");
+  if (b) b.textContent = pn && pn.id === cur.id && pn.playing ? "❚❚ Pause" : "▶ Play along";
+  cur.view.querySelectorAll("[data-ab]").forEach((x) => { const on = x.dataset.ab === partAB(); x.classList.toggle("on", on); x.setAttribute("aria-pressed", on); });
+}
+
+// While the recording plays, the strip lights the bar it's in (when it's in this section).
+let partLit = null;
+onPlayerFrame((f) => {
+  if (!cur || f.id !== cur.id || cur.mode !== "picking" || !cur.view) return;
+  if (f.playing !== cur.alongPlaying) { cur.alongPlaying = f.playing; updatePartAlong(); }
+  const c = timedChart();
+  if (!c || !c.bars || typeof (c.bars[0] || {}).t !== "number") return;
+  let bi = -1;
+  for (let i = 0; i < c.bars.length && c.bars[i].t <= f.pos + 0.02; i++) bi = i;
+  const { sec } = pickPlan();
+  const span = sec && timedSpans(c).find((s) => s.name === sec.name && s.bars.includes(bi));
+  const k = span ? span.bars.indexOf(bi) : -1;
+  if (k === partLit) return;
+  partLit = k;
+  cur.view.querySelectorAll(".pbar.on").forEach((x) => x.classList.remove("on"));
+  if (k >= 0) {
+    const el = cur.view.querySelector(`.pbar[data-pbar='${k}']`);
+    if (el) el.classList.add("on");
+    showPartBar(k);
+  }
+});
+
+// The stage shows a bar of the part: the one you chose, or the one playing.
+function showPartBar(i) {
+  const { ctx } = pickPlan();
+  if (!ctx) return;
+  const p = barAsPattern(ctx, i);
+  const v = cur.view;
+  const fingers = v.querySelector(".fingers"), stage = v.querySelector(".pick-stage"), nota = v.querySelector(".pick-notation");
+  if (!p) return;
+  const ch = barChord(ctx, i).pima;
+  if (fingers) fingers.outerHTML = fingersHtml(p);
+  if (stage) stage.innerHTML = diagramSvg(p, ch, tun().open);
+  if (nota) nota.outerHTML = notationHtml(p, ch, tun().open);
+  const head = v.querySelector(".part-bar-name");
+  if (head) head.textContent = `Bar ${i + 1}: ${p.name}`;
+}
+
+function partBody(b, pills, plan) {
+  const { sec, ctx, part } = plan;
+  const i = Math.min(cur.partSel || 0, ctx.bars.length - 1);
+  const p = barAsPattern(ctx, i);
+  const ch = barChord(ctx, i).pima;
+  const lab = part.source === "detected" ? "<span class='badge detected'>Detected part · check</span>"
+    : part.source === "verified" ? "<span class='badge verified'>Verified part</span>" : "<span class='badge mine'>Your part</span>";
+  const prov = part.source === "detected"
+    ? `Detected from your recording by ${esc(part.detector || "the PC helper")}. The notes and frets are a best guess; which finger plays each one is inferred, not heard${part.fingers === "inferred" ? "" : ""}. Bars marked ? were unsure. Play it along with the recording, fix what's off, then mark it as checked.`
+    : part.checkedFrom ? `Yours: detected by ${esc(part.checkedFrom)}, then checked by you.`
+    : ctx.partFrom === "chart" ? (part.source === "mine" ? "Your description, from the chart." : "From the chart.") : "Yours, written here.";
+  const sel = ctx.bars[i];
+  const pimaArgs = { bars: [sel], capo: capoNow(), bpm: tempo(), name: `${songTitle()} · ${sec.name}, bar ${i + 1}`, tuning: tun(), beats: ctx.beats };
+  const link = p && p.id && !p.steps.some((st) => st.some((n) => n.fret !== undefined || n.tech || n.mute)) && PATTERN_BY_ID.has(p.id)
+    ? pimapeggioLink({ ...pimaArgs, pattern: PATTERN_BY_ID.get(p.id) }) : p ? pimapeggioLink({ ...pimaArgs, steps: p.steps }) : null;
+  return `${pills}
+    <div class='card pick-card'>
+      <div class='sec-head'><span class='sec-name'>${esc(sec.name)} · <span class='part-bar-name nowrap'>${p ? `Bar ${i + 1}: ${esc(p.name)}` : `Bar ${i + 1}`}</span></span>${lab}</div>
+      ${p ? fingersHtml(p) : "<div class='fingers'></div>"}
+      <div class='pick-stage'>${p ? diagramSvg(p, ch, tun().open) : ""}</div>
+      ${p ? notationHtml(p, ch, tun().open) : "<div class='pick-notation'></div>"}
+      ${stripHtml(ctx, i)}
+      <p class='note' style='margin:8px 0 0'>Tap a bar to choose its pattern, write it out or give it a shape of its own.</p>
+    </div>
+    <div class='card set-group'>
+      <div class='set-row'><div><div class='set-label'>Guitar part</div><div class='meta'>${prov}</div></div></div>
+      <div class='row-btns' style='flex-wrap:wrap;padding-bottom:10px'>
+        <button class='btn outline small' data-act='part-edit'>Edit bar ${i + 1}</button>
+        ${part.source === "detected" ? "<button class='btn outline small' data-act='part-check'>Mark as checked</button>" : ""}
+        ${ctx.partFrom === "device" ? "<button class='btn outline small' data-act='part-delete'>Delete your part</button>" : ""}
+      </div>
+      ${timedChart() && timedChart().bars && typeof (timedChart().bars[0] || {}).t === "number" && (cur.rec || (cur.chart && cur.chart.audio) || (cur.shipped && cur.shipped.audio)) ? `
+      <div class='set-row'><div><div class='set-label'>With the recording</div><div class='meta'>The app plays the part along with your recording, on its beats at any speed${part.source === "detected" ? ": hear where it's off" : ""}. A/B it against the recording's guitar (the guitar stem, if the PC made stems).</div></div>
+        <button class='btn outline small' data-act='part-along'>▶ Play along</button></div>
+      <div class='seg small-seg' role='group' aria-label='Hear' style='margin-bottom:10px'>
+        <button data-ab='both'>Both</button><button data-ab='recording' aria-label="The recording's guitar only">Recording</button><button data-ab='part' aria-label='The part only'>Part</button></div>` : ""}
+      ${link ? `<div class='set-row'><div><div class='set-label'>Practise in Pimapeggio</div><div class='meta' id='pima-note'>Bar ${i + 1} in the full trainer, with the tempo ladder.</div></div>
+        <a class='btn outline small' id='pima-link' href='${esc(link)}' target='_blank' rel='noopener'>Open</a></div>` : ""}
+    </div>`;
 }
 
 function pickingBody(b, disp) {
-  const { si, sec, pf, bars } = pickPlan();
+  const plan = pickPlan();
+  const { si, sec, pf, bars } = plan;
   const secs = (b && b.sections) || [];
   const pills = secs.length > 1 ? `<div class='pills' role='group' aria-label='Section'>${secs.map((x, i) =>
-    `<button class='pill ${i === si ? "on" : ""}' data-pick-sec='${i}' aria-pressed='${i === si}'>${esc(x.name)}</button>`).join("")}</div>` : "";
+    `<button class='pill ${i === si ? "on" : ""}' data-pick-sec='${i}' aria-pressed='${i === si}'>${esc(x.name)}${(cur.parts && cur.parts[x.name]) || x.part ? " ·" : ""}</button>`).join("")}</div>` : "";
+  if (plan.ctx) return partBody(b, pills, plan);
   if (!pf.pattern) {
     return `${pills}<div class='card empty'><b>No picking pattern for this song.</b><br>Nothing is guessed: choose a pattern to try over ${sec ? esc(sec.name) : "its chords"}, and it's labelled as your pick.
-      <div style='margin-top:12px'><button class='btn primary' data-act='pick-pattern'>Choose a pattern</button></div></div>`;
+      <div style='margin-top:12px;display:flex;gap:8px;flex-wrap:wrap'><button class='btn primary' data-act='pick-pattern'>Choose a pattern</button>
+      ${bars.length ? "<button class='btn outline' data-act='part-new'>Write a part bar by bar</button>" : ""}</div>
+      ${bars.length && pcPartJob() ? `<div style='margin-top:12px'>${pcPartRow()}</div>` : ""}</div>`;
   }
   const p = pf.pattern;
   const first = bars.find((x) => x.chords[0] && x.chords[0].pima);
-  const chord = (first && first.chords[0].pima) || pimaChord("C");
+  const chord = (first && first.chords[0].pima) || pimaChord("C", null, tun());
   const noChords = !bars.length;
   const pk = pf.picking;
   const prov = pf.mine
@@ -330,8 +521,8 @@ function pickingBody(b, disp) {
     <div class='card pick-card'>
       <div class='sec-head'><span class='sec-name'>${sec ? esc(sec.name) + " · " : ""}<span class='nowrap'>${esc(p.name)}</span></span>${patternBadge(pf)}</div>
       ${fingersHtml(p)}
-      <div class='pick-stage'>${diagramSvg(p, chord)}</div>
-      ${notationHtml(p, chord)}
+      <div class='pick-stage'>${diagramSvg(p, chord, tun().open)}</div>
+      ${notationHtml(p, chord, tun().open)}
       ${noChords ? "<p class='note'>No chords yet for this song: shown over C.</p>"
         : `<div class='bars'>${bars.map((x) => `<button class='bar' data-sec='${x.sec}' data-bar='${x.bar}' aria-label='Bar ${x.bar + 1}: ${esc(x.chords.map((c) => c.name).join(" "))}'>${x.chords.map((c) =>
           `<span class='ch'>${esc(prettyChord(c.name))}</span>`).join("")}</button>`).join("")}</div>`}
@@ -340,8 +531,11 @@ function pickingBody(b, disp) {
       <div class='set-row'><div style='min-width:0'><div class='set-label'>Pattern</div><div class='meta ellipsis'>${esc(p.name)}${p.name !== p.letters ? " · " + esc(p.letters) : ""}</div></div>
         <button class='btn outline small' data-act='pick-pattern'>Change</button></div>
       ${pf.mine && pf.options.length ? `<div class='set-row'><div class='meta'>Back to the song's ${esc(patternName(pf.options[0]))}.</div><button class='btn outline small' data-act='pick-reset'>Use it</button></div>` : ""}
+      ${noChords ? "" : pcPartRow()}
+      ${noChords ? "" : `<div class='set-row'><div><div class='set-label'>Bar by bar</div><div class='meta'>For picking that changes, or shapes of your own: a part for ${esc(sec ? sec.name : "this section")}, starting from this pattern.</div></div>
+        <button class='btn outline small' data-act='part-new'>Write a part</button></div>`}
       <div class='set-row'><div><div class='set-label'>Practise in Pimapeggio</div><div class='meta' id='pima-note'>The full trainer, with the tempo ladder, on this pattern over ${noChords ? "C" : esc(sec ? sec.name : "these chords")}.</div></div>
-        <a class='btn outline small' id='pima-link' href='${esc(pimapeggioLink({ pattern: p, bars: noChords ? [{ chords: [{ name: "C", spec: "x32010" }] }] : bars, capo: capoNow(), bpm: tempo(), name: `${songTitle()}${sec ? " · " + sec.name : ""}` }))}' target='_blank' rel='noopener'>Open</a></div>
+        <a class='btn outline small' id='pima-link' href='${esc(pimapeggioLink({ pattern: p, bars: noChords ? [{ chords: [{ name: "C", spec: "x32010" }] }] : bars, capo: capoNow(), bpm: tempo(), name: `${songTitle()}${sec ? " · " + sec.name : ""}`, tuning: tun() }))}' target='_blank' rel='noopener'>Open</a></div>
     </div>
     ${prov ? `<div class='card sources'>${prov}</div>` : ""}`;
 }
@@ -391,8 +585,8 @@ function pickChord(d) {
   if (!ch || !ch.pima || !player.session.pattern) return;
   const p = player.session.pattern;
   const stage = cur.view.querySelector(".pick-stage"), nota = cur.view.querySelector(".pick-notation");
-  if (stage) stage.innerHTML = diagramSvg(p, ch.pima);
-  if (nota) nota.outerHTML = notationHtml(p, ch.pima);
+  if (stage) stage.innerHTML = diagramSvg(p, ch.pima, tun().open);
+  if (nota) nota.outerHTML = notationHtml(p, ch.pima, tun().open);
   if (litStep >= 0) pickStep(litStep);
 }
 
@@ -418,7 +612,7 @@ function playerCtx() {
     return cache.fn(name);
   };
   return {
-    id: cur.id, title: songTitle(), artist: songArtist(), prefs: cur.prefs, rec: cur.rec,
+    id: cur.id, title: songTitle(), artist: songArtist(), prefs: cur.prefs, rec: cur.rec, tuning: tun(),
     chart: { ...(c || {}), links, audio: (cur.chart && cur.chart.audio) || (cur.shipped && cur.shipped.audio) || null }, disp,
     modesHtml: modesSeg("player"),
     sideHtml: c && hasChords(c) ? `<div class='h2'>Chords</div><div class='boxes'>${boxesHtml(c, disp)}</div>` : "",
@@ -625,8 +819,11 @@ function headCard(b) {
     chips.push(`<span class='chip'>${t ? `<b>${t}</b> bpm` : "Tempo <span class='meta'>not set</span>"}</span>`);
     if (b.time) chips.push(`<span class='chip'>${esc(b.time)}</span>`);
   }
-  const tuning = (cur.chart && cur.chart.tuning) || (cur.shipped && cur.shipped.tuning);
-  if (tuning) chips.push(`<span class='chip' title='${esc(tuning.notes)}'>Tuning <b>${esc(tuning.name)}</b></span>`);
+  // The tuning: tap to change it (standard shows only once you've changed something).
+  const tt = tun();
+  if (!tt.standard || cur.prefs.tuning || (c.tuning && c.tuning.notes)) {
+    chips.push(`<button class='chip tuning-chip' data-act='tuning' title='${esc(stringNames(tt).join(" "))}'>Tuning <b>${esc(tt.name)}</b></button>`);
+  }
   const style = [c.style, c.type === "piece" ? "piece" : null].filter(Boolean).join(" · ");
   const album = cur.entry && cur.entry.album && ![songTitle(), songArtist()].includes(cur.entry.album) ? cur.entry.album : "";
   return `<div class='card head'><h1 class='song-title'>${esc(songTitle())}</h1>
@@ -643,6 +840,7 @@ function toolbar(mode, chords = true) {
     <button class='tool ${p.simple ? "on" : ""}' data-act='simple' aria-pressed='${p.simple}'>Simple</button>` : ""}
     ${mode === "sheet" ? "<button class='tool' data-act='font' aria-label='Text size'>Aa</button>" : ""}
     ${chords ? `<button class='tool' data-act='capo'>Capo ${capoNow()}</button>` : ""}
+    ${chords && mode !== "sheet" ? `<button class='tool' data-act='tuning'>${tun().standard ? "Tuning" : esc(tun().name)}</button>` : ""}
     ${mode === "sheet" && cur.doc ? `<button class='tool ${cur.sync ? "on" : ""}' data-act='sync' aria-pressed='${!!cur.sync}'>Sync${cur.timing && cur.timing.lines.length ? " ✓" : ""}</button>` : ""}
   </div>`;
 }
@@ -723,8 +921,9 @@ function sectionsHtml(b, disp) {
 function boxesHtml(b, disp, width = 76) {
   const vm = voicingMap(b);
   return uniqueDisplayed(b, disp).map((d) => {
-    const v = voicingsFor(d, vm)[0];
-    return `<button class='box' data-chord='${esc(d)}'>${esc(prettyChord(d))}${v ? chordBoxSvg(v.frets, { width, label: d + " " + v.spec }) : "<span class='nobox'>no shape found</span>"}</button>`;
+    const v = voicingsFor(d, vm, tun())[0];
+    const yours = v && cur.prefs.voicings && cur.prefs.voicings[d] === v.spec;
+    return `<button class='box${yours ? " yours" : ""}' data-chord='${esc(d)}'>${esc(prettyChord(d))}${yours ? "<span class='yours-tag'>yours</span>" : ""}${v ? chordBoxSvg(v.frets, { width, label: d + " " + v.spec + (yours ? ", your shape" : "") }) : "<span class='nobox'>no shape found</span>"}</button>`;
   }).join("");
 }
 
@@ -737,10 +936,11 @@ function provenanceCard(b) {
     if (b.notes) parts.push(`<div class='note' style='margin-top:6px'>${esc(b.notes)}</div>`);
     parts.push(provenance(b, b.sources));
   }
-  const tuning = (cur.chart && cur.chart.tuning) || (cur.shipped && cur.shipped.tuning);
-  if (tuning) {
-    parts.push(`<div style='margin-top:${parts.length ? 12 : 0}px'><b>Tuning:</b> ${esc(tuning.name)} (${esc(prettyChord(tuning.notes))})${tuning.source === "mine" ? ", as you play it" : ""}.
-      ${hasChords(b) ? "<span class='note'>Chord diagrams and Play use standard-tuning shapes for now.</span>" : ""}</div>`);
+  const tt = tun();
+  if (!tt.standard || cur.prefs.tuning) {
+    const yours = !!cur.prefs.tuning;
+    parts.push(`<div style='margin-top:${parts.length ? 12 : 0}px'><b>Tuning:</b> ${esc(tt.name)} (${esc(prettyChord(stringNames(tt).join(" ")))}, low string first)${yours ? ", as you set it" : tt.source === "mine" ? ", as you play it" : ""}.
+      ${hasChords(b) && !tt.standard ? "<span class='note'>Diagrams, Hear and Play use shapes in this tuning: yours where you set one, else the easiest found by a fret search.</span>" : ""}</div>`);
   }
   const links = (cur.chart && cur.chart.links) || (cur.shipped && cur.shipped.links) || [];
   if (links.length) parts.push(`<div style='margin-top:${parts.length ? 12 : 0}px'><b>Links</b></div>${provenance(null, links)}`);
@@ -816,11 +1016,12 @@ function highlight(i) {
     lit = [c, line];
     follow(line);
   } else {
-    const el = v.querySelector(`.bar[data-sec='${bar.sec}'][data-bar='${bar.bar}']`);
+    const el = v.querySelector(`.bar[data-sec='${bar.sec}'][data-bar='${bar.bar}']`) || v.querySelector(`.pbar[data-pbar='${bar.bar}']`);
     if (!el) return;
     el.classList.add("on");
     lit = [el];
     follow(el);
+    if (bar.part && cur.mode === "picking") showPartBar(bar.bar);
   }
 }
 
@@ -887,7 +1088,7 @@ function setPrefs(patch) {
   savePrefs(cur.id, cur.prefs);
   render();
   if (player && player.playing) {
-    if (cur.mode === "picking") { const bars = pickPlan().bars; if (bars.length) player.setBars(bars); }
+    if (cur.mode === "picking") { const pl = pickPlan(); if (pl.ctx) player.setBars(partPlayBars(pl.ctx)); else if (pl.bars.length) player.setBars(pl.bars); }
     else player.setBars(playBars());
   }
 }
@@ -921,10 +1122,15 @@ export async function togglePlay() {
   if (cur.mode === "picking") {
     const p = getPlayer();
     if (p.playing) { p.stop(); return; }
-    const { pf, bars, b } = pickPlan();
+    const { pf, bars, b, ctx } = pickPlan();
+    if (ctx) {
+      await p.start({ bars: partPlayBars(ctx), parts: true, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), countIn: false, loop: true, open: tun().open });
+      return;
+    }
     if (!pf.pattern) { openPatternChooser(); return; }
-    const playable = bars.length ? bars : [{ sec: 0, bar: 0, chords: [{ name: "C", frets: [null, 3, 2, 0, 1, 0], pima: pimaChord("C") }] }];
-    await p.start({ bars: playable, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), pattern: pf.pattern, countIn: false, loop: true });
+    const c0 = pimaChord("C", null, tun());
+    const playable = bars.length ? bars : [{ sec: 0, bar: 0, chords: [{ name: "C", frets: c0.frets, pima: c0 }] }];
+    await p.start({ bars: playable, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), pattern: pf.pattern, countIn: false, loop: true, open: tun().open });
     return;
   }
   if (!hasChords(base())) return;
@@ -936,7 +1142,7 @@ export async function togglePlay() {
   if (bars.some((b) => b.chords.some((c) => !c.frets))) toast("Some chords have no shape, so they're silent.");
   await p.start({
     bars, bpm: tempo(), time: plan.time, capo: capoNow(),
-    strum: plan.strum, pattern: plan.pattern, countIn: false, loop: false,
+    strum: plan.strum, pattern: plan.pattern, countIn: false, loop: false, open: tun().open,
   });
 }
 
@@ -948,6 +1154,7 @@ function wire(view) {
       if (act === "transpose") openTranspose();
       else if (act === "simple") setPrefs({ simple: !cur.prefs.simple });
       else if (act === "capo") openCapo();
+      else if (act === "tuning") openTuning();
       else if (act === "font") openFont();
       else if (act === "play") togglePlay();
       else if (act === "scroll") toggleScroll();
@@ -960,13 +1167,39 @@ function wire(view) {
       else if (act === "lrclib-new") lrclibNewSheet(b);
       else if (act === "pick-pattern") openPatternChooser();
       else if (act === "pick-reset") setPrefs({ pickPattern: null });
+      else if (act === "part-new") newPart();
+      else if (act === "part-edit") { const pl = pickPlan(); if (pl.ctx) openBarEditor(pl.ctx, Math.min(cur.partSel || 0, pl.ctx.bars.length - 1)); }
+      else if (act === "part-check") checkPart();
+      else if (act === "part-along") playPartAlong();
+      else if (act === "part-pc") findPartOnPc();
+      else if (act === "part-delete") deletePart(b);
     });
   });
   view.querySelectorAll("[data-sync]").forEach((b) => b.addEventListener("click", () => syncAct(b.dataset.sync)));
   view.querySelectorAll("[data-pick-sec]").forEach((b) => b.addEventListener("click", () => {
     if (player && player.playing) player.stop();
     cur.pickSec = +b.dataset.pickSec;
+    cur.partSel = 0;
     render();
+  }));
+  view.querySelectorAll("[data-ab]").forEach((b) => b.addEventListener("click", () => {
+    cur.partAB = b.dataset.ab;
+    setPartAB(b.dataset.ab);
+    updatePartAlong();
+  }));
+  if (cur.mode === "picking") updatePartAlong();
+  view.querySelectorAll(".pbar[data-pbar]").forEach((b) => b.addEventListener("click", () => {
+    const i = +b.dataset.pbar;
+    const pl = pickPlan();
+    if (!pl.ctx) return;
+    if (cur.partSel === i) { openBarEditor(pl.ctx, i); return; }
+    cur.partSel = i;
+    view.querySelectorAll(".pbar.sel").forEach((x) => x.classList.remove("sel"));
+    b.classList.add("sel");
+    showPartBar(i);
+    const eb = view.querySelector("[data-act=part-edit]");
+    if (eb) eb.textContent = `Edit bar ${i + 1}`;
+    if (!(player && player.playing)) openBarEditor(pl.ctx, i);
   }));
   view.querySelectorAll("[data-which]").forEach((b) => b.addEventListener("click", () => {
     cur.showCited = b.dataset.which === "cited";
@@ -1034,37 +1267,186 @@ async function removeSong(btn) {
 
 async function hear(frets) {
   await resumeAudio();
-  const midis = frets.map((f, i) => (f === null ? null : OPEN_MIDI[6 - i] + f + capoNow())).filter((m) => m !== null);
+  const midis = voicingMidi(frets, capoNow(), tun());
   await warmNotes(midis);
   hearVoices = hearVoices || new StringVoices("guitar");
-  strum(hearVoices, frets, audioContext().currentTime + 0.03, { capo: capoNow(), level: 0.4 });
+  strum(hearVoices, frets, audioContext().currentTime + 0.03, { capo: capoNow(), level: 0.4, open: tun().open });
+}
+
+const PC_NAMES = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
+
+// What a shape plays, for checking your own: its notes, and any that aren't in the chord.
+function shapeNote(name, frets) {
+  const pcs = chordPcs(name);
+  const notes = voicingMidi(frets, 0, tun()).map((m) => m % 12);
+  const odd = [...new Set(notes.filter((n) => !pcs.includes(n)))];
+  return `Plays ${notes.map((n) => PC_NAMES[n]).join(" ")}${odd.length ? `, with ${odd.map((n) => PC_NAMES[n]).join(" ")} outside ${esc(prettyChord(name))}` : ""}.`;
 }
 
 function openChord(names) {
   const vm = voicingMap(base());
+  const mine = cur.prefs.voicings || {};
   const html = names.map((name) => {
-    const vs = voicingsFor(name, vm).slice(0, 6);
+    const vs = voicingsFor(name, vm, tun()).slice(0, 6);
+    const yours = mine[name];
     return `<div class='popover-head'><span class='popover-name'>${esc(prettyChord(name))}</span>
         ${vs.length ? `<button class='btn outline small' data-hear='${esc(name)}'>▶ Hear it</button>` : ""}</div>
+      ${tun().standard ? "" : `<p class='note' style='margin:0'>Shapes in ${esc(tun().name)} (${esc(stringNames(tun()).join(" "))}).</p>`}
       <div class='boxes'>${vs.length ? vs.map((v, i) => `<button class='box ${i === 0 ? "sel" : ""}' data-name='${esc(name)}' data-spec='${esc(v.spec)}'
-        aria-label='${esc(name)} ${esc(v.spec)}'>${esc(v.spec)}${chordBoxSvg(v.frets, { label: name + " " + v.spec })}</button>`).join("")
-        : "<span class='note'>No shape found for this chord.</span>"}</div>`;
+        aria-label='${esc(name)} ${esc(v.spec)}${v.spec === yours ? ", your shape" : ""}'>${esc(v.spec)}${v.spec === yours ? "<span class='yours-tag'>yours</span>" : ""}${chordBoxSvg(v.frets, { label: name + " " + v.spec })}</button>`).join("")
+        : "<span class='note'>No shape found for this chord.</span>"}</div>
+      <details class='own-shape'${yours ? "" : ""}><summary>Your own shape</summary>
+        <div class='own-row'><input class='text-input own-spec' data-name='${esc(name)}' value='${esc(yours || (vs[0] ? vs[0].spec : "x32010"))}' maxlength='17'
+          aria-label='Your shape for ${esc(name)}, low string first, x for a string not played' autocomplete='off' spellcheck='false'>
+          <button class='btn outline small' data-own='${esc(name)}'>Use</button></div>
+        ${fretPickerHtml(specFrets(yours || (vs[0] ? vs[0].spec : "x32010")) || [null, 3, 2, 0, 1, 0], { name })}
+        <p class='note own-note' data-for='${esc(name)}'>${shapeNote(name, specFrets(yours || (vs[0] ? vs[0].spec : "x32010")) || [null, 3, 2, 0, 1, 0])}</p>
+        ${yours ? `<button class='btn outline small' data-forget='${esc(name)}'>Back to the suggested shapes</button>` : ""}
+      </details>`;
   }).join("<hr class='rule'>");
-  const p = showPopover(html + `<p class='note'>Tap a shape to use it in this song and hear it.</p>
+  const p = showPopover(html + `<p class='note'>Tap a shape to use it in this song and hear it, or set your own: type it (low string first, x for a string you don't play) or tap the frets.</p>
     <button class='btn outline' data-close>Done</button>`, "Chord shapes");
-  p.querySelectorAll("[data-hear]").forEach((b) => b.addEventListener("click", () => {
-    const v = voicingsFor(b.dataset.hear, voicingMap(base()))[0];
-    if (v) hear(v.frets);
-  }));
-  p.querySelectorAll(".box[data-spec]").forEach((b) => b.addEventListener("click", () => {
-    const name = b.dataset.name, spec = b.dataset.spec;
-    const v = voicingsFor(name, vm).find((x) => x.spec === spec);
-    cur.prefs.voicings = { ...(cur.prefs.voicings || {}), [name]: spec };
+  const useShape = (name, spec) => {
+    const frets = specFrets(spec);
+    if (!frets) { toast("A shape is six strings, low first, like x32010 (or 10-12-12-11-10-10)."); return; }
+    cur.prefs.voicings = { ...(cur.prefs.voicings || {}), [name]: fretsSpec(frets) };
     savePrefs(cur.id, cur.prefs);
-    b.parentElement.querySelectorAll(".box").forEach((x) => x.classList.toggle("sel", x === b));
-    if (v) hear(v.frets);
+    hear(frets);
     render();
+    openChord(names);
+  };
+  p.querySelectorAll("[data-hear]").forEach((b) => b.addEventListener("click", () => {
+    const v = voicingsFor(b.dataset.hear, voicingMap(base()), tun())[0];
+    if (v) hear(v.frets);
   }));
+  p.querySelectorAll(".box[data-spec]").forEach((b) => b.addEventListener("click", () => useShape(b.dataset.name, b.dataset.spec)));
+  p.querySelectorAll("[data-own]").forEach((b) => b.addEventListener("click", () => {
+    const inp = p.querySelector(`.own-spec[data-name='${CSS.escape(b.dataset.own)}']`);
+    useShape(b.dataset.own, inp.value);
+  }));
+  p.querySelectorAll("[data-forget]").forEach((b) => b.addEventListener("click", () => {
+    const v = { ...(cur.prefs.voicings || {}) };
+    delete v[b.dataset.forget];
+    cur.prefs.voicings = v;
+    savePrefs(cur.id, cur.prefs);
+    render();
+    openChord(names);
+  }));
+  p.querySelectorAll(".fret-picker").forEach((fp) => wireFretPicker(fp, (frets) => {
+    const name = fp.dataset.name;
+    const inp = p.querySelector(`.own-spec[data-name='${CSS.escape(name)}']`);
+    if (inp) inp.value = fretsSpec(frets);
+    const note = p.querySelector(`.own-note[data-for='${CSS.escape(name)}']`);
+    if (note) note.innerHTML = shapeNote(name, frets);
+    hear(frets);
+  }));
+  p.querySelectorAll(".own-spec").forEach((inp) => inp.addEventListener("keydown", (e) => { if (e.key === "Enter") useShape(inp.dataset.name, inp.value); }));
+  p.querySelectorAll(".own-spec").forEach((inp) => inp.addEventListener("input", () => {
+    const frets = specFrets(inp.value);
+    const note = p.querySelector(`.own-note[data-for='${CSS.escape(inp.dataset.name)}']`);
+    if (note) note.innerHTML = frets ? shapeNote(inp.dataset.name, frets) : "Six strings, low first: x32010.";
+  }));
+}
+
+// The tuning: presets, or your own notes. Yours is kept for this song and
+// labelled as yours; the chart's is the default.
+function openTuning() {
+  const t = tun();
+  const chartT = tuningFrom((cur.chart && cur.chart.tuning) || (cur.shipped && cur.shipped.tuning) || null);
+  const html = `<div class='popover-head'><span class='popover-name' style='font-size:20px'>Tuning</span></div>
+    <div class='pattern-grid tuning-grid'>${PRESETS.map((pr) => {
+      const on = parseTuning(pr.notes).every((m, i) => m === t.midi[i]);
+      return `<button class='pattern-btn ${on ? "on" : ""}' data-tune='${esc(pr.notes)}' data-tname='${esc(pr.name)}' aria-pressed='${on}'><span class='pn'>${esc(pr.name)}</span><span class='meta'>${esc(prettyChord(pr.notes))}</span></button>`;
+    }).join("")}</div>
+    <label class='set-label' for='tune-notes'>Your own notes, low string first</label>
+    <div class='own-row'><input id='tune-notes' class='text-input' value='${esc(stringNames(t).join(" "))}' autocomplete='off' spellcheck='false' aria-label='Tuning notes, low string first'>
+      <button class='btn outline small' data-tune-own>Use</button></div>
+    <p class='note'>Shapes, diagrams and Play follow the tuning, with the capo on top. ${cur.prefs.tuning ? "This is your setting for this song." : chartT.standard ? "" : `The chart says ${esc(chartT.name)}.`}</p>
+    <div style='display:flex;gap:8px'>${cur.prefs.tuning ? "<button class='btn outline' style='flex:1' data-tune-reset>Use the chart's</button>" : ""}
+      <button class='btn outline' style='flex:1' data-close>Done</button></div>`;
+  const p = showPopover(html, "Tuning");
+  const set = (notes, name) => {
+    let midi;
+    try { midi = parseTuning(notes); } catch (e) { toast(e.message, 3500); return; }
+    const same = parseTuning(chartT.notes).every((m, i) => m === midi[i]);
+    setPrefs({ tuning: same ? null : { name: name || nameFor(midi), notes, source: "mine" } });
+    openTuning();
+  };
+  p.querySelectorAll("[data-tune]").forEach((b) => b.addEventListener("click", () => set(b.dataset.tune, b.dataset.tname)));
+  p.querySelector("[data-tune-own]").addEventListener("click", () => set(p.querySelector("#tune-notes").value.trim()));
+  p.querySelector("#tune-notes").addEventListener("keydown", (e) => { if (e.key === "Enter") set(e.target.value.trim()); });
+  const r = p.querySelector("[data-tune-reset]");
+  if (r) r.addEventListener("click", () => { setPrefs({ tuning: null }); openTuning(); });
+}
+
+/* ---- The guitar part found on the PC, for a song analysed there ---- */
+
+// The PC helper keeps an analysis's stems, so the part can be found later.
+function pcPartJob() {
+  const a = cur.device && cur.device.analysis;
+  return helperUrl() && a && a.bundle && a.bundle.job ? a.bundle.job : null;
+}
+
+function pcPartRow() {
+  if (!pcPartJob()) return "";
+  const st = pcJob(cur.id);
+  const busy = st && ["running", "fetching", "importing"].includes(st.phase);
+  const step = busy && st.job && st.job.steps && st.job.steps[0];
+  const text = busy ? (st.phase === "running" ? `On your PC… ${Math.round(((step && step.p) || 0) * 100)}%` : "Bringing it over…")
+    : st && st.phase === "failed" ? st.error : `Notes, strings and frets from the guitar stem of your PC analysis${tun().standard ? "" : `, in ${esc(tun().name)}`}. A draft to check by ear.`;
+  return `<div class='set-row pc-part'><div><div class='set-label'>Find the guitar part on your PC</div><div class='meta' aria-live='polite'>${esc(text)}</div></div>
+    <button class='btn outline small' data-act='part-pc' ${busy ? "disabled" : ""}>${busy ? "Working…" : "Find it"}</button></div>`;
+}
+
+async function findPartOnPc() {
+  const id = cur.id;
+  await startPcJob(id, { job: pcPartJob(), parts: "guitar", tuning: tun().standard ? null : tun().notes, capo: capoNow(), title: songTitle(), artist: songArtist() });
+  const off = onPcJob(id, async (st) => {
+    if (!cur || cur.id !== id) return;
+    if (st.phase === "done") {
+      off();
+      clearPcJob(id);
+      cur.parts = await loadParts(id);
+      const n = st.result && st.result.parts;
+      toast(n ? `The guitar part for ${n} section${n === 1 ? "" : "s"}, from your PC: a draft. Play it along with the recording to check it.` : "The PC didn't find a guitar part in this recording.", 4500);
+      render();
+      return;
+    }
+    const row = cur.view.querySelector(".pc-part");
+    if (row) row.outerHTML = pcPartRow();
+  });
+  render();
+}
+
+/* ---- Guitar parts: start one, check it, delete it ---- */
+
+async function newPart() {
+  const { sec, pf } = pickPlan();
+  if (!sec) return;
+  // From the pattern you're looking at, or an empty bar to write out (nothing guessed).
+  const beats = meter((base() && base().time) || "4/4").beats;
+  const part = { source: "mine", bars: [pf.pattern ? { pattern: pf.pattern.id } : { steps: Array(beats * 2).fill("-").join(" ") }] };
+  cur.parts = await saveSectionPart(cur.id, sec.name, part);
+  cur.partSel = 0;
+  render();
+  toast(pf.pattern ? "A part of your own: every bar plays this pattern until you change it. Tap a bar to edit it." : "A part of your own, empty for now: tap a bar to write it out.", 4000);
+}
+
+async function checkPart() {
+  const { sec, part } = pickPlan();
+  if (!part) return;
+  cur.parts = await saveSectionPart(cur.id, sec.name, checkedPart(part));
+  render();
+  toast("Marked as checked: the part is yours now.");
+}
+
+async function deletePart(btn) {
+  if (!btn.classList.contains("armed")) { btn.classList.add("armed"); btn.textContent = "Tap again to delete"; return; }
+  const { sec } = pickPlan();
+  if (player && player.playing) player.stop();
+  cur.parts = await saveSectionPart(cur.id, sec.name, null);
+  render();
+  toast("Your part is deleted.");
 }
 
 // A −/+ stepper popover; reopened after each step so the value stays current.
@@ -1110,7 +1492,7 @@ function openTempo() {
 function openCapo() {
   const b = base();
   const names = soundingNames(b).map((n) => (cur.prefs.simple ? simplifyChord(n) : n));
-  const sug = suggestCapo(names, { key: soundingKey(b)?.key || null });
+  const sug = suggestCapo(names, { key: soundingKey(b)?.key || null, tuning: tun() });
   const shapes = [...new Set(Object.values(sug.shapes))].slice(0, 6).map(prettyChord).join(" ");
   const html = `<div class='popover-head'><span class='popover-name' style='font-size:20px'>Capo</span></div>
     <div class='seg capo-grid' role='group' aria-label='Capo fret'>${[0, 1, 2, 3, 4, 5, 6, 7].map((c) =>

@@ -17,8 +17,9 @@ Endpoints:
     GET  /ping                 -> {"ok": true, "yt_dlp": "<version>", "helper": "songbook", "analysis": {...}}
     GET  /audio?url=<link>     -> the audio file (m4a when available)
     POST /analyze[?url=<link>] -> {"id": ...}: queue an analysis. multipart/form-data fields:
-                                  file (the audio, unless ?url=), song, title, artist, name,
-                                  lyrics (JSON [{index, text}]), lang, parts
+                                  file (the audio, unless ?url= or job=), song, title, artist, name,
+                                  lyrics (JSON [{index, text}]), lang, parts=guitar (with tuning,
+                                  capo), job=<id> (with parts=guitar: just the part, on that job's bundle)
     GET  /jobs                 -> recent jobs
     GET  /jobs/<id>            -> {"state": "queued|running|done|failed|cancelled", "step", "progress", ...}
     POST /jobs/<id>/cancel
@@ -146,6 +147,10 @@ class Jobs:
         steps = ([("download", "Downloading the link")] if url else []) + [(k, label) for k, label, _ in analysis.STEPS]
         if not opts.get("lyrics"):
             steps = [s for s in steps if s[0] != "lyrics"]
+        if opts.get("parts") != "guitar":
+            steps = [s for s in steps if s[0] != "parts"]
+        if opts.get("job"):
+            steps = [("parts", "Guitar part (basic-pitch)")]
         job = {"id": jid, "state": "queued", "step": None, "progress": 0, "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
                "song": opts.get("song"), "title": opts.get("title"), "artist": opts.get("artist"), "name": opts.get("name"),
                "url": url, "steps": [{"key": k, "label": label, "p": 0} for k, label in steps], "error": None,
@@ -200,6 +205,25 @@ class Jobs:
             try:
                 opts = dict(job["_opts"])
                 src = job["_audio"]
+                if opts.get("job"):
+                    # Just the guitar part, on an earlier job's bundle.
+                    base = self.jobs.get(opts["job"])
+                    if not base or base.get("state") != "done":
+                        raise RuntimeError("That analysis isn't on the PC any more; analyse the recording again.")
+                    out = os.path.join(self.root, base["slug"])
+                    manifest = analysis.parts_only(out, opts, progress=lambda k, p: self.set_step(job, k, p))
+                    manifest = {**manifest, "job": jid, "partsOnly": True, "files": ["part.json"] if manifest.get("part") else []}
+                    z = os.path.join(self.root, base["slug"] + "-part.zip")
+                    tmpdir = os.path.join(work, "p")
+                    os.makedirs(tmpdir)
+                    with open(os.path.join(tmpdir, "bundle.json"), "w") as f:
+                        json.dump(manifest, f, indent=1)
+                    if manifest["files"]:
+                        shutil.copy(os.path.join(out, "part.json"), os.path.join(tmpdir, "part.json"))
+                    analysis.zip_bundle(tmpdir, z)
+                    job.update({"state": "done", "slug": base["slug"], "zip": z, "manifest": manifest, "bundle": f"/bundle/{jid}.zip", "progress": 1,
+                                "finished": time.strftime("%Y-%m-%dT%H:%M:%S")})
+                    continue
                 if job["url"]:
                     self.set_step(job, "download", 0)
                     with download_lock:
@@ -365,10 +389,13 @@ class Handler(BaseHTTPRequestHandler):
                 lyrics = [{"index": int(x["index"]), "text": str(x["text"])} for x in json.loads(fields["lyrics"])]
             except Exception:
                 return self.send_json(400, {"error": "lyrics should be JSON: [{index, text}]"})
-        opts = {k: fields[k] for k in ("song", "title", "artist", "name", "lang", "parts") if isinstance(fields.get(k), str)}
+        opts = {k: fields[k] for k in ("song", "title", "artist", "name", "lang", "parts", "tuning", "capo", "job") if isinstance(fields.get(k), str)}
         opts["lyrics"] = lyrics
         audio_path = None
-        if url:
+        if opts.get("job"):
+            if opts.get("parts") != "guitar":
+                return self.send_json(400, {"error": "job= re-runs the guitar part: send parts=guitar too."})
+        elif url:
             if not url.startswith(("https://", "http://")):
                 return self.send_json(400, {"error": "Pass ?url=<link>"})
         else:

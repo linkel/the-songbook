@@ -2,21 +2,35 @@
 // picked (a Pimapeggio pattern), with an optional count-in and loop. The step
 // scheduling is Pimapeggio's scheduleStep/chordAt, generalised to charts.
 //
-// bars: [{ chords: [{ name, frets, pima }] }] — the chords as they should sound
-// (already transposed, simplified and voiced for the capo by the caller).
+// bars: [{ chords: [{ name, frets, pima }], part?: { steps } }] — the chords
+// as they should sound (already transposed, simplified and voiced for the capo
+// and tuning by the caller). A bar with a part (js/part.js) plays its own
+// steps, frets and techniques instead of the pattern.
+// opts.open: the tuning's open strings by string number (js/tuning.js).
 
 import { audioContext, resumeAudio, StringVoices, strum, parseStrum, playClick, warmNotes,
   requestWakeLock, releaseWakeLock } from "./audio.js";
 import { Lookahead, VisualQueue } from "./scheduler.js";
-import { noteString, chordMidi, OPEN_MIDI } from "./patterns.js";
+import { chordMidi, noteSound, OPEN_MIDI } from "./patterns.js";
 
 // Every note a chord might play: its strummed shape, and for patterns the
 // Pimapeggio voicing on all six strings.
-function chordNotes(ch, capo, picked) {
+function chordNotes(ch, capo, picked, open = OPEN_MIDI) {
   if (!ch || !ch.frets) return [];
-  if (picked && ch.pima) return [1, 2, 3, 4, 5, 6].map((s) => chordMidi(ch.pima, s, capo));
+  if (picked && ch.pima) return [1, 2, 3, 4, 5, 6].map((s) => chordMidi(ch.pima, s, capo, open));
   const out = [];
-  ch.frets.forEach((f, i) => { if (f !== null) out.push(OPEN_MIDI[6 - i] + f + capo); });
+  ch.frets.forEach((f, i) => { if (f !== null) out.push(open[6 - i] + f + capo); });
+  return out;
+}
+
+// Every note a written-out bar plays, techniques' second notes too.
+function partNotes(bar, capo, open) {
+  const out = [];
+  bar.part.steps.forEach((st, k) => {
+    const ch = bar.chords[Math.min(bar.chords.length - 1, Math.floor(k * bar.chords.length / bar.part.steps.length))];
+    if (!ch || !ch.pima) return;
+    for (const n of st) { const x = noteSound(n, ch.pima, HOME, capo, open); out.push(x.midi); if (x.to) out.push(x.to.midi); }
+  });
   return out;
 }
 
@@ -63,8 +77,9 @@ export class ChartPlayer extends EventTarget {
       nextTime: 0,
       endTime: null,
     };
-    if (opts.pattern) {
-      s.npb = opts.npb || opts.pattern.npb;
+    s.open = opts.open || OPEN_MIDI;
+    if (opts.pattern || opts.parts) {
+      s.npb = opts.npb || (opts.pattern ? opts.pattern.npb : 2);
       s.slots = beats * s.npb;
     } else {
       s.strumSlots = parseStrum(opts.strum);
@@ -72,7 +87,7 @@ export class ChartPlayer extends EventTarget {
     }
     this.voices.cents = opts.cents || 0;
     // Render the first bar's notes now, the rest in the background.
-    const midis = (b) => b.chords.flatMap((ch) => chordNotes(ch, opts.capo || 0, !!opts.pattern));
+    const midis = (b) => (b.part ? partNotes(b, opts.capo || 0, s.open) : b.chords.flatMap((ch) => chordNotes(ch, opts.capo || 0, !!opts.pattern, s.open)));
     await warmNotes(opts.bars.slice(s.bar, s.bar + 1).flatMap(midis));
     warmNotes(opts.bars.flatMap(midis));
     s.nextTime = c.currentTime + 0.08;
@@ -103,7 +118,13 @@ export class ChartPlayer extends EventTarget {
   // Swap the chords (transpose/capo/simplify while playing) from the next slot.
   setBars(bars) { if (this.session) this.session.bars = bars; }
 
-  slotDur(s) { return (s.beats * 60 / s.bpm) / s.slots; }
+  // Slots in this bar: a written-out bar divides it into its own steps.
+  barSlots(s) {
+    const b = s.bars[s.bar];
+    return b && b.part ? b.part.steps.length : s.slots;
+  }
+
+  slotDur(s) { return (s.beats * 60 / s.bpm) / this.barSlots(s); }
 
   fill(horizon, now) {
     const s = this.session;
@@ -135,29 +156,53 @@ export class ChartPlayer extends EventTarget {
   // The chord at a slot; two chords in a bar split it evenly (chordAt).
   chordAt(s) {
     const bar = s.bars[s.bar];
-    const idx = Math.min(bar.chords.length - 1, Math.floor(s.slot * bar.chords.length / s.slots));
+    const n = this.barSlots(s);
+    const idx = Math.min(bar.chords.length - 1, Math.floor(s.slot * bar.chords.length / n));
     return { chord: bar.chords[idx], idx };
   }
 
   scheduleSlot(s) {
     const t = s.nextTime;
     const { chord, idx } = this.chordAt(s);
-    const perBeat = s.slots / s.beats;
-    if (s.slot === 0) this.visuals.push({ time: t, type: "bar", bar: s.bar });
-    if (s.slot % perBeat === 0) this.visuals.push({ time: t, type: "beat", bar: s.bar, beat: s.slot / perBeat });
-    const prevIdx = s.slot === 0 ? -1 : Math.min(s.bars[s.bar].chords.length - 1, Math.floor((s.slot - 1) * s.bars[s.bar].chords.length / s.slots));
+    const n = this.barSlots(s);
+    const perBeat = n / s.beats;
+    const bar = s.bars[s.bar];
+    if (s.slot === 0) {
+      this.visuals.push({ time: t, type: "bar", bar: s.bar });
+      // A written-out bar starts its own steps; a library pattern picks up from its start after one.
+      if (bar.part || s.lastPart) s.pIdx = 0;
+      s.lastPart = !!bar.part;
+    }
+    if (Number.isInteger(s.slot / perBeat)) this.visuals.push({ time: t, type: "beat", bar: s.bar, beat: s.slot / perBeat });
+    const prevIdx = s.slot === 0 ? -1 : Math.min(bar.chords.length - 1, Math.floor((s.slot - 1) * bar.chords.length / n));
     if (idx !== prevIdx) this.visuals.push({ time: t, type: "chord", bar: s.bar, index: idx, name: chord && chord.name });
 
     if (chord && chord.frets) {
-      if (s.pattern) {
+      if (bar.part) {
+        const notes = bar.part.steps[s.slot] || [];
+        const level = 0.42 / Math.sqrt(Math.max(1, notes.length));
+        const midis = [];
+        const dur = this.slotDur(s);
+        for (const nt of notes) {
+          const x = noteSound(nt, chord.pima, HOME, s.capo || 0, s.open);
+          const l = (nt.f === "p" ? level * 1.15 : level) * (x.mute ? 0.5 : 1);
+          this.voices.playNote(x.string, x.midi, t, l);
+          if (x.mute) this.voices.damp(x.string, t + 0.03, 0.01);
+          // Hammer-ons, pull-offs and slides: the second note halfway through the step, softer.
+          if (x.to) this.voices.playNote(x.string, x.to.midi, t + dur / 2, l * 0.7);
+          midis.push(x.midi);
+        }
+        this.pushLog({ time: t, type: "step", bar: s.bar, chord: chord.name, step: s.slot, midis, part: true });
+        this.visuals.push({ time: t, type: "step", bar: s.bar, step: s.slot });
+      } else if (s.pattern) {
         const notes = s.pattern.steps[s.pIdx];
         const level = 0.42 / Math.sqrt(notes.length);
         const midis = [];
-        for (const n of notes) {
-          const str = noteString(n, chord.pima, HOME);
-          const midi = chordMidi(chord.pima, str, s.capo || 0);
-          midis.push(midi);
-          this.voices.playNote(str, midi, t, n.f === "p" ? level * 1.15 : level);
+        for (const nt of notes) {
+          const x = noteSound(nt, chord.pima, HOME, s.capo || 0, s.open);
+          midis.push(x.midi);
+          this.voices.playNote(x.string, x.midi, t, nt.f === "p" ? level * 1.15 : level);
+          if (x.to) this.voices.playNote(x.string, x.to.midi, t + this.slotDur(s) / 2, level * 0.7);
         }
         this.pushLog({ time: t, type: "step", bar: s.bar, chord: chord.name, step: s.pIdx, midis });
         this.visuals.push({ time: t, type: "step", bar: s.bar, step: s.pIdx });
@@ -168,7 +213,7 @@ export class ChartPlayer extends EventTarget {
           if (slot.mute) {
             for (let k = 1; k <= 6; k++) this.voices.damp(k, t);
           } else {
-            const notes = strum(this.voices, chord.frets, t, { dir: slot.dir, capo: s.capo || 0, level: slot.accent ? 0.36 : 0.24 });
+            const notes = strum(this.voices, chord.frets, t, { dir: slot.dir, capo: s.capo || 0, level: slot.accent ? 0.36 : 0.24, open: s.open });
             this.pushLog({ time: t, type: "strum", bar: s.bar, chord: chord.name, dir: slot.dir, midis: notes.map((n) => n.midi) });
           }
         }
@@ -177,7 +222,7 @@ export class ChartPlayer extends EventTarget {
 
     s.nextTime += this.slotDur(s);
     s.slot++;
-    if (s.slot >= s.slots) {
+    if (s.slot >= n) {
       s.slot = 0;
       s.bar++;
       if (s.bar >= s.bars.length) {

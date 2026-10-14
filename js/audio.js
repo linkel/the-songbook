@@ -235,18 +235,19 @@ export class StringVoices {
    A strum is staggered plucks across the strings of a voicing: low to high
    for a downstroke, high to low (top four strings) for an upstroke. */
 
-const OPEN_MIDI = [null, 64, 59, 55, 50, 45, 40]; // by string, 1 = high E
+const OPEN_MIDI = [null, 64, 59, 55, 50, 45, 40]; // by string, 1 = high E (standard tuning)
 
-// frets: low E to high E, null for unplayed. Returns [{ string, midi, at }].
-export function strumNotes(frets, { dir = "D", capo = 0, spread = 0.012 } = {}) {
+// frets: low string to high, null for unplayed. open: the tuning's open
+// strings by string number (js/tuning.js). Returns [{ string, midi, at }].
+export function strumNotes(frets, { dir = "D", capo = 0, spread = 0.012, open = OPEN_MIDI } = {}) {
   let strings = [];
-  frets.forEach((f, i) => { if (f !== null) strings.push({ string: 6 - i, midi: OPEN_MIDI[6 - i] + f + capo }); });
+  frets.forEach((f, i) => { if (f !== null) strings.push({ string: 6 - i, midi: open[6 - i] + f + capo }); });
   if (dir === "U") strings = strings.filter((s) => s.string <= 4).reverse();
   return strings.map((s, k) => ({ ...s, at: k * spread }));
 }
 
-export function strum(voices, frets, time, { dir = "D", capo = 0, level = 0.34, spread } = {}) {
-  const notes = strumNotes(frets, { dir, capo, spread: spread ?? (dir === "U" ? 0.009 : 0.013) });
+export function strum(voices, frets, time, { dir = "D", capo = 0, level = 0.34, spread, open } = {}) {
+  const notes = strumNotes(frets, { dir, capo, open, spread: spread ?? (dir === "U" ? 0.009 : 0.013) });
   const per = level / Math.sqrt(Math.max(1, notes.length));
   notes.forEach((n, k) => {
     // Upstrokes are lighter; the first strings hit carry the accent.

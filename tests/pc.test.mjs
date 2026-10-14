@@ -7,6 +7,7 @@
 //    mixer gets a row per stem through one stretcher (mono stems on a phone,
 //    stereo on a computer), with Full mix / Stems switching. Screenshots.
 // 3. With the real helper running (SONGBOOK_HELPER, or 127.0.0.1:8766 / 8765),
+//    guitar parts (Phase 5b) on parts rendered by tests/gen-part.js, and
 //    accuracy on songs rendered by the app's synth: tempo ±2 bpm (or ×2),
 //    the key (or its relative), >= 85% of bars right as triads, the AABB form
 //    found, and stems that add back up to the song, lined up within 1 ms.
@@ -423,6 +424,73 @@ if (!HELPER) {
       check(`${s.name}: stems add back up to the song (r ${r.corr.toFixed(3)} >= 0.9)`, r.corr >= 0.9);
     }
     check("real helper: no page errors", errors.length === 0, errors.join("; "));
+    await context.close();
+  });
+
+  // Guitar parts (Phase 5b): made-up progressions with library patterns and
+  // some bars with @ frets, in standard tuning and open D, through the whole
+  // analysis (chords and beats detected too). Notes at the right pitch within
+  // 30 ms >= 90%, on the right string >= 80%, the right library pattern in
+  // >= 85% of the bars that play one.
+  await section("real helper: guitar parts", async () => {
+    const { context, page, errors } = await newPage(1440, 900);
+    const PARTS = [
+      { name: "standard tuning", bpm: 92, lead: 1, bars: [
+        { chord: "G", pattern: "travis" }, { chord: "C", pattern: "travis" }, { chord: "D", pattern: "travis" }, { chord: "G", pattern: "travis" },
+        { chord: "Em", pattern: "pima" }, { chord: "C", pattern: "pima" }, { chord: "D", steps: "pB i3@4 pA m pB i pA m" }, { chord: "G", pattern: "travis" }] },
+      { name: "open D", bpm: 96, lead: 1, tuning: "D A D F# A D", bars: [
+        { chord: "D", pattern: "travis" }, { chord: "G", pattern: "travis" }, { chord: "A", pattern: "travis" }, { chord: "D", pattern: "travis" },
+        { chord: "Bm", pattern: "pimami" }, { chord: "D", pattern: "pimami" }, { chord: "A", steps: "pB i pA m2@2 pB i pA m" }, { chord: "D", pattern: "travis" }] },
+    ];
+    let notes = 0, pitch = 0, string = 0, bars = 0, right = 0;
+    for (const s of PARTS) {
+      const r = await page.evaluate(async ({ s, helper }) => {
+        const gen = await import("/tests/gen-part.js");
+        const G = await import("/tests/gen-song.js");
+        const { readZip } = await import("/js/zip.js");
+        const { signal, truth } = await gen.renderPart(s);
+        const fd = new FormData();
+        fd.append("file", new File([G.wavBytes(signal)], "part.wav", { type: "audio/wav" }));
+        fd.append("song", "part-test"); fd.append("title", "Part test " + s.name); fd.append("parts", "guitar");
+        if (s.tuning) fd.append("tuning", s.tuning);
+        let job = await (await fetch(helper + "/analyze", { method: "POST", body: fd })).json();
+        const t0 = performance.now();
+        while (!["done", "failed", "cancelled"].includes(job.state) && performance.now() - t0 < 240000) {
+          await new Promise((r) => setTimeout(r, 700));
+          job = await (await fetch(helper + "/jobs/" + job.id)).json();
+        }
+        if (job.state !== "done") return { error: job.error || job.state };
+        const files = await readZip(await (await fetch(helper + "/bundle/" + job.id + ".zip")).blob());
+        const chart = JSON.parse(await files.get("chart.json").blob.text());
+        const part = files.get("part.json") ? JSON.parse(await files.get("part.json").blob.text()) : null;
+        return { truth, bars: chart.bars.map((b) => b.t), segments: chart.analysis.segments, part };
+      }, { s, helper: HELPER });
+      if (r.error || !r.part) { check(`parts ${s.name}: helper made a part`, false, r.error || "no part.json"); continue; }
+      const found = r.part.notes;
+      let p = 0, st = 0;
+      for (const n of r.truth.notes) {
+        const m = found.find((f) => Math.abs(f[0] - n.t) <= 0.03 && f[1] === n.midi);
+        if (m) { p++; if (m[2] === n.string) st++; }
+      }
+      // Each true bar's pattern: from the part of the section the bar falls in.
+      let ok = 0, tot = 0;
+      const got = r.truth.bars.map((tb) => {
+        const bi = r.bars.findIndex((t) => Math.abs(t - tb.t) < 0.15);
+        const sg = r.segments.find((x) => bi >= x.bars[0] && bi <= x.bars[1]);
+        const pt = sg && r.part.sections[sg.name];
+        let pat = null;
+        if (pt) for (let j = 0; j <= bi - sg.bars[0] && j < pt.bars.length; j++) if (Object.keys(pt.bars[j]).length) pat = pt.bars[j].pattern || "written";
+        if (tb.pattern) { tot++; ok += pat === tb.pattern; }
+        return pat;
+      });
+      console.log(`  parts, ${s.name}: ${p}/${r.truth.notes.length} notes at the right pitch, ${st} on the right string, ${ok}/${tot} bars with the right pattern: ${got.join(" ")}`);
+      check(`parts ${s.name}: the part is labelled detected, fingers inferred`, Object.values(r.part.sections).every((x) => x.source === "detected" && x.detector && x.fingers === "inferred"));
+      notes += r.truth.notes.length; pitch += p; string += st; bars += tot; right += ok;
+    }
+    check(`parts: ${Math.round(100 * pitch / notes)}% of notes at the right pitch within 30 ms (>= 90%)`, pitch / notes >= 0.9);
+    check(`parts: ${Math.round(100 * string / notes)}% on the right string (>= 80%)`, string / notes >= 0.8);
+    check(`parts: the right library pattern in ${Math.round(100 * right / bars)}% of bars (>= 85%)`, right / bars >= 0.85);
+    check("parts: no page errors", errors.length === 0, errors.join("; "));
     await context.close();
   });
 }

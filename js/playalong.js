@@ -6,7 +6,7 @@
 import { audioContext, resumeAudio, track, StringVoices, strum, warmNotes, requestWakeLock, releaseWakeLock } from "./audio.js";
 import { Lookahead, VisualQueue, audibleTime } from "./scheduler.js";
 
-const OPEN = [40, 45, 50, 55, 59, 64];
+const STANDARD = [null, 64, 59, 55, 50, 45, 40];   // open strings by string number
 
 export class PlayAlong extends EventTarget {
   constructor() {
@@ -27,7 +27,8 @@ export class PlayAlong extends EventTarget {
   get position() { return this.playing ? audibleTime() - this.origin : this.pausedAt || 0; }
 
   // mono: Float32Array at 44.1 kHz. bars: [{ t, n, chords, frets: [frets per chord] }].
-  // beats: beat times. opts: { from, strum, capo, cents (the recording's tuning) }.
+  // beats: beat times. opts: { from, strum, capo, cents (the recording's tuning),
+  // open (the guitar's tuning: open strings by string number) }.
   async start(mono, bars, beats, opts = {}) {
     this.stop();
     const c = audioContext();
@@ -44,7 +45,8 @@ export class PlayAlong extends EventTarget {
     const from = Math.max(0, Math.min(opts.from || 0, this.buffer.duration - 0.05));
     if (opts.strum) {
       const midis = [];
-      for (const b of bars) for (const f of b.frets || []) if (f) f.forEach((x, i) => { if (x !== null) midis.push(OPEN[i] + x + (opts.capo || 0)); });
+      const open = opts.open || STANDARD;
+      for (const b of bars) for (const f of b.frets || []) if (f) f.forEach((x, i) => { if (x !== null) midis.push(open[6 - i] + x + (opts.capo || 0)); });
       await warmNotes(midis);
     }
     const src = c.createBufferSource();
@@ -104,7 +106,7 @@ export class PlayAlong extends EventTarget {
       const t = this.beats[this.nextBeat];
       if (this.opts.strum) {
         const frets = this.shapeAt(t + 0.01);
-        if (frets) strum(this.voices, frets, this.origin + t, { capo: this.opts.capo || 0, level: 0.16 });
+        if (frets) strum(this.voices, frets, this.origin + t, { capo: this.opts.capo || 0, level: 0.16, open: this.opts.open });
       }
       this.nextBeat++;
     }

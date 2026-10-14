@@ -37,3 +37,43 @@ export function chordBoxSvg(frets, { width = 76, label = "" } = {}) {
   });
   return s + "</svg>";
 }
+
+/* ---- A fret grid to tap your own shape on (plan Phase 5b: your own fingering) ----
+   Six columns (strings, low to high), a row for open / not played, and five
+   frets from `base`; ▲ ▼ move the window up and down the neck. */
+
+const fpState = new WeakMap();
+
+function fpInner(frets, base) {
+  const top = frets.map((f, i) => `<button type='button' class='fp-top' data-s='${i}' aria-label='String ${6 - i}: ${f === null ? "not played" : f === 0 ? "open" : "fret " + f}, tap for ${f === null ? "open" : "not played"}'>${f === null ? "×" : f === 0 ? "○" : ""}</button>`).join("");
+  let grid = "";
+  for (let r = 0; r < 5; r++) {
+    const fret = base + r;
+    grid += `<span class='fp-num' aria-hidden='true'>${fret}</span>` + frets.map((f, i) =>
+      `<button type='button' class='fp-cell${f === fret ? " on" : ""}' data-s='${i}' data-f='${fret}' aria-pressed='${f === fret}' aria-label='String ${6 - i}, fret ${fret}'></button>`).join("");
+  }
+  return `<div class='fp-row'><span class='fp-num'></span>${top}</div><div class='fp-grid'>${grid}</div>
+    <div class='fp-nav'><button type='button' class='btn outline small' data-move='-1' ${base <= 1 ? "disabled" : ""} aria-label='Lower frets'>▲</button>
+      <span class='meta'>frets ${base}–${base + 4}</span>
+      <button type='button' class='btn outline small' data-move='1' ${base >= 15 ? "disabled" : ""} aria-label='Higher frets'>▼</button></div>`;
+}
+
+export function fretPickerHtml(frets, { name = "" } = {}) {
+  const played = frets.filter((f) => f !== null && f > 0);
+  const base = played.length && Math.max(...played) > 5 ? Math.min(...played) : 1;
+  return `<div class='fret-picker' data-name='${String(name).replace(/'/g, "&#39;")}' data-frets='${JSON.stringify(frets)}' data-base='${base}' role='group' aria-label='Tap the frets of your shape'>${fpInner(frets, base)}</div>`;
+}
+
+// onChange(frets) after every tap.
+export function wireFretPicker(el, onChange) {
+  const st = { frets: JSON.parse(el.dataset.frets), base: +el.dataset.base };
+  fpState.set(el, st);
+  el.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b || !el.contains(b)) return;
+    if (b.dataset.move) st.base = Math.max(1, Math.min(15, st.base + +b.dataset.move));
+    else if (b.classList.contains("fp-top")) { const i = +b.dataset.s; st.frets[i] = st.frets[i] === null ? 0 : null; onChange(st.frets.slice()); }
+    else if (b.classList.contains("fp-cell")) { const i = +b.dataset.s, f = +b.dataset.f; st.frets[i] = st.frets[i] === f ? 0 : f; onChange(st.frets.slice()); }
+    el.innerHTML = fpInner(st.frets, st.base);
+  });
+}

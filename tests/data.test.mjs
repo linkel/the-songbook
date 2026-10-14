@@ -1,10 +1,14 @@
-// Validates the shipped charts in songs/: every chord parses and has a shape,
-// pattern ids exist, every chart says where it came from (web charts cite
-// sources), and nothing in them looks like lyrics. node data.test.mjs
+// Validates the shipped charts in songs/: every chord parses and has a shape
+// (in the chart's tuning), pattern ids exist, every chart says where it came
+// from (web charts cite sources), nothing in them looks like lyrics, and a
+// shipped guitar part is a generic description (library patterns and shapes),
+// never a transcription (@ frets, techniques). node data.test.mjs
 import fs from "fs";
 import { check, eq, report } from "./lib.mjs";
 import * as C from "../js/chords.js";
 import { PATTERN_BY_ID } from "../js/patterns.js";
+import { tuningFrom, parseTuning } from "../js/tuning.js";
+import { checkPart, isTranscription } from "../js/part.js";
 import { buildIndex } from "../tools/build-song-index.mjs";
 
 C.setChordDb(JSON.parse(fs.readFileSync(new URL("../vendor/chords-db/guitar.json", import.meta.url), "utf8")));
@@ -15,7 +19,7 @@ const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "in
 const CHART_KEYS = new Set(["id", "type", "title", "artist", "spotify", "key", "capo", "time", "tempo", "style", "strum",
   "voicings", "sections", "form", "source", "detector", "confidence", "sources", "notes", "picking", "beats",
   "tuning", "links", "bars", "analysis", "checkedFrom", "audio"]);
-const SECTION_KEYS = new Set(["name", "chords", "repeat", "picking", "strength"]);
+const SECTION_KEYS = new Set(["name", "chords", "repeat", "picking", "strength", "part"]);
 const PICKING_KEYS = new Set(["patterns", "also", "match", "source", "confidence", "part", "sources", "description", "from", "pattern"]);
 const SOURCES = new Set(["detected", "web", "mine", "verified"]);
 const PICK_SOURCES = new Set(["mine", "web", "suggested"]);
@@ -65,12 +69,13 @@ for (const f of files) {
   if (c.time !== null && c.time !== undefined) check(`${w}: time signature`, /^\d{1,2}\/(2|4|8)$/.test(c.time), c.time);
   if (c.key) check(`${w}: key parses`, C.parseChord(c.key.replace(/m$/, "")) !== null, c.key);
 
+  const tun = tuningFrom(c.tuning || null);
   for (const [name, spec] of Object.entries(c.voicings || {})) {
     const frets = C.specFrets(spec);
     check(`${w}: voicing ${name} ${spec} is six strings`, !!frets);
     if (frets) {
       const pcs = C.chordPcs(name);
-      check(`${w}: voicing ${name} ${spec} plays chord tones`, C.voicingMidi(frets).every((m) => pcs.includes(m % 12)));
+      check(`${w}: voicing ${name} ${spec} plays chord tones (in its tuning)`, C.voicingMidi(frets, 0, tun).every((m) => pcs.includes(m % 12)));
     }
   }
 
@@ -82,15 +87,20 @@ for (const f of files) {
     check(`${w}/${s.name}: bar syntax`, !/\|\s*\|/.test(s.chords) && bars.every((b) => b.length <= 4));
     for (const name of bars.flat()) {
       check(`${w}/${s.name}: "${name}" parses`, C.parseChord(name) !== null);
-      check(`${w}/${s.name}: "${name}" has a shape`, !!C.bestVoicing(name, c.voicings));
+      check(`${w}/${s.name}: "${name}" has a shape`, !!C.bestVoicing(name, c.voicings, tun));
     }
     if (s.repeat !== undefined) check(`${w}/${s.name}: repeat`, Number.isInteger(s.repeat) && s.repeat >= 1);
+    if (s.part) {
+      const errs = checkPart(s.part);
+      check(`${w}/${s.name}: part is valid`, !errs.length, errs.join("; "));
+      check(`${w}/${s.name}: a shipped part names only patterns and shapes (no @ frets or techniques: those are transcriptions)`, !isTranscription(s.part));
+      check(`${w}/${s.name}: part bars line up with the chord bars`, (s.part.bars || []).length <= bars.length);
+    }
   }
   for (const name of c.form || []) check(`${w}: form section "${name}" exists`, sections.some((s) => s.name === name));
 
   if (c.tuning) {
-    const notes = String(c.tuning.notes || "").split(/\s+/);
-    check(`${w}: tuning has six notes`, notes.length === 6 && notes.every((n) => C.parseChord(n) && C.parseChord(n).q === ""), c.tuning.notes);
+    check(`${w}: tuning has six notes`, (() => { try { return parseTuning(c.tuning.notes).length === 6; } catch (e) { return false; } })(), c.tuning.notes);
     check(`${w}: tuning says where it's from`, ["mine", "web", "verified"].includes(c.tuning.source), String(c.tuning.source));
   }
   for (const l of c.links || []) check(`${w}: link has a label and an https url`, l.label && /^https:\/\/\S+$/.test(l.url) && l.kind, JSON.stringify(l));

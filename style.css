@@ -626,3 +626,58 @@ button.pick.on { border-color: var(--mauve); background: color-mix(in srgb, var(
 .pattern-btn .meta { font-size: 12px; }
 .pattern-btn.on { border-color: var(--mauve); background: color-mix(in srgb, var(--mauve) 14%, var(--base)); }
 .btn.disabled { opacity: .55; pointer-events: none; }
+
+/* ---- Phase 5b: tunings and your own shapes ---- */
+.chip.tuning-chip { min-height: 44px; color: var(--text); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.box .yours-tag, .yours-tag { display: block; font-size: 10.5px; font-weight: 700; color: var(--ink-green); letter-spacing: .02em; }
+.box.yours { border-color: color-mix(in srgb, var(--green) 45%, transparent); }
+.own-shape { margin-top: 4px; }
+.own-shape summary { min-height: 44px; display: flex; align-items: center; font-weight: 700; cursor: pointer; color: var(--ink-mauve); }
+.own-row { display: flex; gap: 8px; align-items: center; margin: 4px 0 8px; }
+.own-row .text-input { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing: .08em; }
+.fret-picker { display: inline-flex; flex-direction: column; gap: 2px; margin: 4px 0; }
+.fret-picker .fp-row, .fret-picker .fp-grid { display: grid; grid-template-columns: 22px repeat(6, 44px); }
+.fret-picker .fp-num { font-size: 11px; color: var(--meta); align-self: center; text-align: right; padding-right: 6px; }
+.fret-picker .fp-top { height: 44px; background: none; border: 0; color: var(--meta); font-size: 18px; font-weight: 700; }
+.fret-picker .fp-cell { height: 44px; border: 0; border-bottom: 1px solid var(--overlay0); position: relative; background: linear-gradient(var(--overlay0), var(--overlay0)) center / 1px 100% no-repeat; }
+.fret-picker .fp-cell.on::after { content: ""; position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: var(--mauve); }
+.fret-picker .fp-grid { border-top: 3px solid var(--text); }
+.fret-picker .fp-nav { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.tuning-grid { margin-bottom: 12px; }
+
+/* ---- Guitar parts in Picking mode: the bar strip, the step grid ---- */
+.part-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 12px; }
+.pbar {
+  min-height: 56px; border-radius: 8px; border: 1px solid var(--surface0); background: var(--mantle); color: var(--text);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px; min-width: 0;
+}
+.pbar .ch { font-weight: 800; font-size: 16px; color: var(--ink-mauve); }
+.pbar .pl { font-size: 11.5px; font-weight: 700; color: var(--meta); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pbar .q { color: var(--ink-yellow); }
+.pbar.change { border-left: 3px solid var(--blue); }
+.pbar.unsure { border-style: dashed; border-color: var(--yellow); }
+.pbar.sel { border-color: var(--mauve); box-shadow: 0 0 0 2px color-mix(in srgb, var(--mauve) 35%, transparent); }
+.pbar.on { background: var(--peach); border-color: var(--peach); }
+.pbar.on .ch, .pbar.on .pl { color: var(--on-peach); }
+.fcell .rest { color: var(--meta); }
+.step-grid-wrap { overflow-x: auto; margin: 0 -4px; padding: 0 4px 4px; flex-shrink: 0; }
+.step-grid { display: grid; grid-template-columns: 18px repeat(var(--steps), 44px); gap: 0; width: max-content; }
+.step-grid .sg-s { font-size: 11px; color: var(--meta); align-self: center; }
+.step-grid .sg-c {
+  height: 44px; border: 0; font-weight: 800; font-size: 13px; color: var(--text);
+  background: linear-gradient(var(--overlay0), var(--overlay0)) center / 100% 1px no-repeat;
+}
+.step-grid .sg-c.beat { box-shadow: inset 1px 0 0 var(--surface1); }
+.step-grid .sg-c.f-p, .step-grid .sg-c.f-i, .step-grid .sg-c.f-m, .step-grid .sg-c.f-a { background: color-mix(in srgb, currentColor 14%, var(--base)); border-radius: 50%; }
+.step-grid .sg-c.f-p { color: var(--ink-peach); }
+.step-grid .sg-c.f-i { color: var(--ink-blue); }
+.step-grid .sg-c.f-m { color: var(--ink-green); }
+.step-grid .sg-c.f-a { color: var(--ink-mauve); }
+.step-grid .sg-c.sel { outline: 2px solid var(--mauve); outline-offset: -3px; }
+.note-detail { padding: 10px 12px; margin: 6px 0 10px; display: flex; flex-direction: column; gap: 8px; }
+.nd-row { display: flex; align-items: center; gap: 8px; }
+.nd-row b { min-width: 52px; text-align: center; }
+.lib-list summary { min-height: 44px; display: flex; align-items: center; font-weight: 700; color: var(--ink-mauve); cursor: pointer; }
+
+/* A tall popover scrolls as a whole: its parts (shape boxes, the step grid) keep their size. */
+.popover > * { flex-shrink: 0; }

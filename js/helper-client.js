@@ -62,11 +62,14 @@ async function call(path, init) {
 }
 
 // Queue an analysis on the PC: send the recording (file), or a link for the PC
-// to download. lyrics: [{ index, text }] to line up with the vocals. -> the job.
-export async function startAnalysis({ file = null, link = null, song, title, artist, lyrics = null, parts = null }) {
+// to download. lyrics: [{ index, text }] to line up with the vocals. parts:
+// "guitar" for the guitar part too, in your tuning (notes, low first) and capo;
+// with job (an earlier analysis's id), just the part, on that analysis. -> the job.
+export async function startAnalysis({ file = null, link = null, song, title, artist, lyrics = null, parts = null, tuning = null, capo = null, job = null }) {
   const fd = new FormData();
   if (file) fd.append("file", file, file.name || "recording");
-  for (const [k, v] of Object.entries({ song, title, artist, parts, name: file ? file.name : null })) if (v) fd.append(k, v);
+  for (const [k, v] of Object.entries({ song, title, artist, parts, tuning, job, name: file ? file.name : null })) if (v) fd.append(k, v);
+  if (capo !== null && capo !== undefined) fd.append("capo", String(capo));
   if (lyrics && lyrics.length) fd.append("lyrics", JSON.stringify(lyrics));
   const r = await call("/analyze" + (link ? "?url=" + encodeURIComponent(link) : ""), { method: "POST", body: fd });
   return r.json();

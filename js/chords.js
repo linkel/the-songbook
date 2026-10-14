@@ -231,16 +231,22 @@ export function fretsSpec(frets) {
   return frets.map((f) => (f === null ? "x" : String(f))).join(wide ? "-" : "");
 }
 
+// A tuning as open strings by string number (OPEN_MIDI's layout): from a
+// tuning (js/tuning.js), an open-strings array, or nothing (standard).
+export const openOf = (t) => (!t ? OPEN_MIDI : Array.isArray(t) ? t : t.open || OPEN_MIDI);
+const isStandard = (open) => open.every((x, i) => x === OPEN_MIDI[i]);
+
 // Sounding MIDI notes of a voicing, low string first (capo in semitones).
-export function voicingMidi(frets, capo = 0) {
+export function voicingMidi(frets, capo = 0, tuning = null) {
+  const open = openOf(tuning);
   const out = [];
-  frets.forEach((f, i) => { if (f !== null) out.push(OPEN_MIDI[6 - i] + f + capo); });
+  frets.forEach((f, i) => { if (f !== null) out.push(open[6 - i] + f + capo); });
   return out;
 }
 
 // How hard a shape is to play: fingers needed, stretch, barre, muted inner
 // strings, height on the neck, and a root that isn't in the bass.
-export function difficulty(frets, bassPc = null) {
+export function difficulty(frets, bassPc = null, tuning = null) {
   const played = frets.map((f, i) => [i, f]).filter(([, f]) => f !== null);
   if (played.length < 3) return 50;
   const fretted = played.filter(([, f]) => f > 0);
@@ -269,7 +275,7 @@ export function difficulty(frets, bassPc = null) {
   for (let i = first; i <= last; i++) if (frets[i] === null) score += 1.5;
   if (played.length < 5) score += played.length === 4 ? 0.8 : 2;
   if (bassPc !== null) {
-    const low = OPEN_MIDI[6 - played[0][0]] + played[0][1];
+    const low = openOf(tuning)[6 - played[0][0]] + played[0][1];
     if (mod12(low) !== bassPc) score += 3;
   }
   return Math.round(score * 100) / 100;
@@ -278,8 +284,8 @@ export function difficulty(frets, bassPc = null) {
 // Whether a voicing plays only chord tones and all the ones that matter: a
 // perfect fifth may be left out of four-note chords, and the ninth out of
 // 11ths and 13ths, as guitarists do.
-function covers(frets, root, iv, bassPc) {
-  const notes = voicingMidi(frets).map(mod12);
+function covers(frets, root, iv, bassPc, open = OPEN_MIDI) {
+  const notes = voicingMidi(frets, 0, open).map(mod12);
   if (!notes.length) return false;
   const pcs = iv.map((i) => mod12(root + i));
   if (bassPc !== null && !pcs.includes(bassPc)) pcs.push(bassPc);
@@ -346,16 +352,59 @@ function withBass(frets, bassPc) {
 const SYMMETRIC = new Set(["dim7", "aug"]);
 const voicingCache = new Map();
 
+// Shapes for a chord in any tuning: every fingering within a four-fret window
+// (open strings too) that plays only chord tones and all the ones that
+// matter, ranked by difficulty. chords-db only knows standard tuning.
+function searchShapes(c, iv, open) {
+  const pcs = iv.map((i) => mod12(c.root + i));
+  if (c.bass !== null && !pcs.includes(c.bass)) pcs.push(c.bass);
+  const seen = new Set(), out = [];
+  for (let w = 1; w <= 10; w++) {
+    // Per string (low to high): muted, open, or a fret in the window, chord tones only.
+    const opts = [6, 5, 4, 3, 2, 1].map((s) => {
+      const o = [null];
+      if (pcs.includes(mod12(open[s]))) o.push(0);
+      for (let f = w; f <= w + 3; f++) if (pcs.includes(mod12(open[s] + f))) o.push(f);
+      return o;
+    });
+    const cur = [];
+    const walk = (i) => {
+      if (i === 6) {
+        const spec = fretsSpec(cur);
+        if (seen.has(spec) || cur.filter((f) => f !== null).length < 3) return;
+        seen.add(spec);
+        if (covers(cur, c.root, iv, c.bass, open)) out.push(cur.slice());
+        return;
+      }
+      for (const f of opts[i]) { cur.push(f); walk(i + 1); cur.pop(); }
+    };
+    walk(0);
+  }
+  return out;
+}
+
 // Voicings for a chord name, easiest first, as { spec, frets, difficulty, from }.
-// chartVoicings (a chart's own "voicings") come first, then Pimapeggio's
-// shapes, then chords-db, then generated forms.
-export function voicingsFor(name, chartVoicings = null) {
+// chartVoicings (a chart's own "voicings", or yours) come first, then
+// Pimapeggio's shapes, then chords-db, then generated forms. In another
+// tuning: yours, then the shapes found by searchShapes.
+export function voicingsFor(name, chartVoicings = null, tuning = null) {
+  const open = openOf(tuning);
+  const std = isStandard(open);
   const own = chartVoicings && chartVoicings[name];
-  const key = name + "|" + (own || "");
+  const key = name + "|" + (own || "") + (std ? "" : "|" + open.join(","));
   if (voicingCache.has(key)) return voicingCache.get(key);
   const c = parseChord(name);
   const result = [];
-  if (c && !c.nc) {
+  if (c && !c.nc && !std) {
+    const iv = QUALITIES[c.q].iv;
+    const bassPc = c.bass !== null ? c.bass : SYMMETRIC.has(c.q) ? null : c.root;
+    if (own && specFrets(own)) result.push({ spec: fretsSpec(specFrets(own)), frets: specFrets(own), from: "chart", difficulty: difficulty(specFrets(own), bassPc, open) });
+    const found = searchShapes(c, iv, open).map((frets) => ({ spec: fretsSpec(frets), frets, from: "search", difficulty: difficulty(frets, bassPc, open) }))
+      .filter((v) => !result.some((r) => r.spec === v.spec))
+      // As easy: the one with more strings ringing (an open tuning's full sound).
+      .sort((a, b) => a.difficulty - b.difficulty || b.frets.filter((f) => f !== null).length - a.frets.filter((f) => f !== null).length);
+    result.push(...found.slice(0, 12));
+  } else if (c && !c.nc) {
     const iv = QUALITIES[c.q].iv;
     // dim7 and aug are symmetric: any of their notes makes a fine bass.
     const bassPc = c.bass !== null ? c.bass : SYMMETRIC.has(c.q) ? null : c.root;
@@ -401,18 +450,21 @@ export function voicingsFor(name, chartVoicings = null) {
   return result;
 }
 
-export function bestVoicing(name, chartVoicings) {
-  const v = voicingsFor(name, chartVoicings);
+export function bestVoicing(name, chartVoicings, tuning = null) {
+  const v = voicingsFor(name, chartVoicings, tuning);
   return v.length ? v[0] : null;
 }
 
 // A chord in Pimapeggio's format ({ id, frets, ext, bass, alt }), so its
-// patterns and chordMidi/noteString work over any chord.
-export function pimaChord(name, chartVoicings) {
+// patterns and chordMidi/noteString work over any chord. (Pimapeggio's own
+// shapes are for standard tuning.)
+export function pimaChord(name, chartVoicings, tuning = null) {
   const own = chartVoicings && chartVoicings[name] ? { [name]: chartVoicings[name] } : null;
-  const known = resolveChord(name, own);
-  if (known) return known;
-  const v = bestVoicing(name, chartVoicings);
+  if (isStandard(openOf(tuning))) {
+    const known = resolveChord(name, own);
+    if (known) return known;
+  } else if (own) return parseVoicing(name, own[name]);
+  const v = bestVoicing(name, chartVoicings, tuning);
   return v ? parseVoicing(name, v.spec) : null;
 }
 
@@ -421,7 +473,7 @@ export function pimaChord(name, chartVoicings) {
 // Choose capo 0-maxCapo so the shapes are easiest. `names` are sounding
 // chords (repeats count: a chord used often matters more). Returns
 // { capo, cost, shapes: { sounding: shape }, ranking: [{ capo, cost }] }.
-export function suggestCapo(names, { maxCapo = 7, key = null } = {}) {
+export function suggestCapo(names, { maxCapo = 7, key = null, tuning = null } = {}) {
   const counts = new Map();
   for (const n of names) { const c = parseChord(n); if (c && !c.nc) counts.set(n, (counts.get(n) || 0) + 1); }
   const ranking = [];
@@ -432,7 +484,7 @@ export function suggestCapo(names, { maxCapo = 7, key = null } = {}) {
     for (const [n, k] of counts) {
       const shape = transposeChord(n, -capo, shapeKey);
       shapes[n] = shape;
-      const v = bestVoicing(shape);
+      const v = bestVoicing(shape, null, tuning);
       cost += k * (v ? v.difficulty : 30);
     }
     // A small nudge toward lower capos when shapes are about as easy.

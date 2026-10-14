@@ -81,7 +81,7 @@ function listenPc() {
     if (st.phase === "done" && !rv.imported) {
       rv.imported = true;
       const r = st.result;
-      const what = [`${r.chart.bars.length} bars of chords`, r.stems ? `${r.stems} stems` : "", r.timing ? `timing for ${r.timing} lyric lines` : ""].filter(Boolean);
+      const what = [`${r.chart.bars.length} bars of chords`, r.stems ? `${r.stems} stems` : "", r.parts ? `the guitar part for ${r.parts} section${r.parts === 1 ? "" : "s"}` : "", r.timing ? `timing for ${r.timing} lyric lines` : ""].filter(Boolean);
       toast(`From your PC: ${what.join(", ")}. Check the chords by ear.`, 4500);
       clearPcJob(rv.id);
       if (rv.ctx.onImported) rv.ctx.onImported();
@@ -96,7 +96,9 @@ async function startPc() {
   if (!file) { toast("Choose the recording first: the PC analyses the same file."); return; }
   rv.imported = false;
   const lyr = rv.ctx.lyrics && rv.pcLyrics !== false ? rv.ctx.lyrics : null;
-  await startPcJob(rv.id, { file, title: rv.ctx.title, artist: rv.ctx.artist, lyrics: lyr, lyricCount: rv.ctx.lyricCount });
+  const t = rv.ctx.tuning;
+  await startPcJob(rv.id, { file, title: rv.ctx.title, artist: rv.ctx.artist, lyrics: lyr, lyricCount: rv.ctx.lyricCount,
+    ...(rv.pcPart !== false ? { parts: "guitar", tuning: t && !t.standard ? t.notes : null, capo: rv.ctx.prefs.capo || 0 } : {}) });
   listenPc();
   renderPc();
 }
@@ -127,6 +129,8 @@ function pcHtml() {
   return `<div class='card set-group pc-card'>
     <div class='set-row'><div>${head}<div class='meta'>${meta}</div></div>
       <button class='btn ${rv.raw ? "outline" : "primary"} small' data-pc='start' ${ready && rv.meta && !rv.running ? "" : "disabled"}>${rv.raw && rv.raw.helper ? "Again" : "Analyse"}</button></div>
+    ${ready ? `<div class='set-row'><div><div class='set-label'>The guitar part too</div><div class='meta'>Notes, strings and frets from the guitar stem, for Picking mode${rv.ctx.tuning && !rv.ctx.tuning.standard ? `, in ${esc(rv.ctx.tuning.name)}` : ""}${rv.ctx.prefs.capo ? `, capo ${rv.ctx.prefs.capo}` : ""}. A draft; which finger plays what is inferred.</div></div>
+      <button class='switch ${rv.pcPart !== false ? "on" : ""}' role='switch' aria-checked='${rv.pcPart !== false}' data-pc='part' aria-label='The guitar part too'></button></div>` : ""}
     ${lyr && ready ? `<div class='set-row'><div><div class='set-label'>Line up my lyrics</div><div class='meta'>Sends your sheet's ${lyr} lyric lines too, to time them against the singing.</div></div>
       <button class='switch ${rv.pcLyrics !== false ? "on" : ""}' role='switch' aria-checked='${rv.pcLyrics !== false}' data-pc='lyrics' aria-label='Line up my lyrics'></button></div>` : ""}
     ${failed}</div>`;
@@ -141,6 +145,7 @@ function renderPc() {
     if (a === "start") startPc();
     else if (a === "cancel") cancelPcJob(rv.id);
     else if (a === "lyrics") { rv.pcLyrics = rv.pcLyrics === false; renderPc(); }
+    else if (a === "part") { rv.pcPart = rv.pcPart === false; renderPc(); }
   }));
 }
 
@@ -256,7 +261,7 @@ async function run(file) {
     ({ bpb: rv.bpb, phase: rv.phase } = findMeter(scaledBeats()));
     rebuild({ keepPhase: true });
     // Offer easier shapes.
-    const sug = suggestCapo(rv.bars.flatMap((b) => b.chords), { key: soundingKey() });
+    const sug = suggestCapo(rv.bars.flatMap((b) => b.chords), { key: soundingKey(), tuning: rv.ctx.tuning });
     rv.capoSuggestion = sug.capo;
   } catch (e) {
     rv.error = e.message;
@@ -352,9 +357,8 @@ function resultHtml() {
   const parts = [];
   // Easier shapes.
   const sug = rv.capoSuggestion || 0;
-  // Shapes (and so the capo maths) assume standard tuning.
-  const tuned = rv.ctx.shipped && rv.ctx.shipped.tuning;
-  if (!tuned && (sug > 0 || capo() > 0)) {
+  // Shapes (and so the capo maths) in the song's tuning.
+  if (sug > 0 || capo() > 0) {
     const names = [...new Set(rv.bars.flatMap((b) => b.chords))].slice(0, 5);
     const k = soundingKey();
     const shapes = names.map((n) => transposeChord(n, -sug, k ? transposeKey(k, -sug) : null));
@@ -505,7 +509,7 @@ async function ensureMono() {
 }
 
 function playBars() {
-  return rv.bars.map((b) => ({ ...b, frets: b.chords.map((c) => { const v = bestVoicing(shape(c)); return v ? v.frets : null; }) }));
+  return rv.bars.map((b) => ({ ...b, frets: b.chords.map((c) => { const v = bestVoicing(shape(c), null, rv.ctx.tuning); return v ? v.frets : null; }) }));
 }
 
 async function togglePlay(from) {
@@ -513,7 +517,7 @@ async function togglePlay(from) {
   if (p.playing) { rv.from = p.position; p.stop(); return; }
   try {
     const mono = await ensureMono();
-    await p.start(mono, playBars(), ticks(), { from: from ?? rv.from ?? 0, strum: rv.strum, capo: capo(), cents: tuningCents() });
+    await p.start(mono, playBars(), ticks(), { from: from ?? rv.from ?? 0, strum: rv.strum, capo: capo(), cents: tuningCents(), open: rv.ctx.tuning && rv.ctx.tuning.open });
   } catch (e) {
     toast(e.message, 3500);
   }

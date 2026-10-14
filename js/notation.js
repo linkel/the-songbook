@@ -1,6 +1,6 @@
 // Copied from Pimapeggio (../pimapeggio/notation.js, same author) and converted to an
 // ES module.
-import { noteString, chordMidi } from "./patterns.js";
+import { noteString, chordMidi, OPEN_MIDI } from "./patterns.js";
 
 // Finger colours come from CSS tokens (--f-p etc.), as in Pimapeggio.
 export const FINGER_COLORS = { p: "var(--f-p)", i: "var(--f-i)", m: "var(--f-m)", a: "var(--f-a)" };
@@ -28,7 +28,7 @@ function diatonic(midiWritten) {
 }
 
 // steps: parsed pattern steps; chord/home as in patterns.js; npb: notes per beat.
-export function notationSvg(steps, chord, home, npb) {
+export function notationSvg(steps, chord, home, npb, open) {
   // Fill whole beats so beams come out right.
   let figure = steps;
   while (figure.length % npb !== 0) figure = figure.concat(steps);
@@ -38,10 +38,12 @@ export function notationSvg(steps, chord, home, npb) {
   const cols = figure.map((st, i) => {
     const beat = Math.floor(i / npb);
     const x = NT.clefW + 10 + i * NT.colW + beat * NT.beatGap;
+    // A note's own @fret wins over the shape's; open: the tuning's open strings.
     const notes = st.map((n) => {
       const s = noteString(n, chord, home);
-      const { d, acc } = diatonic(chordMidi(chord, s) + 12);
-      return { f: n.f, d, acc, y: yOf(d) };
+      const midi = n.fret !== undefined ? (open || OPEN_MIDI)[s] + n.fret : chordMidi(chord, s, 0, open || OPEN_MIDI);
+      const { d, acc } = diatonic(midi + 12);
+      return { f: n.f, d, acc, y: yOf(d), mute: !!n.mute };
     }).sort((a, b) => b.d - a.d); // highest first
     return { x, notes, beat };
   });
@@ -56,17 +58,22 @@ export function notationSvg(steps, chord, home, npb) {
     for (const n of c.notes) {
       for (let d = 28; d >= n.d; d -= 2) body += ledger(c.x, yOf(d));
       for (let d = 40; d <= n.d; d += 2) body += ledger(c.x, yOf(d));
-      body += "<ellipse cx='" + c.x + "' cy='" + n.y + "' rx='4.7' ry='3.4' transform='rotate(-20 " + c.x + " " + n.y + ")' class='nt-head'/>";
+      // A muted or percussive note: an x notehead.
+      if (n.mute) body += "<text x='" + c.x + "' y='" + (n.y + 4) + "' class='nt-acc' text-anchor='middle'>×</text>";
+      else body += "<ellipse cx='" + c.x + "' cy='" + n.y + "' rx='4.7' ry='3.4' transform='rotate(-20 " + c.x + " " + n.y + ")' class='nt-head'/>";
       if (n.acc) body += "<text x='" + (c.x - 12) + "' y='" + (n.y + 4) + "' class='nt-acc'>" + n.acc + "</text>";
       track(n.y);
     }
   }
 
   // Stems and beams, one group per beat
+  // A rest (a step with no notes): an eighth-rest mark in the middle of the staff.
+  for (const c of cols) if (!c.notes.length) body += "<text x='" + c.x + "' y='" + (yOf(34) + 5) + "' class='nt-acc' text-anchor='middle'>𝄾</text>";
   const beats = [];
-  cols.forEach((c) => { (beats[c.beat] = beats[c.beat] || []).push(c); });
+  cols.forEach((c) => { if (c.notes.length) (beats[c.beat] = beats[c.beat] || []).push(c); });
   const beamCount = npb >= 4 ? 2 : npb >= 2 ? 1 : 0;
   for (const g of beats) {
+    if (!g) continue;
     const all = g.flatMap((c) => c.notes);
     const avg = all.reduce((s, n) => s + n.d, 0) / all.length;
     const up = avg < 34; // below the middle line: stems up
@@ -101,7 +108,7 @@ export function notationSvg(steps, chord, home, npb) {
   }
 
   // Fingering letters above everything, stacked for notes played together
-  const maxNotes = Math.max(...cols.map((c) => c.notes.length));
+  const maxNotes = Math.max(1, ...cols.map((c) => c.notes.length));
   const lettersBottom = minY - 5;
   for (const c of cols) {
     c.notes.forEach((n, k) => {

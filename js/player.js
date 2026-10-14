@@ -83,6 +83,38 @@ export function pitchShift(id) {
 
 export function onPlayerFrame(fn) { frameListeners.add(fn); return () => frameListeners.delete(fn); }
 
+// The app guitar plays your guitar part instead of strumming (Picking mode's
+// play-along): events [{ t (song time), string, midi, level }], sorted, or null.
+export function setPartLayer(id, events) {
+  partLayers.set(id, events && events.length ? events : null);
+  if (S && S.id === id) {
+    S.partEvents = partLayers.get(id);
+    S.partTimes = S.partEvents ? S.partEvents.map((e) => e.t) : null;
+    stopGuitar();
+    if (S.engine && S.engine.playing && S.set.mix.guitar.on) startGuitar();
+    syncMixer();
+  }
+}
+const partLayers = new Map();
+
+// A/B in Picking mode: "both", "recording" (the recording's guitar: the guitar
+// stem when there are stems, else the whole recording) or "part" (the app's).
+export function setPartAB(mode) {
+  if (!S) return;
+  const recKey = S.playingStems && S.stems.stems.some((x) => x.name === "guitar") ? "stem:guitar" : S.playingStems ? null : "recording";
+  mixOf("guitar").on = mode !== "recording";
+  if (recKey) mixOf(recKey).on = mode !== "part";
+  applyMix();
+  syncMixer();
+  persist();
+}
+export const partAB = () => {
+  if (!S) return "both";
+  const recKey = S.playingStems && S.stems && S.stems.stems.some((x) => x.name === "guitar") ? "stem:guitar" : "recording";
+  const part = mixOf("guitar").on, rec = !S.set.mix[recKey] || S.set.mix[recKey].on;
+  return part && rec ? "both" : part ? "part" : "recording";
+};
+
 export const playerOpen = () => !!(S && S.view && S.view.querySelector(".player"));
 
 // ctx: { id, title, artist, chart, prefs, rec, disp(name), modesHtml, sideHtml,
@@ -104,8 +136,15 @@ export async function playRecording(ctx) {
   if (!S || S.id !== ctx.id) { closePlayer(); S = newSession(ctx); }
   S.ctx = ctx;
   prepareBars();
-  if (S.kind !== "file") await loadFile();
-  if (S.kind === "file") await togglePlayer();
+  if (S.kind !== "file") {
+    // Yours on this device (or its stems), else the one that comes with the app.
+    const s = S;
+    const meta = await recordingMeta(s.id);
+    if (s.stems === undefined) s.stems = await stemsMeta(s.id);
+    if (S !== s) return;
+    if (!meta && !s.stems && s.ctx.chart && s.ctx.chart.audio) await loadShipped(); else await loadFile();
+  }
+  if (S && S.kind === "file") await togglePlayer();
 }
 
 // The mixer's rows: the recording, or one per stem; then the app guitar and the count-in.
@@ -169,8 +208,10 @@ function newSession(ctx) {
   const set = { ...structuredClone(PLAYER_DEFAULTS), ...structuredClone(saved) };
   set.mix = { ...structuredClone(PLAYER_DEFAULTS.mix), ...(saved.mix || {}) };
   set.trainer = { ...PLAYER_DEFAULTS.trainer, ...(saved.trainer || {}) };
+  const partEvents = partLayers.get(ctx.id) || null;
   return { id: ctx.id, ctx, set, kind: null, engine: null, an: null, duration: 0, loading: null, error: null,
-    view: null, wave: null, voices: new StringVoices(TRACK.guitar), scheduled: new Map(), loops: [], raf: 0, note: "" };
+    view: null, wave: null, voices: new StringVoices(TRACK.guitar), scheduled: new Map(), loops: [], raf: 0, note: "",
+    partEvents, partTimes: partEvents ? partEvents.map((e) => e.t) : null };
 }
 
 // The chart's bars with times (from an analysed recording): bars, beats,
@@ -598,11 +639,15 @@ async function notePass(rate, passes) {
 
 /* ---- The app guitar: the chart strummed on the recording's beats ---- */
 
+// Shapes for the app guitar, in the song's tuning (sounding chords, no capo).
 const shapeCache = new Map();
 function framesFor(name) {
-  if (!shapeCache.has(name)) { const v = bestVoicing(name); shapeCache.set(name, v ? v.frets : null); }
-  return shapeCache.get(name);
+  const t = S.ctx.tuning || null;
+  const key = name + "|" + (t ? t.notes : "");
+  if (!shapeCache.has(key)) { const v = bestVoicing(name, null, t); shapeCache.set(key, v ? v.frets : null); }
+  return shapeCache.get(key);
 }
+const openStrings = () => (S.ctx.tuning && S.ctx.tuning.open) || [null, 64, 59, 55, 50, 45, 40];
 
 function chordAt(t) {
   const i = barIndexAt(t);
@@ -616,10 +661,13 @@ async function startGuitar() {
   if (!S.timed || S.kind !== "file") return;
   if (!S.guitarLook) S.guitarLook = new Lookahead((h, now) => fillGuitar(h, now));
   if (S.guitarLook.running) return;
-  const names = [...new Set(S.timed.bars.flatMap((b) => b.chords))];
-  const OPEN = [40, 45, 50, 55, 59, 64];
   const midis = [];
-  for (const n of names) { const f = framesFor(n); if (f) f.forEach((x, i) => { if (x !== null) midis.push(OPEN[i] + x); }); }
+  if (S.partEvents) midis.push(...new Set(S.partEvents.map((e) => e.midi)));
+  else {
+    const names = [...new Set(S.timed.bars.flatMap((b) => b.chords))];
+    const open = openStrings();
+    for (const n of names) { const f = framesFor(n); if (f) f.forEach((x, i) => { if (x !== null) midis.push(open[6 - i] + x); }); }
+  }
   await warmNotes(midis);
   if (S && S.engine && S.engine.playing && S.set.mix.guitar.on) S.guitarLook.start();
 }
@@ -633,6 +681,19 @@ function stopGuitar() {
 
 function fillGuitar(horizon, now) {
   if (!S || S.kind !== "file" || !S.engine.playing || !S.timed) return;
+  if (S.partEvents) {
+    // Your part, note by note, on the recording's clock (any speed, across loop jumps).
+    for (const h of S.engine.timesBetween(S.partTimes, Math.max(now, now + 0.005), horizon)) {
+      const key = "p" + h.seg.toFixed(4) + ":" + h.index;
+      if (S.scheduled.has(key)) continue;
+      S.scheduled.set(key, h.at);
+      const e = S.partEvents[h.index];
+      S.voices.playNote(e.string, e.midi, h.at, e.level);
+      if (e.mute) S.voices.damp(e.string, h.at + 0.03, 0.01);
+    }
+    if (S.scheduled.size > 256) for (const [k, at] of S.scheduled) if (at < now - 1) S.scheduled.delete(k);
+    return;
+  }
   const hits = S.engine.timesBetween(S.timed.strumTimes, Math.max(now, now + 0.005), horizon);
   for (const h of hits) {
     const key = h.seg.toFixed(4) + ":" + h.index;
@@ -640,7 +701,7 @@ function fillGuitar(horizon, now) {
     S.scheduled.set(key, h.at);
     const name = chordAt(h.song + 0.01);
     const frets = name && framesFor(name);
-    if (frets) strum(S.voices, frets, h.at, { dir: S.timed.strums[h.index].dir, level: S.timed.strums[h.index].dir === "U" ? 0.18 : 0.26 });
+    if (frets) strum(S.voices, frets, h.at, { dir: S.timed.strums[h.index].dir, level: S.timed.strums[h.index].dir === "U" ? 0.18 : 0.26, open: openStrings() });
   }
   if (S.scheduled.size > 64) for (const [k, at] of S.scheduled) if (at < now - 1) S.scheduled.delete(k);
 }
@@ -1126,7 +1187,7 @@ function syncMixer() {
   box.innerHTML = `<div class='h2'>Mixer</div>` + seg + mixRows().map(([key, name, sub]) => {
     const m = mixOf(key);
     const off = key === "guitar" && !guitarOk;
-    const subText = key === "recording" && S.kind === "youtube" ? "YouTube sets its own volume" : off ? "needs analysed bars" : sub;
+    const subText = key === "recording" && S.kind === "youtube" ? "YouTube sets its own volume" : off ? "needs analysed bars" : key === "guitar" && S.partEvents ? "plays your guitar part" : sub;
     return `<div class='track ${m.on && !off ? "" : "off"}'>
       <span class='tn'>${esc(name)}<span class='ts'>${subText}</span></span>
       <input type='range' min='0' max='1' step='0.05' value='${m.vol}' data-vol='${esc(key)}' aria-label='${esc(name)} volume' ${off || (key === "recording" && S.kind === "youtube") ? "disabled" : ""}>
@@ -1352,5 +1413,7 @@ export const playerState = () => S && {
   id: S.id, kind: S.kind, set: S.set, duration: S.duration, timed: !!S.timed, loops: S.loops.map((l) => l.id), stems: !!S.playingStems,
   layout: S.engine && S.engine.layout ? S.engine.layout.map((l) => ({ track: l.track, channels: l.channels.length })) : null,
   engine: S.engine, voicesCents: S.voices.cents, scheduled: S.scheduled.size, passes: S.passes || 0,
-  strums: [...S.scheduled].map(([key, at]) => ({ key, at, song: S.timed ? S.timed.strumTimes[+key.split(":")[1]] : null })),
+  strums: [...S.scheduled].filter(([key]) => key[0] !== "p").map(([key, at]) => ({ key, at, song: S.timed ? S.timed.strumTimes[+key.split(":")[1]] : null })),
+  partNotes: [...S.scheduled].filter(([key]) => key[0] === "p").map(([key, at]) => ({ at, song: S.partTimes[+key.split(":")[1]], midi: S.partEvents[+key.split(":")[1]].midi })),
+  partLayer: !!S.partEvents,
 };

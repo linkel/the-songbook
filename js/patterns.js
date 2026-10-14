@@ -101,19 +101,51 @@ export const PATTERN_DEFS = [
 
 export const FINGERS = ["p", "i", "m", "a"];
 
+/* Step notation, shared with Pimapeggio. A step is notes joined with "+", or
+   "-" for a rest (the strings ring on). A note:
+     finger [string] [@fret] [technique target] [x]
+     p i m a        the finger; p alone is the bass string, pB / pA bass / alternate bass
+     1-6            an exact string (i4)
+     @n             fret n instead of the shape's (m2@3)
+     h5 o3 /7 \5    hammer-on, pull-off, slide up, slide down to that fret; the
+                    second note sounds halfway through the step
+     x              muted or percussive (px: a thumb slap)
+   A parsed note is { f, s } plus fret, tech: { type: "h"|"o"|"/"|"\\", to } and
+   mute when present; a rest is an empty step []. */
+const NOTE_RE = /^([pima])([1-6]|B|A)?(?:@(\d{1,2}))?(?:([ho/\\])(\d{1,2}))?(x)?$/;
+
+export function parseNote(tok) {
+  const m = tok.match(NOTE_RE);
+  if (!m) throw new Error("Bad pattern token: " + tok);
+  const n = { f: m[1], s: m[2] ? (/\d/.test(m[2]) ? +m[2] : m[2]) : null };
+  if (m[3] !== undefined) n.fret = +m[3];
+  if (m[4]) n.tech = { type: m[4], to: +m[5] };
+  if (m[6]) n.mute = true;
+  return n;
+}
+
 export function parseSteps(str) {
-  return str.trim().split(/\s+/).map((step) =>
-    step.split("+").map((tok) => {
-      const m = tok.match(/^([pima])([1-6]|B|A)?$/);
-      if (!m) throw new Error("Bad pattern token: " + tok);
-      return { f: m[1], s: m[2] ? (/\d/.test(m[2]) ? +m[2] : m[2]) : null };
-    })
-  );
+  return str.trim().split(/\s+/).map((step) => (step === "-" ? [] : step.split("+").map(parseNote)));
+}
+
+// Back to text: the inverse of parseSteps.
+export function noteText(n) {
+  return n.f + (n.s === null || n.s === undefined ? "" : n.s) + (n.fret !== undefined ? "@" + n.fret : "") +
+    (n.tech ? n.tech.type + n.tech.to : "") + (n.mute ? "x" : "");
+}
+export function stepsText(steps) {
+  return steps.map((st) => (st.length ? st.map(noteText).join("+") : "-")).join(" ");
+}
+
+// Frets, techniques or mutes taken from a recording: a transcription, which
+// stays on the device (plan §7, Guitar part).
+export function isTranscribed(str) {
+  return /@|[pima1-6AB][ho/\\]\d|\\/.test(String(str));
 }
 
 // Default display name: finger letters joined with dashes, chords in brackets.
 export function defaultName(steps) {
-  return steps.map((st) => (st.length > 1 ? "(" + st.map((n) => n.f).join("+") + ")" : st[0].f)).join("-");
+  return steps.map((st) => (!st.length ? "·" : st.length > 1 ? "(" + st.map((n) => n.f).join("+") + ")" : st[0].f)).join("-");
 }
 
 export const PATTERNS = PATTERN_DEFS.map((d) => {
@@ -142,7 +174,7 @@ export const CHORDS = [
 
 export const CHORD_BY_ID = new Map(CHORDS.map((c) => [c.id, c]));
 
-// Open-string MIDI notes, indexed by string number (1 = high E).
+// Open-string MIDI notes, indexed by string number (1 = high E): standard tuning.
 export const OPEN_MIDI = [null, 64, 59, 55, 50, 45, 40];
 
 export function chordFret(chord, string) {
@@ -151,10 +183,22 @@ export function chordFret(chord, string) {
 
 // Sounding MIDI note on a string (capo = semitones). A string the voicing
 // doesn't use falls back to the bass note, so crossing patterns still sound
-// a chord tone.
-export function chordMidi(chord, string, capo = 0) {
+// a chord tone. open: the tuning's open strings, indexed like OPEN_MIDI.
+export function chordMidi(chord, string, capo = 0, open = OPEN_MIDI) {
   if (chordFret(chord, string) === null) string = chord.bass;
-  return OPEN_MIDI[string] + chordFret(chord, string) + capo;
+  return open[string] + chordFret(chord, string) + capo;
+}
+
+// A note of a step as played: its string, the fret (the note's own @fret, or
+// the shape's), and the MIDI note, plus the technique's second note if any.
+// -> { string, fret, midi, to: { fret, midi, type } | null, mute }
+export function noteSound(note, chord, home, capo = 0, open = OPEN_MIDI) {
+  let string = noteString(note, chord, home);
+  let fret = note.fret ?? chordFret(chord, string);
+  if (fret === null || fret === undefined) { string = chord.bass; fret = chordFret(chord, string) ?? 0; }
+  const midi = open[string] + fret + capo;
+  const to = note.tech ? { type: note.tech.type, fret: note.tech.to, midi: open[string] + note.tech.to + capo } : null;
+  return { string, fret, midi, to, mute: !!note.mute };
 }
 
 /* ---- More shapes, used by progressions (not in the chord buttons) ----

@@ -11,6 +11,8 @@ bundle the app imports.
                            (majority chord per half bar) and sections (bar
                            blocks that repeat, by chroma and timbre)
     stable-ts (Whisper)    your pasted lyrics lined up with the vocal stem
+    parts.py               the guitar part (with parts=guitar): basic-pitch notes
+                           on the guitar stem, strings and frets, inferred fingers
 
 Every result is a draft: the chart says "detected" and names the detectors.
 Runs in WSL2 Ubuntu (helper/README.md). Python 3.12; the model versions are in
@@ -44,6 +46,7 @@ STEPS = [
     ("beats", "Beats and bar lines", 0.1),
     ("chords", "Chords (ChordMini)", 0.15),
     ("sections", "Key and sections", 0.07),
+    ("parts", "Guitar part (basic-pitch)", 0.12),
     ("lyrics", "Lining up your lyrics", 0.2),
     ("bundle", "Packing the bundle", 0.1),
 ]
@@ -650,6 +653,12 @@ def analyse(src, out_dir, opts, models, progress=lambda step, p: None, cancelled
     sections, form = sections_from(bars, segs)
     done("sections")
 
+    part_doc = None
+    if opts.get("parts") == "guitar":
+        step("parts")
+        part_doc = guitar_part(stems, None, opts, sections=sections, form=form, segs=segs, bars=bars, bpb=bpb)
+        done("parts")
+
     timing = []
     lyr = opts.get("lyrics") or []
     if lyr and "vocals" in stems:
@@ -702,6 +711,10 @@ def analyse(src, out_dir, opts, models, progress=lambda step, p: None, cancelled
         files.append("audio.m4a")
     with open(os.path.join(out_dir, "chart.json"), "w") as f:
         json.dump(chart, f, indent=1)
+    if part_doc:
+        with open(os.path.join(out_dir, "part.json"), "w") as f:
+            json.dump(part_doc, f, indent=1)
+        files.append("part.json")
     if timing:
         with open(os.path.join(out_dir, "timing.json"), "w") as f:
             json.dump({"songId": opts.get("song"), "lines": timing, "source": "aligned",
@@ -711,7 +724,7 @@ def analyse(src, out_dir, opts, models, progress=lambda step, p: None, cancelled
         "app": "songbook", "kind": "bundle", "version": BUNDLE_VERSION, "songId": opts.get("song"),
         "title": opts.get("title"), "artist": opts.get("artist"), "created": chart["analysis"]["at"],
         "source": {"name": opts.get("name"), "link": opts.get("link")}, "duration": round(duration, 3),
-        "detector": detector, "stems": stem_list, "files": files, "timing": bool(timing),
+        "detector": detector, "stems": stem_list, "files": files, "timing": bool(timing), "part": bool(part_doc),
         "audio": "audio.m4a" if opts.get("keep_audio") else None, "seconds": round(time.time() - t_start, 1),
     }
     with open(os.path.join(out_dir, "bundle.json"), "w") as f:
@@ -720,14 +733,71 @@ def analyse(src, out_dir, opts, models, progress=lambda step, p: None, cancelled
     return manifest
 
 
-def zip_bundle(out_dir, zip_path):
+PARTS_DETECTOR = "basic-pitch notes on the guitar stem, strings and frets by the Songbook's own pass (parts.py)"
+
+
+def guitar_part(stems, chart, opts, sections=None, form=None, segs=None, bars=None, bpb=4):
+    """The guitar part for each section (parts.py), as part.json's contents:
+    { detector, tuning, capo, sections: { name: part } }, or None."""
+    import parts as P
+    if chart is None:
+        chart = {"bars": [{"t": b["t"], "chords": b["chords"]} for b in bars], "sections": sections, "form": form,
+                 "time": "3/4" if bpb == 3 else "4/4", "analysis": {"segments": [{"name": s["name"], "bars": [s["bars"][0], s["bars"][-1]]} for s in segs]}}
+    # The guitar stem, unless it's nearly empty (then "other").
+    g = stems.get("guitar")
+    if g is None or rms_db(g) < rms_db(sum(stems.values())) - 30:
+        g = stems.get("other")
+    if g is None:
+        return None
+    try:
+        capo = int(opts.get("capo") or 0)
+    except ValueError:
+        capo = 0
+    found, stats = P.detect_parts(chart, g.mean(0), SR, opts.get("tuning") or None, capo)
+    if not found:
+        return None
+    for p in found.values():
+        p["detector"] = PARTS_DETECTOR
+    notes = stats.pop("found", [])
+    log("parts", stats)
+    return {"detector": PARTS_DETECTOR, "tuning": opts.get("tuning") or "E A D G B E", "capo": capo, "sections": found, "stats": stats,
+            "notes": notes}
+
+
+def parts_only(bundle_dir, opts, progress=lambda step, p: None):
+    """Re-run just the guitar part on an existing bundle (its stems and chart).
+    Rewrites part.json and the manifest; returns the manifest."""
+    progress("parts", 0)
+    with open(os.path.join(bundle_dir, "chart.json")) as f:
+        chart = json.load(f)
+    with open(os.path.join(bundle_dir, "bundle.json")) as f:
+        manifest = json.load(f)
+    stems = {}
+    for s in manifest.get("stems", []):
+        if s["name"] in ("guitar", "other"):
+            stems[s["name"]] = decode(os.path.join(bundle_dir, s["file"]))
+    doc = guitar_part(stems, chart, opts)
+    progress("parts", 0.9)
+    if doc:
+        with open(os.path.join(bundle_dir, "part.json"), "w") as f:
+            json.dump(doc, f, indent=1)
+        if "part.json" not in manifest["files"]:
+            manifest["files"].append("part.json")
+    manifest["part"] = bool(doc)
+    with open(os.path.join(bundle_dir, "bundle.json"), "w") as f:
+        json.dump(manifest, f, indent=1)
+    progress("parts", 1)
+    return manifest
+
+
+def zip_bundle(out_dir, zip_path, only=None):
     """Stored (uncompressed) zip: the app's js/zip.js reads it, and audio doesn't compress."""
     with open(os.path.join(out_dir, "bundle.json")) as f:
         manifest = json.load(f)
     tmp = zip_path + ".part"
     with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_STORED) as z:
         z.write(os.path.join(out_dir, "bundle.json"), "bundle.json")
-        for fn in manifest["files"]:
+        for fn in only or manifest["files"]:
             z.write(os.path.join(out_dir, fn), fn)
     os.replace(tmp, zip_path)
     return zip_path

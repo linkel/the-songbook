@@ -24,6 +24,10 @@ export PATH="$HOME/.local/bin:$PATH"
 source ~/.venvs/songbook/bin/activate
 uv pip install torch==2.9.1 torchaudio==2.9.1 --index-url https://download.pytorch.org/whl/cu128
 uv pip install -r "$HERE/requirements-gpu.txt"
+# basic-pitch (guitar notes for parts) pins TensorFlow < 2.15.1, which has no
+# Python 3.12 build; its ONNX model runs on onnxruntime instead.
+uv pip install --no-deps basic-pitch==0.4.0
+uv pip install onnxruntime==1.31.0 pretty_midi==0.2.11.post0 resampy==0.4.3
 
 mkdir -p ~/src
 if [ ! -d ~/src/ChordMini-model ]; then

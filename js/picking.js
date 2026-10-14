@@ -6,7 +6,7 @@
 // Pimapeggio" hands the section to the full trainer with the tempo ladder.
 // The stage drawing follows Pimapeggio's buildFingers/buildDiagram (app.js).
 
-import { PATTERNS, PATTERN_BY_ID, FAMILIES, noteString, chordMidi } from "./patterns.js";
+import { PATTERNS, PATTERN_BY_ID, FAMILIES, noteString, chordMidi, stepsText } from "./patterns.js";
 import { notationSvg, FINGER_COLORS } from "./notation.js";
 import { splitBars, voicingsFor, pimaChord, prettyChord } from "./chords.js";
 import { esc, pickingLabel, patternName } from "./ui.js";
@@ -34,16 +34,17 @@ export function patternBadge(pf) {
 }
 
 // A section's bars as chords to play: [{ sec, bar, chords: [{ name, frets, pima }] }].
-// disp: sounding name -> what you play (capo, transpose, simple); vm: voicings.
-export function sectionBars(chart, si, disp, vm) {
+// disp: sounding name -> what you play (capo, transpose, simple); vm: voicings;
+// tuning: the song's (js/tuning.js).
+export function sectionBars(chart, si, disp, vm, tuning = null) {
   const s = chart && chart.sections && chart.sections[si];
   if (!s || !s.chords) return [];
   return splitBars(s.chords).map((names, bar) => ({
     sec: si, bar,
     chords: names.map((n) => {
       const d = disp(n);
-      const v = voicingsFor(d, vm)[0];
-      return { name: d, frets: v ? v.frets : null, spec: v ? v.spec : null, pima: v ? pimaChord(d, { [d]: v.spec }) : null };
+      const v = voicingsFor(d, vm, tuning)[0];
+      return { name: d, frets: v ? v.frets : null, spec: v ? v.spec : null, pima: v ? pimaChord(d, { [d]: v.spec }, tuning) : null };
     }),
   }));
 }
@@ -54,15 +55,16 @@ export function fingersHtml(p) {
   const cols = L <= 6 ? L : Math.ceil(L / 2);
   const cells = p.steps.map((st, i) => {
     const notes = [...st].sort((a, b) => FINGER_ORDER.indexOf(b.f) - FINGER_ORDER.indexOf(a.f));
-    const inner = notes.map((n) => `<span class='f-${n.f}${notes.length > 1 ? " multi" : ""}'>${n.f}</span>`).join("");
+    const inner = !notes.length ? "<span class='rest' aria-label='rest'>·</span>" : notes.map((n) => `<span class='f-${n.f}${notes.length > 1 ? " multi" : ""}'>${n.f}</span>`).join("");
     return `<div class='fcell' data-i='${i}'>${inner}</div>`;
   }).join("");
   return `<div class='fingers' style='--cols:${cols};--rows:${L <= 6 ? 1 : 2}' aria-label='Fingers: ${esc(p.letters)}'>${cells}</div>`;
 }
 
 // A string diagram (string 1 on top, as in tab), one column per step, over
-// the chord being played (Pimapeggio's buildDiagram).
-export function diagramSvg(p, chord) {
+// the chord being played (Pimapeggio's buildDiagram). open: the tuning's open
+// strings, for the note names.
+export function diagramSvg(p, chord, open = undefined) {
   const L = p.steps.length;
   const W = 340, H = 150, left = 40, right = 6, top = 12, bottom = 12;
   const gap = (H - top - bottom) / 5;
@@ -75,21 +77,23 @@ export function diagramSvg(p, chord) {
     const ext = chord.ext.includes(s);
     svg += `<line class='dg-string${ext ? " ext" : ""}' x1='${left - 4}' x2='${W - right}' y1='${y(s)}' y2='${y(s)}' stroke-width='${(0.8 + s * 0.22).toFixed(2)}'/>`;
     svg += `<text class='dg-label' x='2' y='${y(s) + 4}'>${s}</text>`;
-    svg += `<text class='dg-label note' x='13' y='${y(s) + 4}'>${NOTE_NAMES[chordMidi(chord, s) % 12]}</text>`;
+    svg += `<text class='dg-label note' x='13' y='${y(s) + 4}'>${NOTE_NAMES[chordMidi(chord, s, 0, open) % 12]}</text>`;
   }
   p.steps.forEach((st, i) => {
     const cx = left + (i + 0.5) * colW;
     for (const n of st) {
       const s = noteString(n, chord, HOME);
       svg += `<circle cx='${cx.toFixed(1)}' cy='${y(s)}' r='${r.toFixed(1)}' fill='${FINGER_COLORS[n.f]}'/>`;
-      if (r >= 6) svg += `<text class='dg-dot-text' x='${cx.toFixed(1)}' y='${(y(s) + 0.5).toFixed(1)}' font-size='${(r * 1.35).toFixed(1)}'>${n.f}</text>`;
+      // A note off the shape shows its fret (and a technique its target); a muted one a ×.
+      const lab = n.fret !== undefined || n.tech ? `${n.fret ?? ""}${n.tech ? n.tech.type + n.tech.to : ""}` : n.mute ? "×" : n.f;
+      if (r >= 6) svg += `<text class='dg-dot-text' x='${cx.toFixed(1)}' y='${(y(s) + 0.5).toFixed(1)}' font-size='${(r * (lab.length > 2 ? 0.8 : lab.length > 1 ? 1.05 : 1.35)).toFixed(1)}'>${esc(lab)}</text>`;
     }
   });
   return svg + "</svg>";
 }
 
-export function notationHtml(p, chord) {
-  return `<div class='pick-notation' aria-label='The pattern in notation'>${notationSvg(p.steps, chord, HOME, p.npb)}</div>`;
+export function notationHtml(p, chord, open = undefined) {
+  return `<div class='pick-notation' aria-label='The pattern in notation'>${notationSvg(p.steps, chord, HOME, p.npb, open)}</div>`;
 }
 
 // Every pattern by family, for choosing one.
@@ -112,14 +116,17 @@ export function pimapeggioBase(loc = location) {
 }
 
 // A link that opens the trainer on this pattern over the section's chords.
-export function pimapeggioLink({ pattern, bars, capo, bpm, name }, base = pimapeggioBase()) {
+// steps: written-out steps (a bar of a part) instead of a library pattern;
+// tuning: the song's, when it isn't standard (js/tuning.js).
+export function pimapeggioLink({ pattern, steps = null, beats = 4, bars, capo, bpm, name, tuning = null }, base = pimapeggioBase()) {
   const voicings = new Map();
   for (const b of bars) for (const c of b.chords) if (c.spec) voicings.set(c.name, c.spec);
   const q = new URLSearchParams({
-    pattern: pattern.id,
+    ...(steps ? { steps: typeof steps === "string" ? steps : stepsText(steps), ...(beats !== 4 ? { beats: String(beats) } : {}) } : { pattern: pattern.id }),
     chords: bars.map((b) => b.chords.map((c) => c.name).join(" ")).join(" | "),
     voicings: [...voicings].map(([n, s]) => `${n}:${s}`).join(","),
     capo: String(capo || 0), bpm: String(Math.round(bpm)), name,
+    ...(tuning && !tuning.standard ? { tuning: tuning.notes } : {}),
   });
   return base + "?" + q;
 }

@@ -1,10 +1,12 @@
 // Analysis bundles from the PC helper (helper/analysis.py): a stored zip with
 // bundle.json (the manifest), chart.json (a detected chart in the app's own
 // format, with per-beat chords so bar lines and tempo can still change),
-// stems/*.m4a, and timing.json (your lyric lines lined up with the vocals)
-// when you sent lyrics. audio.m4a is the recording itself when the PC
-// downloaded it from a link. Importing keeps it all on this device: the chart
-// in IndexedDB, the stems and recording in OPFS.
+// stems/*.m4a, timing.json (your lyric lines lined up with the vocals) when
+// you sent lyrics, and part.json (the guitar part, detected) when you asked
+// for it. audio.m4a is the recording itself when the PC downloaded it from a
+// link. A "partsOnly" bundle (the part found again for an earlier analysis)
+// has just part.json. Importing keeps it all on this device: the chart and
+// parts in IndexedDB, the stems and recording in OPFS.
 // checkManifest/checkChart are pure; node tests them.
 
 import { readZip } from "./zip.js";
@@ -13,6 +15,7 @@ import { saveStems, saveRecording, recordingMeta } from "./recordings.js";
 import { saveTiming } from "./lyrics.js";
 import { keepShippedFacts } from "./chartfile.js";
 import { parseChord } from "./chords.js";
+import { checkPart, loadParts, saveSectionPart } from "./part.js";
 
 export const BUNDLE_VERSION = 1;
 const STEM_NAMES = ["vocals", "guitar", "bass", "drums", "piano", "other"];
@@ -21,7 +24,8 @@ export function checkManifest(m) {
   if (!m || m.app !== "songbook" || m.kind !== "bundle") throw new Error("That zip isn't an analysis bundle from the PC helper.");
   if (!(m.version >= 1)) throw new Error("That bundle is from an unknown helper version.");
   if (m.version > BUNDLE_VERSION) throw new Error("That bundle is from a newer helper; update the app first.");
-  if (!Array.isArray(m.files) || !m.files.includes("chart.json")) throw new Error("The bundle has no chart.json.");
+  if (!Array.isArray(m.files)) throw new Error("The bundle lists no files.");
+  if (!m.partsOnly && !m.files.includes("chart.json")) throw new Error("The bundle has no chart.json.");
   const stems = Array.isArray(m.stems) ? m.stems : [];
   for (const s of stems) {
     if (!STEM_NAMES.includes(s.name) || !m.files.includes(s.file)) throw new Error(`The bundle's stem "${s.name}" is missing.`);
@@ -59,13 +63,33 @@ async function json(files, name) {
 // Import a bundle for song `songId`. ctx: { title, artist, shipped (the
 // shipped chart, if any), lyricCount (lines in your sheet) }.
 // -> { chart, stems: n, timing: n, audio: bool, manifest }.
+// part.json -> each section's detected part, kept on this device. A part of
+// yours (written or checked) is never replaced by a detection. -> sections saved.
+export async function importParts(doc, songId, sectionNames) {
+  if (!doc || !doc.sections) return 0;
+  const have = await loadParts(songId);
+  let n = 0;
+  for (const [name, part] of Object.entries(doc.sections)) {
+    if (!sectionNames.includes(name) || checkPart(part).length) continue;
+    if (have[name] && have[name].source !== "detected") continue;
+    await saveSectionPart(songId, name, { ...part, tuning: doc.tuning, capo: doc.capo });
+    n++;
+  }
+  return n;
+}
+
 export async function importBundle(blob, songId, ctx = {}) {
   const files = await readZip(blob);
   const manifest = checkManifest(await json(files, "bundle.json"));
+  if (manifest.partsOnly) {
+    const names = (ctx.chart && ctx.chart.sections || []).map((s) => s.name);
+    const parts = manifest.files.includes("part.json") ? await importParts(await json(files, "part.json"), songId, names) : 0;
+    return { chart: ctx.chart || null, stems: 0, timing: 0, audio: false, parts, manifest, partsOnly: true };
+  }
   const chart = checkChart(await json(files, "chart.json"));
   Object.assign(chart, { id: songId, title: ctx.title || chart.title, artist: ctx.artist || chart.artist });
   keepShippedFacts(chart, ctx.shipped);
-  chart.analysis = { ...(chart.analysis || {}), bundle: { created: manifest.created, stems: (manifest.stems || []).map((s) => s.name) } };
+  chart.analysis = { ...(chart.analysis || {}), bundle: { created: manifest.created, job: manifest.job || null, stems: (manifest.stems || []).map((s) => s.name) } };
 
   // The recording itself, when the PC downloaded it (it's what the bar times fit).
   let audio = false;
@@ -90,5 +114,6 @@ export async function importBundle(blob, songId, ctx = {}) {
   }
 
   await saveChart(chart);
-  return { chart, stems: stems.length, timing, audio, manifest };
+  const parts = manifest.files.includes("part.json") ? await importParts(await json(files, "part.json"), songId, chart.sections.map((s) => s.name)) : 0;
+  return { chart, stems: stems.length, timing, audio, parts, manifest };
 }

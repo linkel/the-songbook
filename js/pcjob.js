@@ -6,7 +6,7 @@
 
 import { startAnalysis, getJob, cancelJob, fetchBundle } from "./helper-client.js";
 import { importBundle } from "./bundle.js";
-import { shippedChart } from "./library.js";
+import { shippedChart, loadChart } from "./library.js";
 
 const KEY = (id) => "songbook-job-" + id;
 const POLL_MS = 1500;
@@ -53,9 +53,10 @@ export function onPcJob(songId, fn) {
   return () => st.listeners.delete(fn);
 }
 
-// Start: { file } or { link }, plus title, artist, lyrics ([{ index, text }]).
-// ctx is kept for the import: { title, artist, lyricCount }.
-export async function startPcJob(songId, { file = null, link = null, title, artist, lyrics = null, lyricCount = null }) {
+// Start: { file } or { link } (or { job }: just the guitar part, on an earlier
+// analysis), plus title, artist, lyrics ([{ index, text }]), parts ("guitar"),
+// tuning, capo. ctx is kept for the import: { title, artist, lyricCount }.
+export async function startPcJob(songId, { file = null, link = null, job = null, title, artist, lyrics = null, lyricCount = null, parts = null, tuning = null, capo = null }) {
   const old = jobs.get(songId);
   if (old && (old.phase === "running" || old.phase === "fetching" || old.phase === "importing")) return old;
   const st = { songId, id: null, ctx: { title, artist, lyricCount }, phase: "running", job: null, fetched: 0, error: null, result: null,
@@ -63,7 +64,7 @@ export async function startPcJob(songId, { file = null, link = null, title, arti
   jobs.set(songId, st);
   emit(st);
   try {
-    st.job = await startAnalysis({ file, link, song: songId, title, artist, lyrics });
+    st.job = await startAnalysis({ file, link, job, song: songId, title, artist, lyrics, parts, tuning, capo });
     st.id = st.job.id;
     emit(st);
     poll(st);
@@ -126,7 +127,8 @@ async function finish(st) {
     st.phase = "importing";
     emit(st);
     const shipped = await shippedChart(st.songId).catch(() => null);
-    st.result = await importBundle(blob, st.songId, { ...st.ctx, shipped });
+    const chart = await loadChart(st.songId).catch(() => null);
+    st.result = await importBundle(blob, st.songId, { ...st.ctx, shipped, chart });
     st.phase = "done";
   } catch (e) {
     st.phase = "failed";

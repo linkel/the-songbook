@@ -28,6 +28,7 @@ else. The analysis bundles stay in `private/songs/` (gitignored) and on the phon
 | Slash chords (G/B) | the bass stem's note, when it's clearly the chord's third or fifth | ours |
 | Key, tuning, bars, sections | key profiles (Krumhansl, Temperley), librosa's tuning estimate, the app's half-bar rule, bar blocks that repeat by chords and sound | ours |
 | Lyric timing | [stable-ts](https://github.com/jianfch/stable-ts) on Whisper large-v3, aligning your pasted lines to the vocal stem | MIT |
+| Guitar part (Phase 5b, when asked) | [basic-pitch](https://github.com/spotify/basic-pitch) (Apache-2.0) for the notes of the guitar stem, then our own pass (`parts.py`): strings and frets in your tuning and capo by dynamic programming, the picking fingers by rule, bars quantized and matched to the library's patterns | ours |
 
 Every result is a draft: the chart says "detected" and names these detectors.
 
@@ -40,6 +41,18 @@ PyTorch 2.9, checkpoints included) works fine, so the helper calls that
 directly. allin1 (sections by name) was skipped: it needs NATTEN, which would
 have to be built against CUDA here. beat_this does the beats instead, and the
 helper finds the sections itself.
+
+**Guitar parts.** The picking hand can't be heard: p/i/m/a come from a rule
+(the lowest note on the chord's bass strings is the thumb, the rest by their
+home strings), and the part says so. basic-pitch hears too much on a picked
+guitar (overtones, strings still ringing, a stem's pre-echo), so its notes are
+cleaned first. The tab models the plan suggested (TabCNN with inhibition,
+FretNet, TART, the Fretting-Transformer) publish no weights to run, so strings
+come from the dynamic-programming pass alone; training TabCNN on GuitarSet is
+possible later. On parts rendered by the app's synth (`tests/pc.test.mjs`): 97%
+of notes at the right pitch within 30 ms, 95% on the right string, and the
+right library pattern in 89% of bars, in standard tuning and open D. A string
+played again while it still rings is the weak spot.
 
 **Measured on the RTX 5090** with songs rendered by the app's synth
 (`tests/pc.test.mjs`): tempo within 1 bpm and the key right on all 6, 100% of
@@ -154,6 +167,12 @@ listens on 127.0.0.1, and Tailscale hands requests to it.
   runs, and you can leave the screen: the job carries on, and the results come
   over when you're back. Then check the draft as usual: Play along, fix bars,
   Mark as checked.
+- **The guitar part:** on by default ("The guitar part too"). Picking mode
+  shows each section's part bar by bar: patterns where they match the
+  library, written-out bars where they don't, "?" where it wasn't sure. Play
+  it along with the recording, fix bars, then Mark as checked. For a song you
+  analysed before, Picking mode's **Find it** runs just the part on the stems
+  the PC kept.
 - **Analyse a link:** in the Player, next to a YouTube link, **Analyse** has
   the PC download it and analyse it. The recording comes back with the chords
   and stems.
@@ -175,7 +194,7 @@ listens on 127.0.0.1, and Tailscale hands requests to it.
 |---|---|
 | `GET /ping` | `{"ok", "yt_dlp", "helper": "songbook", "version", "analysis": {"available", "gpu" or "reason"}}` |
 | `GET /audio?url=<link>` | the audio file (m4a when available) |
-| `POST /analyze[?url=<link>]` | queues an analysis; multipart form fields: `file` (unless `?url=`), `song`, `title`, `artist`, `lyrics` (JSON `[{index, text}]`), `lang`. Returns the job. |
+| `POST /analyze[?url=<link>]` | queues an analysis; multipart form fields: `file` (unless `?url=`), `song`, `title`, `artist`, `lyrics` (JSON `[{index, text}]`), `lang`, `parts=guitar` with `tuning` (notes, low first) and `capo`. With `job=<id>` and `parts=guitar`: just the part, on that earlier job's stems. Returns the job. |
 | `GET /jobs`, `GET /jobs/<id>` | `{"state": "queued/running/done/failed/cancelled", "step", "progress", "steps": [{key, label, p}], "error"}` |
 | `POST /jobs/<id>/cancel` | |
 | `GET /bundle/<id>.zip` | the result |
@@ -183,8 +202,10 @@ listens on 127.0.0.1, and Tailscale hands requests to it.
 A bundle is a stored (uncompressed) zip with `bundle.json` (the manifest),
 `chart.json` (a detected chart in the app's format, with per-beat chords so bar
 lines and tempo can still be changed on the phone), `stems/*.m4a` (AAC, 96 kbps),
-`timing.json` when you sent lyrics, and `audio.m4a` when the PC downloaded the
-recording itself. To try the analysis on one file without the server:
+`timing.json` when you sent lyrics, `part.json` (each section's guitar part,
+plus the notes found) when you asked for it, and `audio.m4a` when the PC
+downloaded the recording itself. A part-only job's bundle has just `part.json`.
+To try the analysis on one file without the server:
 
 ```bash
 ~/.venvs/songbook/bin/python helper/analysis.py song.mp3 --out /tmp/bundle
