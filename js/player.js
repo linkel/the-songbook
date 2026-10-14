@@ -1051,8 +1051,8 @@ function sourceDetails() {
     const timedFrom = S.timed && S.timed.file;
     return `<div class='card set-group'>
       <div class='set-row'><div style='min-width:0'><div class='set-label'>Recording</div>
-        <div class='meta ellipsis'>${m ? esc(m.name) + " · " + fmtBytes(m.size) : ""} · ${m && m.source === "app" ? "comes with the app" : m && m.source === "unsaved" ? "not kept on this device" : "on this device"}</div></div>
-        <label class='btn outline small file-btn'>Change${FILE_INPUT}</label></div>
+        <div class='meta ellipsis'>${!m ? (S.playingStems ? "Just the stems from your PC: add the recording for the full mix." : "") : `${esc(m.name)} · ${fmtBytes(m.size)} · ${m.source === "app" ? "comes with the app" : m.source === "unsaved" ? "not kept on this device" : "on this device"}`}</div></div>
+        <label class='btn outline small file-btn'>${m ? "Change" : "Add"}${FILE_INPUT}</label></div>
       ${S.timed ? (timedFrom && m && timedFrom !== m.name ? `<p class='note'>The chords' bar times come from ${esc(timedFrom)}; analyse this file to line them up.</p>` : "")
         : `<div class='set-row'><div><div class='set-label'>Chords</div><div class='meta'>Analyse the recording for chord and section lanes, loops by bar and the app guitar.</div></div>
           <a class='btn outline small' href='#/song/${id}/analyse'>Analyse</a></div>`}

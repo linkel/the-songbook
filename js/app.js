@@ -250,7 +250,8 @@ function wirePlayerCard() {
     out.textContent = "Importing…";
     try {
       const r = await importBundleFile(f);
-      out.textContent = `${r.chart.title || "The song"}: ${r.chart.bars.length} bars of chords${r.stems ? `, ${r.stems} stems` : ""}${r.timing ? `, timing for ${r.timing} lyric lines` : ""}${r.audio ? ", and the recording" : ""}.`;
+      out.textContent = r.partsOnly ? `The guitar part for ${r.parts} section${r.parts === 1 ? "" : "s"}.`
+        : `${r.chart.title || "The song"}: ${r.chart.bars.length} bars of chords${r.stems ? `, ${r.stems} stems` : ""}${r.parts ? `, the guitar part for ${r.parts} section${r.parts === 1 ? "" : "s"}` : ""}${r.timing ? `, timing for ${r.timing} lyric lines` : ""}${r.audio ? ", and the recording" : ""}.`;
       invalidateSongs();
     } catch (err) {
       out.textContent = err.message;
@@ -294,7 +295,9 @@ async function importBundleFile(f) {
   const id = m.songId && (lib.entries.has(m.songId) || await get("charts", m.songId).catch(() => null)) ? m.songId : songIdFor(m.title || "", m.artist || "");
   const e = lib.entries.get(id);
   const sheet = await getSheet(id);
-  return importBundle(f, id, { title: (e && e.title) || m.title, artist: (e && e.artist) || m.artist, shipped: await shippedChart(id).catch(() => null),
+  const shipped = await shippedChart(id).catch(() => null);
+  const chart = (await get("charts", id).catch(() => null)) || shipped;
+  return importBundle(f, id, { title: (e && e.title) || m.title, artist: (e && e.artist) || m.artist, shipped, chart,
     lyricCount: sheet ? lyricLines(parseChordPro(sheet.chordpro)).length : 0 });
 }
 
