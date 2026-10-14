@@ -4,17 +4,20 @@
 import { setChordDb } from "./chords.js";
 import { renderSongs, invalidateSongs } from "./songs.js";
 import { openSong, closeSong, togglePlay, transposeBy, tempoBy, toggleScroll, songMode, songState, getPlayer } from "./song.js";
-import { loadLibrary, importLibraryText } from "./library.js";
+import { loadLibrary, importLibraryText, get } from "./library.js";
+import { storageInfo, listRecordings, deleteRecording, fmtBytes } from "./recordings.js";
+import { renderBatch } from "./batch.js";
 import { onAudioState, resumeAudio, StringVoices, strum, warmNotes, audioContext } from "./audio.js";
 import { esc, toast, hideToast, popoverOpen, closePopover } from "./ui.js";
 
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";
 
 const views = {
   songs: document.getElementById("view-songs"),
   practice: document.getElementById("view-practice"),
   settings: document.getElementById("view-settings"),
   song: document.getElementById("view-song"),
+  batch: document.getElementById("view-batch"),
 };
 
 /* ---- Theme: auto (system) / Mocha / Latte ---- */
@@ -48,6 +51,7 @@ function parseHash() {
   const parts = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
   if (parts[0] === "song" && parts[1]) return { name: "song", id: parts[1], mode: parts[2] || null };
   if (parts[0] === "practice" || parts[0] === "settings") return { name: parts[0] };
+  if (parts[0] === "analyse") return { name: "batch" };
   return { name: "songs" };
 }
 
@@ -56,7 +60,7 @@ async function go() {
   route = parseHash();
   if (prev.name === "song" && (route.name !== "song" || route.id !== prev.id)) closeSong();
   for (const [name, el] of Object.entries(views)) el.classList.toggle("hidden", name !== route.name);
-  document.body.classList.toggle("in-song", route.name === "song");
+  document.body.classList.toggle("in-song", route.name === "song" || route.name === "batch");
   document.querySelectorAll(".tab").forEach((t) => {
     const on = t.dataset.tab === route.name;
     t.classList.toggle("on", on);
@@ -66,6 +70,7 @@ async function go() {
   else if (route.name === "practice") renderPractice();
   else if (route.name === "settings") await renderSettings();
   else if (route.name === "song") await openSong(views.song, route.id, route.mode);
+  else if (route.name === "batch") await renderBatch(views.batch);
 }
 
 window.addEventListener("hashchange", go);
@@ -96,6 +101,7 @@ async function renderSettings() {
       <div class='set-row'><div><div class='set-label'>Import library file</div><div class='meta'>The JSON from the Spotify import tool. Stays on this device.</div></div>
         <label class='btn outline small file-btn'>Choose file<input type='file' id='lib-file' accept='.json,application/json' class='sr-only'></label></div>
     </div>
+    ${await storageCard(lib)}
     <div class='card set-group'>
       <div class='set-row'><div><div class='set-label'>Theme</div><div class='meta'>Auto follows your phone: Mocha when dark, Latte when light.</div></div></div>
       <div class='seg' role='group' aria-label='Theme' style='margin-bottom:12px'>${[["auto", "Auto"], ["mocha", "Mocha"], ["latte", "Latte"]].map(([v, l]) =>
@@ -113,6 +119,13 @@ async function renderSettings() {
     renderSettings();
   }));
   views.settings.querySelector("#sound-check").addEventListener("click", soundCheck);
+  views.settings.querySelectorAll("[data-del-rec]").forEach((b) => b.addEventListener("click", async () => {
+    if (!b.classList.contains("armed")) { b.classList.add("armed"); b.textContent = "Tap again"; return; }
+    await deleteRecording(b.dataset.delRec);
+    invalidateSongs();
+    toast("Recording deleted. Its chords stay.");
+    renderSettings();
+  }));
   views.settings.querySelector("#lib-file").addEventListener("change", async (e) => {
     const f = e.target.files[0];
     if (!f) return;
@@ -125,6 +138,32 @@ async function renderSettings() {
       toast(err.message, 4000);
     }
   });
+}
+
+// Storage: a meter, whether the browser keeps it, and each recording with Delete.
+async function storageCard(lib) {
+  const [info, recs] = await Promise.all([storageInfo(), listRecordings()]);
+  const pct = info.quota ? Math.max(1, Math.min(100, (info.usage / info.quota) * 100)) : 0;
+  const recPct = info.quota ? Math.min(pct, (info.recordings / info.quota) * 100) : 0;
+  const titleOf = async (id) => {
+    const e = lib.entries.get(id);
+    if (e) return e.title;
+    const c = await get("charts", id).catch(() => null);
+    return c ? c.title : id;
+  };
+  const rows = await Promise.all(recs.map(async (r) => `<div class='set-row'><div style='min-width:0'>
+      <a class='set-label ellipsis row-link' href='#/song/${encodeURIComponent(r.id)}/chords'>${esc(await titleOf(r.id))}</a>
+      <div class='meta ellipsis'>${esc(r.name)} · ${fmtBytes(r.size)}</div></div>
+      <button class='btn outline small' data-del-rec='${esc(r.id)}'>Delete</button></div>`));
+  return `<div class='card set-group'>
+    <div class='set-row'><div style='flex:1'><div class='set-label'>Storage</div>
+      <div class='meta' id='storage-text'>Recordings ${fmtBytes(info.recordings)} · everything ${fmtBytes(info.usage)}${info.quota ? " of " + fmtBytes(info.quota) + " available" : ""}</div>
+      <div class='meter' role='meter' aria-label='Storage used' aria-valuemin='0' aria-valuemax='100' aria-valuenow='${Math.round(pct)}'><i class='all' style='width:${pct}%'></i><i class='rec' style='width:${recPct}%'></i></div>
+      <div class='meta'>${info.persisted ? "Kept: the browser won't clear it to make room." : "Not marked as kept yet. Adding the app to your Home Screen helps keep it."}</div></div></div>
+    ${rows.length ? rows.join("") : "<div class='set-row'><div class='meta'>No recordings on this device yet.</div></div>"}
+    <div class='set-row'><div><div class='set-label'>Analyse many recordings</div><div class='meta'>Pick files; each is matched to a song by its tags.</div></div>
+      <a class='btn outline small' href='#/analyse'>Open</a></div>
+  </div>`;
 }
 
 let checkVoices = null;
@@ -159,10 +198,12 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (popoverOpen()) closePopover();
     else if (route.name === "song" && songMode() === "edit") location.hash = `#/song/${encodeURIComponent(route.id)}`;
+    else if (route.name === "song" && songMode() === "analyse") location.hash = `#/song/${encodeURIComponent(route.id)}/chords`;
+    else if (route.name === "batch") location.hash = "#/settings";
     else if (route.name === "song") location.hash = "#/songs";
     return;
   }
-  if (route.name !== "song" || popoverOpen() || songMode() === "edit") return;
+  if (route.name !== "song" || popoverOpen() || songMode() === "edit" || songMode() === "analyse") return;
   const k = e.key;
   if (k === " ") { e.preventDefault(); if (!e.repeat) togglePlay(); }
   else if (k === "s" || k === "S") toggleScroll();

@@ -1,0 +1,33 @@
+{
+  "id": "late-july",
+  "type": "song",
+  "title": "Late July",
+  "artist": "Shakey Graves",
+  "spotify": null,
+  "key": null,
+  "capo": 0,
+  "time": null,
+  "tempo": null,
+  "style": null,
+  "strum": null,
+  "tuning": {
+    "name": "Open D",
+    "notes": "D A D F# A D",
+    "source": "mine"
+  },
+  "voicings": {},
+  "sections": [],
+  "form": [],
+  "source": null,
+  "detector": null,
+  "confidence": null,
+  "sources": [],
+  "links": [
+    {
+      "kind": "tutorial",
+      "label": "Rod Waynick, Shakey Graves - Late July (tutorial), on YouTube. Played in open D♭.",
+      "url": "https://www.youtube.com/watch?v=H_p4siY3Zc4"
+    }
+  ],
+  "notes": "You play it in open D (D A D F♯ A D). The tutorial is in open D♭, every string a half step lower, so raise it 1 semitone in the player to play along. No chords yet: analyse a recording, or paste a sheet."
+}

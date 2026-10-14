@@ -52,6 +52,24 @@ async function seedSheet(page, source = "mine") {
 }
 
 const state = (page) => page.evaluate(() => window.songbook.songState());
+
+// A WAV of a made-up synth song (tests/gen-song.js), made in the page.
+async function synthWav(page, opts) {
+  return Buffer.from(await page.evaluate(async (o) => {
+    const g = await import("/tests/gen-song.js");
+    const { signal } = await g.renderSong(o);
+    return Array.from(g.wavBytes(signal));
+  }, opts));
+}
+
+// Pick a recording on the analyse screen and wait for the analysis.
+async function analyse(page, buffer, name = "example.wav") {
+  await page.setInputFiles("#rec-file", { name, mimeType: "audio/wav", buffer });
+  await page.waitForFunction(() => { const b = document.querySelector("[data-act=save]"); return b && !b.disabled; }, null, { timeout: 90000 });
+  await page.waitForTimeout(200);
+}
+
+let EXAMPLE_WAV = null;
 const rows = (page) => page.$$eval("#song-groups .row", (r) => r.map((x) => x.dataset.id));
 
 async function show(page, hash) {
@@ -183,6 +201,34 @@ for (const [w, h] of SIZES) {
       await layoutChecks(page, `${tag} chord from the sheet`);
       await page.keyboard.press("Escape");
 
+      // Chords from audio: the review screen, its chord picker, the saved chart.
+      if (!EXAMPLE_WAV) EXAMPLE_WAV = await synthWav(page, { bpm: 96, bars: ["D", "Bm", "G", "A"], repeat: 2 });
+      await show(page, "#/song/late-july/analyse");
+      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-analyse-empty.png` });
+      await layoutChecks(page, `${tag} analyse, no recording`, { transport: true });
+      await analyse(page, EXAMPLE_WAV);
+      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-analyse.png` });
+      await layoutChecks(page, `${tag} analyse`, { transport: true });
+      await page.$eval("#song-scroll", (s) => { s.scrollTop = s.scrollHeight; });
+      await page.waitForTimeout(150);
+      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-analyse-bars.png` });
+      await layoutChecks(page, `${tag} analyse, bars`, { transport: true });
+      await page.click(".bar[data-bar='1']");
+      await page.waitForTimeout(150);
+      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-chord-picker.png` });
+      await layoutChecks(page, `${tag} chord picker`);
+      await page.keyboard.press("Escape");
+      await page.click("[data-act=save]");
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-detected.png` });
+      await layoutChecks(page, `${tag} detected chart`, { transport: true });
+      await show(page, "#/settings");
+      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-settings-storage.png` });
+      await layoutChecks(page, `${tag} settings with a recording`);
+      await show(page, "#/analyse");
+      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-batch.png` });
+      await layoutChecks(page, `${tag} batch`, { transport: true });
+
       // Chord popover and capo sheet on a chart.
       await show(page, "#/song/landslide");
       await page.click(".box[data-chord]:visible");
@@ -205,8 +251,8 @@ for (const [w, h] of SIZES) {
 await section("library", async () => {
   const { context, page, errors } = await newPage(375, 752, "dark");
   await show(page, "#/songs");
-  // 1,727 test songs, 3 that match shipped charts, and 10 shipped charts not in the library.
-  eq("all songs counted once", await page.$eval("#song-list-pick option", (o) => o.textContent), "All songs (1740)");
+  // 1,727 test songs, 3 that match shipped charts, and 11 shipped charts not in the library.
+  eq("all songs counted once", await page.$eval("#song-list-pick option", (o) => o.textContent), "All songs (1741)");
   eq("lists: liked, playlists, no empty ones", await page.$$eval("#song-list-pick option", (o) => o.slice(1, 4).map((x) => x.textContent)),
     ["Liked songs (958)", "Guitar Selection (4)", "Test Playlist 1 (138)"]);
   check("empty playlists left out", !(await page.$$eval("#song-list-pick option", (o) => o.map((x) => x.textContent))).some((t) => t.startsWith("Empty list")));
@@ -531,7 +577,7 @@ await section("import", async () => {
   const { context, page, errors } = await newPage(375, 752, "light", { library: null });
   await show(page, "#/songs");
   check("without a library: says how to import it", (await page.textContent("#library-note")).includes("Import library file"));
-  eq("without a library: the shipped charts", (await rows(page)).length, 13);
+  eq("without a library: the shipped charts", (await rows(page)).length, 14);
   await page.screenshot({ path: `${out}/import-before.png` });
   await show(page, "#/settings");
   await page.setInputFiles("#lib-file", { name: "broken.json", mimeType: "application/json", buffer: Buffer.from("{nope") });
@@ -545,8 +591,170 @@ await section("import", async () => {
   await page.reload();
   await page.waitForSelector("html[data-ready]");
   await show(page, "#/songs");
-  eq("imported library survives a reload", await page.$eval("#song-list-pick option", (o) => o.textContent), "All songs (1740)");
+  eq("imported library survives a reload", await page.$eval("#song-list-pick option", (o) => o.textContent), "All songs (1741)");
   check("import: no page errors", errors.length === 0, errors.join("; "));
+  await context.close();
+});
+
+/* ---- Chords from audio: Late July ---- */
+await section("analyse", async () => {
+  const { context, page, errors } = await newPage(375, 752, "dark");
+  await show(page, "#/song/late-july");
+  check("Late July: tuning shown", (await page.textContent(".head .chips")).includes("Open D"));
+  check("Late July: tutorial link", (await page.$$eval(".sources a", (a) => a.map((x) => x.href))).includes("https://www.youtube.com/watch?v=H_p4siY3Zc4"));
+  check("Late July: no chords, nothing invented", (await page.textContent(".song-scroll")).includes("Nothing here is invented"));
+  await page.click("a.btn[href$='/analyse']");
+  await page.waitForTimeout(300);
+  eq("analyse screen opens", (await state(page)).mode, "analyse");
+  const wav = await synthWav(page, { bpm: 96, bars: ["D", "Bm", "G", "A"], repeat: 4 });
+  await analyse(page, wav, "late-july-take.wav");
+  const steps = await page.textContent(".steps");
+  check("tempo found", steps.includes("96 bpm"), steps);
+  check("key found", steps.includes("D major"), steps);
+  check("no capo suggestion in open D tuning", (await page.$$(".suggest")).length === 0);
+  const barsNow = () => page.$$eval(".bar[data-bar]", (b) => b.map((x) => x.textContent.replace("?", "").trim()));
+  eq("detected bars", (await barsNow()).slice(0, 8), ["D", "Bm", "G", "A", "D", "Bm", "G", "A"]);
+  await page.screenshot({ path: `${out}/behaviour-analyse.png` });
+
+  // Edit a bar with the picker: chords in the key come first.
+  await page.click(".bar[data-bar='1']");
+  const inKey = await page.$$eval(".popover [data-pick]", (b) => b.map((x) => x.textContent));
+  eq("picker: chords in D first", inKey.slice(0, 6), ["D", "Em", "F♯m", "G", "A", "Bm"]);
+  await page.click(".popover [data-pick='Em']");
+  eq("bar changed", (await barsNow())[1], "Em");
+  check("edited bar is marked", await page.$eval(".bar[data-bar='1']", (b) => b.classList.contains("edited")));
+  // Any chord: root + quality.
+  await page.click(".bar[data-bar='4']");
+  await page.click(".popover [data-root='C']");
+  await page.click(".popover [data-qual='maj7']");
+  await page.click(".popover [data-use]");
+  eq("any chord from root and quality", (await barsNow())[4], "Cmaj7");
+  // Press and hold to split a bar, then pick the second half.
+  const b2 = await page.$(".bar[data-bar='2']");
+  const box = await b2.boundingBox();
+  await page.mouse.move(box.x + 10, box.y + 10);
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  check("holding a bar splits it and opens the second half", (await page.textContent(".popover")).includes("Second half"));
+  await page.click(".popover [data-pick='D']");
+  eq("split bar", (await barsNow())[2], "GD");
+
+  // Bar lines and tempo.
+  const before = await barsNow();
+  await page.click("[data-act='phase+']");
+  check("moving beat 1 regroups the bars", JSON.stringify(await barsNow()) !== JSON.stringify(before));
+  await page.click("[data-act='phase-']");
+  await page.click("[data-act=double]");
+  check("×2 tempo", (await page.textContent(".steps")).includes("192 bpm"));
+  await page.click("[data-act=double]");
+  check("back to 96", (await page.textContent(".steps")).includes("96 bpm"));
+
+  // Play along with the strum layer.
+  await page.click("[data-act=strum]");
+  check("strum along on", await page.$eval("[data-act=strum]", (b) => b.getAttribute("aria-checked") === "true"));
+  await page.click("[data-act=playalong]");
+  await page.waitForTimeout(2200);
+  const pl = await page.evaluate(async () => {
+    const R = await import("/js/review.js");
+    const p = R.playAlong();
+    return { playing: p.playing, pos: p.position, lit: document.querySelectorAll(".bar.on").length, beat1: !!document.getElementById("beat1") };
+  });
+  check("play along plays the recording", pl.playing && pl.pos > 1, JSON.stringify(pl));
+  check("a bar is lit, and Beat 1 offered", pl.lit === 1 && pl.beat1, JSON.stringify(pl));
+  await page.click("[data-act=playalong]");
+
+  // Save, then mark as checked.
+  await page.click("[data-act=save]");
+  await page.waitForTimeout(700);
+  eq("saved: back in Chords", (await state(page)).mode, "chords");
+  eq("badge: detected", await page.textContent(".topbar .badge"), "Detected · check");
+  check("detector named", (await page.textContent(".sources")).includes("essentia.js"));
+  check("tuning and link kept on your chart", (await page.textContent(".head .chips")).includes("Open D") &&
+    (await page.$$eval(".sources a", (a) => a.map((x) => x.href))).includes("https://www.youtube.com/watch?v=H_p4siY3Zc4"));
+  check("recording card", (await page.textContent(".song-scroll")).includes("late-july-take.wav"));
+  check("edits saved", (await state(page)).displayed.includes("Cmaj7"));
+  await page.click("a.btn[href$='/analyse']");
+  await page.waitForTimeout(400);
+  await page.click("[data-act=checked]");
+  await page.waitForTimeout(700);
+  eq("marked as checked: Mine", await page.textContent(".topbar .badge"), "Mine");
+  check("says it was detected, then checked", (await page.textContent(".sources")).includes("then checked by ear"));
+  await show(page, "#/songs");
+  await page.fill("#song-search", "late july");
+  await page.waitForTimeout(150);
+  check("listed as Mine", (await page.textContent("#song-groups")).includes("Mine"));
+
+  // Delete your chart: back to the shipped one.
+  await show(page, "#/song/late-july/chords");
+  await page.click("[data-act=delete-chart]");
+  await page.click("[data-act=delete-chart]");
+  await page.waitForTimeout(500);
+  check("your chart deleted", (await page.textContent(".song-scroll")).includes("No chord chart yet"));
+  check("analyse: no page errors", errors.length === 0, errors.join("; "));
+  await context.close();
+});
+
+/* ---- Agreement with a cited chart (Landslide) ---- */
+await section("compare", async () => {
+  const { context, page, errors } = await newPage(375, 752, "dark");
+  // Landslide's cited chords at sounding pitch (capo 3 shapes C G/B Am7 G/B).
+  const wav = await synthWav(page, { bpm: 80, bars: ["Eb", "Bb/D", "Cm7", "Bb/D"], repeat: 4 });
+  await show(page, "#/song/landslide/analyse");
+  await analyse(page, wav);
+  const cmp = await page.textContent(".song-scroll");
+  const m = cmp.match(/agrees on (\d+) of (\d+) bars/);
+  check("compares with the cited chart", !!m && +m[1] / +m[2] >= 0.85, m ? m[0] : "no comparison");
+  check("capo suggestion offered", (await page.$$(".suggest")).length === 1 && (await page.textContent(".suggest")).includes("capo 3"));
+  await page.click("[data-act=capo]");
+  // The detector knows major and minor triads only: G/B and Am7 come out as G and Am.
+  eq("capo 3: shapes as triads", (await page.$$eval(".bar[data-bar]", (b) => b.slice(0, 4).map((x) => x.textContent.replace("?", "").trim()))), ["C", "G", "Am", "G"]);
+  await page.click("[data-act=save]");
+  await page.waitForTimeout(600);
+  check("your chart and the cited chart, side by side", (await page.$$("[data-which]")).length === 2);
+  await page.click("[data-which=cited]");
+  eq("cited chart still there", await page.$$eval(".bars .bar", (b) => b.slice(0, 4).map((x) => x.textContent.trim())), ["C", "G/B", "Am7", "G/B"]);
+  check("compare: no page errors", errors.length === 0, errors.join("; "));
+  await context.close();
+});
+
+/* ---- Many recordings at once ---- */
+await section("batch", async () => {
+  const { context, page, errors } = await newPage(375, 752, "light");
+  const wav = await synthWav(page, { bpm: 110, bars: ["A", "E", "F#m", "D"], repeat: 2 });
+  await show(page, "#/settings");
+  await page.click("a[href='#/analyse']");
+  await page.waitForTimeout(300);
+  await page.setInputFiles("#batch-files", [
+    { name: "Test Artist 3 - Test Song 0003.wav", mimeType: "audio/wav", buffer: wav },
+    { name: "Kansas - Dust in the Wind.wav", mimeType: "audio/wav", buffer: wav },
+    { name: "Nobody - Brand New Tune.wav", mimeType: "audio/wav", buffer: wav },
+  ]);
+  await page.waitForTimeout(500);
+  eq("files matched by name", await page.$$eval(".batch-row .badge", (b) => b.map((x) => x.textContent)), ["matched", "matched", "no match"]);
+  eq("unmatched file becomes a new song", await page.$eval("select[data-row='2']", (s) => s.value), "new");
+  await page.screenshot({ path: `${out}/behaviour-batch.png` });
+  await page.click("[data-act=start]");
+  await page.waitForFunction(() => document.querySelectorAll(".batch-status a").length === 3, null, { timeout: 120000 });
+  eq("all three analysed", await page.$$eval(".batch-status", (s) => s.map((x) => x.textContent.trim())), ["Done ✓ review", "Done ✓ review", "Done ✓ review"]);
+  const dust = await page.evaluate(async () => (await import("/js/library.js")).get("charts", "dust-in-the-wind"));
+  check("chart saved as detected, picking kept", dust && dust.source === "detected" && dust.picking && dust.picking.patterns[0] === "travis");
+  await show(page, "#/songs");
+  check("new song added by hand", (await page.$$eval("#song-list-pick option", (o) => o.map((x) => x.textContent))).includes("Added by hand (1)"));
+
+  // Storage: three recordings listed; delete one.
+  await show(page, "#/settings");
+  eq("recordings listed", (await page.$$("[data-del-rec]")).length, 3);
+  check("storage meter", (await page.$$(".meter[role=meter]")).length === 1 && (await page.textContent("#storage-text")).includes("Recordings"));
+  await page.screenshot({ path: `${out}/behaviour-storage.png` });
+  await page.click("[data-del-rec='dust-in-the-wind']");
+  await page.click("[data-del-rec='dust-in-the-wind']");
+  await page.waitForTimeout(400);
+  eq("recording deleted", (await page.$$("[data-del-rec]")).length, 2);
+  await show(page, "#/song/dust-in-the-wind/chords");
+  check("chords stay after the recording is deleted", (await state(page)).displayed.length > 0 && (await page.textContent(".song-scroll")).includes("None yet"));
+  check("batch: no page errors", errors.length === 0, errors.join("; "));
   await context.close();
 });
 
@@ -601,7 +809,7 @@ await section("offline", async () => {
   const offline = await page.evaluate(() => [document.querySelectorAll(".bars .bar").length, !!navigator.serviceWorker.controller]);
   check("works offline after the first load", offline[0] === 4 && offline[1], JSON.stringify(offline));
   await show(page, "#/songs");
-  eq("library offline", await page.$eval("#song-list-pick option", (o) => o.textContent), "All songs (1740)");
+  eq("library offline", await page.$eval("#song-list-pick option", (o) => o.textContent), "All songs (1741)");
   await context.close();
 });
 

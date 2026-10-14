@@ -3,7 +3,9 @@
 // Simple, Aa and Capo, chord popovers, auto-scroll, and Play (the app guitar
 // strums or picks the chart, with the sheet or bars lit as it goes).
 
-import { loadChart, loadPrefs, savePrefs, getEntry, getSheet, saveSheet, deleteSheet, deleteManualSong } from "./library.js";
+import { loadPrefs, savePrefs, getEntry, getSheet, saveSheet, deleteSheet, deleteManualSong, get, shippedChart, deleteChart } from "./library.js";
+import { recordingMeta, fmtBytes } from "./recordings.js";
+import { openReview, closeReview } from "./review.js";
 import {
   displayChord, transposeChord, transposeKey, guessKey, splitBars, voicingsFor, pimaChord, suggestCapo,
   prettyChord, simplifyChord,
@@ -18,7 +20,7 @@ import { esc, sourceBadge, sourceSentence, pickingLabel, patternName, ICONS, toa
 import { invalidateSongs } from "./songs.js";
 
 const MODES = [["sheet", "Sheet"], ["chords", "Chords"], ["picking", "Picking"], ["player", "Player"]];
-const READY = new Set(["sheet", "chords", "edit"]);
+const READY = new Set(["sheet", "chords", "edit", "analyse"]);
 const MIN_BPM = 30, MAX_BPM = 220, DEFAULT_BPM = 80;
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 const SCROLL_PX = 24;   // px per second at 1x and the default font size
@@ -44,6 +46,7 @@ function getPlayer() {
 function base() {
   if (!cur) return null;
   if (cur.mode === "sheet") return cur.sChart;
+  if (cur.showCited && hasChords(cur.shipped)) return cur.shipped;
   return cur.chart || cur.sChart;
 }
 
@@ -144,7 +147,9 @@ const tempo = () => cur.prefs.tempo || (cur.chart && cur.chart.tempo) || (cur.sC
 export async function openSong(view, id, mode) {
   if (!cur || cur.id !== id) {
     stopAll();
-    const [entry, chart, sheet] = await Promise.all([getEntry(id), loadChart(id), getSheet(id)]);
+    const [entry, device, shipped, sheet, rec] = await Promise.all([
+      getEntry(id), get("charts", id).catch(() => null), shippedChart(id).catch(() => null), getSheet(id), recordingMeta(id)]);
+    const chart = device || shipped;
     if (!entry && !chart && !sheet) {
       view.innerHTML = `<div class='topbar'><a class='back' href='#/songs' aria-label='Back'>${ICONS.back}</a>
         <div class='topbar-title'><div class='t'>Song not found</div></div></div>
@@ -154,11 +159,13 @@ export async function openSong(view, id, mode) {
     }
     const doc = sheet ? parseChordPro(sheet.chordpro) : null;
     const sChart = doc ? sheetChart(doc, sheet) : null;
-    cur = { id, entry, chart, sheet, doc, sChart, prefs: null, mode: null, view };
+    cur = { id, entry, chart, device, shipped, rec, sheet, doc, sChart, prefs: null, mode: null, view, showCited: false };
     cur.prefs = await loadPrefs(id, chart || sChart);
   }
   cur.view = view;
+  const prevMode = cur.mode;
   cur.mode = READY.has(mode) ? mode : cur.doc ? "sheet" : "chords";
+  if (prevMode === "analyse" && cur.mode !== "analyse") cur.rec = await recordingMeta(id);
   render();
 }
 
@@ -169,7 +176,7 @@ async function reload() {
   return id;
 }
 
-export function closeSong() { stopAll(); closePopover(); }
+export function closeSong() { stopAll(); closeReview(); closePopover(); }
 
 function stopAll() {
   if (player && player.playing) player.stop();
@@ -189,12 +196,25 @@ function songArtist() {
 
 function render() {
   if (cur.mode === "edit") { renderEditor(); return; }
+  if (cur.mode === "analyse") {
+    stopAll();
+    openReview(cur.view, {
+      id: cur.id, title: songTitle(), artist: songArtist(), chart: cur.device, shipped: cur.shipped,
+      cited: hasChords(cur.shipped) ? cur.shipped : null, prefs: cur.prefs,
+      setCapo: (c) => { cur.prefs.capo = c; savePrefs(cur.id, cur.prefs); },
+      onSaved: async () => { const id = await reload(); location.hash = `#/song/${encodeURIComponent(id)}/chords`; },
+    });
+    return;
+  }
+  closeReview();
   const { view, mode } = cur;
   const b = base();
   const chords = hasChords(b);
   const disp = b ? makeDisp(b) : null;
   const old = view.querySelector("#song-scroll");
-  const keepScroll = old ? old.scrollTop : 0;
+  // Keep the scroll position only when re-rendering the same screen.
+  const keepScroll = old && cur.renderedMode === mode ? old.scrollTop : 0;
+  cur.renderedMode = mode;
   const badgeOf = mode === "sheet" && cur.sheet ? { source: cur.sheet.source || "mine", hasChords: true } : (b || {});
   view.innerHTML = `
     <div class='topbar'>
@@ -251,6 +271,8 @@ function headCard(b) {
     chips.push(`<span class='chip'>${t ? `<b>${t}</b> bpm` : "Tempo <span class='meta'>not set</span>"}</span>`);
     if (b.time) chips.push(`<span class='chip'>${esc(b.time)}</span>`);
   }
+  const tuning = (cur.chart && cur.chart.tuning) || (cur.shipped && cur.shipped.tuning);
+  if (tuning) chips.push(`<span class='chip' title='${esc(tuning.notes)}'>Tuning <b>${esc(tuning.name)}</b></span>`);
   const style = [c.style, c.type === "piece" ? "piece" : null].filter(Boolean).join(" · ");
   const album = cur.entry && cur.entry.album && ![songTitle(), songArtist()].includes(cur.entry.album) ? cur.entry.album : "";
   return `<div class='card head'><h1 class='song-title'>${esc(songTitle())}</h1>
@@ -298,13 +320,25 @@ function sheetBody(b, disp) {
 
 function chordsBody(b, disp) {
   const parts = [];
+  const id = encodeURIComponent(cur.id);
+  if (cur.device && hasChords(cur.shipped)) {
+    parts.push(`<div class='seg' role='group' aria-label='Which chart'>
+      <button data-which='mine' class='${cur.showCited ? "" : "on"}' aria-pressed='${!cur.showCited}'>Your chart</button>
+      <button data-which='cited' class='${cur.showCited ? "on" : ""}' aria-pressed='${cur.showCited}'>Cited chart</button></div>`);
+  }
   if (hasChords(b)) {
     parts.push(sectionsHtml(b, disp));
     parts.push(`<div class='card boxes boxes-card'>${boxesHtml(b, disp)}</div>`);
   } else {
     parts.push(`<div class='card empty'><b>No chord chart yet.</b><br>Nothing here is invented: chords will come from analysing a recording, a cited chart, or a sheet you paste.
-      <div style='margin-top:12px'><a class='btn primary' href='#/song/${encodeURIComponent(cur.id)}/edit'>Paste a sheet</a></div></div>`);
+      <div style='margin-top:12px;display:flex;gap:8px;flex-wrap:wrap'><a class='btn primary' href='#/song/${id}/analyse'>Analyse a recording</a>
+      <a class='btn outline' href='#/song/${id}/edit'>Paste a sheet</a></div></div>`);
   }
+  const r = cur.rec;
+  const detected = cur.device && cur.device.analysis;
+  parts.push(`<div class='card set-group'><div class='set-row'><div style='min-width:0'><div class='set-label'>Recording</div>
+    <div class='meta ellipsis'>${r ? esc(r.name) + " · " + fmtBytes(r.size) + " · on this device" : "None yet. Add one to work out the chords."}</div></div>
+    <a class='btn outline small' href='#/song/${id}/analyse'>${detected ? "Review chords" : r ? "Analyse" : "Add"}</a></div></div>`);
   parts.push(provenanceCard(b));
   if (cur.entry && cur.entry.manual) {
     parts.push(`<div class='card set-group'><div class='set-row'><div><div class='set-label'>Added by hand</div><div class='meta'>Not from your Spotify library.</div></div>
@@ -335,10 +369,24 @@ function boxesHtml(b, disp, width = 76) {
 function provenanceCard(b) {
   const parts = [];
   if (hasChords(b)) {
-    const what = b.fromSheet ? (b.source === "web" ? "From your sheet (from the web, cited below)." : "From your sheet.") : sourceSentence(b);
+    const what = b.fromSheet ? (b.source === "web" ? "From your sheet (from the web, cited below)." : "From your sheet.")
+      : b.checkedFrom ? `Yours: detected by ${b.checkedFrom}, then checked by ear.` : sourceSentence(b);
     parts.push(`<div><b>Chords:</b> ${esc(what)}</div>`);
     if (b.notes) parts.push(`<div class='note' style='margin-top:6px'>${esc(b.notes)}</div>`);
     parts.push(provenance(b, b.sources));
+  }
+  const tuning = (cur.chart && cur.chart.tuning) || (cur.shipped && cur.shipped.tuning);
+  if (tuning) {
+    parts.push(`<div style='margin-top:${parts.length ? 12 : 0}px'><b>Tuning:</b> ${esc(tuning.name)} (${esc(prettyChord(tuning.notes))})${tuning.source === "mine" ? ", as you play it" : ""}.
+      ${hasChords(b) ? "<span class='note'>Chord diagrams and Play use standard-tuning shapes for now.</span>" : ""}</div>`);
+  }
+  const links = (cur.chart && cur.chart.links) || (cur.shipped && cur.shipped.links) || [];
+  if (links.length) parts.push(`<div style='margin-top:${parts.length ? 12 : 0}px'><b>Links</b></div>${provenance(null, links)}`);
+  if (cur.shipped && cur.shipped.notes && !hasChords(b)) parts.push(`<div class='note' style='margin-top:6px'>${esc(cur.shipped.notes)}</div>`);
+  if (cur.device && b === cur.device) {
+    parts.push(`<div style='margin-top:12px;display:flex;gap:8px;flex-wrap:wrap'>
+      ${cur.device.analysis ? `<a class='btn outline small' href='#/song/${encodeURIComponent(cur.id)}/analyse'>Review and edit</a>` : ""}
+      <button class='btn outline small' data-act='delete-chart'>Delete your chart</button></div>`);
   }
   const p = cur.chart && cur.chart.picking;
   if (p && p.patterns && p.patterns.length) {
@@ -522,8 +570,13 @@ function wire(view) {
       else if (act === "speed+") setSpeed(1);
       else if (act === "tempo") openTempo();
       else if (act === "remove-song") removeSong(b);
+      else if (act === "delete-chart") deleteMyChart(b);
     });
   });
+  view.querySelectorAll("[data-which]").forEach((b) => b.addEventListener("click", () => {
+    cur.showCited = b.dataset.which === "cited";
+    render();
+  }));
   view.querySelectorAll(".seg button[data-mode]").forEach((b) => b.addEventListener("click", () => {
     if (!b.disabled) location.hash = `#/song/${encodeURIComponent(cur.id)}/${b.dataset.mode}`;
   }));
@@ -550,6 +603,15 @@ function holdable(el, fire) {
   });
   const up = () => { clearTimeout(t1); clearInterval(t2); };
   ["pointerup", "pointercancel", "pointerleave"].forEach((t) => el.addEventListener(t, up));
+}
+
+async function deleteMyChart(btn) {
+  if (!btn.classList.contains("armed")) { btn.classList.add("armed"); btn.textContent = "Tap again to delete"; return; }
+  await deleteChart(cur.id);
+  const id = cur.id;
+  cur = null;
+  invalidateSongs();
+  await openSong(document.getElementById("view-song"), id, "chords");
 }
 
 async function removeSong(btn) {

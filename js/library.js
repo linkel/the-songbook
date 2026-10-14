@@ -1,12 +1,12 @@
 // On-device data: IndexedDB "songbook" (library, charts, sheets, lyricTiming,
-// arrangements, loops, songPrefs), plus the shipped charts in songs/.
+// arrangements, loops, songPrefs, recordings), plus the shipped charts in songs/.
 // The database name and every localStorage key start with "songbook" because
 // Pimapeggio and speedy-pitcher share this origin on GitHub Pages.
 // The IndexedDB helpers follow speedy-pitcher's js/library.js.
 
 const DB_NAME = "songbook";
-const DB_VERSION = 1;
-export const STORES = ["library", "charts", "sheets", "lyricTiming", "arrangements", "loops", "songPrefs"];
+const DB_VERSION = 2;
+export const STORES = ["library", "charts", "sheets", "lyricTiming", "arrangements", "loops", "songPrefs", "recordings"];
 
 let dbp = null;
 
@@ -262,8 +262,16 @@ export const allSheets = () => getAll("sheets").catch(() => []);
 export async function saveSheet(rec) { await put("sheets", { ...rec, savedAt: Date.now() }); requestPersist(); }
 export const deleteSheet = (id) => del("sheets", id);
 
-// Ids with a chart of the owner's own in IndexedDB.
+// Charts of the owner's own (detected or checked) in IndexedDB.
 export const deviceCharts = () => getAll("charts").catch(() => []);
+export async function saveChart(chart) { await put("charts", { ...chart, savedAt: Date.now() }); chartCache.delete(chart.id); }
+export async function deleteChart(id) { await del("charts", id); chartCache.delete(id); }
+export async function shippedChart(id) {
+  const index = await shippedSongs().catch(() => []);
+  if (!index.some((s) => s.id === id)) return null;
+  const res = await fetch("songs/" + encodeURIComponent(id) + ".json", { cache: "no-cache" });
+  return res.ok ? res.json() : null;
+}
 
 export async function requestPersist() {
   if (navigator.storage && navigator.storage.persist) {

@@ -12,6 +12,7 @@
    "hasChords": false,
    "capo": 0,
    "key": null,
+   "tuning": null,
    "patterns": [
     "pima"
    ],
@@ -28,6 +29,7 @@
    "hasChords": false,
    "capo": 0,
    "key": null,
+   "tuning": null,
    "patterns": [
     "alt-thumb",
     "travis"
@@ -45,6 +47,7 @@
    "hasChords": false,
    "capo": 0,
    "key": null,
+   "tuning": null,
    "patterns": [
     "travis",
     "alt-thumb"
@@ -62,6 +65,7 @@
    "hasChords": false,
    "capo": 0,
    "key": null,
+   "tuning": null,
    "patterns": [
     "travis",
     "alt-thumb"
@@ -79,6 +83,7 @@
    "hasChords": true,
    "capo": 0,
    "key": null,
+   "tuning": null,
    "patterns": [
     "travis"
    ],
@@ -95,6 +100,7 @@
    "hasChords": false,
    "capo": 0,
    "key": null,
+   "tuning": null,
    "patterns": [
     "alt-thumb",
     "travis"
@@ -112,6 +118,7 @@
    "hasChords": false,
    "capo": 0,
    "key": null,
+   "tuning": null,
    "patterns": [
     "travis"
    ],
@@ -128,10 +135,26 @@
    "hasChords": true,
    "capo": 3,
    "key": null,
+   "tuning": null,
    "patterns": [
     "travis"
    ],
    "pickingSource": "mine"
+  },
+  {
+   "id": "late-july",
+   "type": "song",
+   "title": "Late July",
+   "artist": "Shakey Graves",
+   "style": null,
+   "source": null,
+   "confidence": null,
+   "hasChords": false,
+   "capo": 0,
+   "key": null,
+   "tuning": "Open D",
+   "patterns": [],
+   "pickingSource": null
   },
   {
    "id": "nothing-else-matters",
@@ -144,6 +167,7 @@
    "hasChords": false,
    "capo": 0,
    "key": null,
+   "tuning": null,
    "patterns": [
     "pimami"
    ],
@@ -160,6 +184,7 @@
    "hasChords": false,
    "capo": 0,
    "key": null,
+   "tuning": null,
    "patterns": [
     "pa-m-i"
    ],
@@ -176,6 +201,7 @@
    "hasChords": false,
    "capo": 0,
    "key": null,
+   "tuning": null,
    "patterns": [
     "travis",
     "alt-thumb"
@@ -193,6 +219,7 @@
    "hasChords": true,
    "capo": 0,
    "key": null,
+   "tuning": null,
    "patterns": [
     "pimami"
    ],
@@ -209,6 +236,7 @@
    "hasChords": false,
    "capo": 0,
    "key": null,
+   "tuning": null,
    "patterns": [
     "travis"
    ],

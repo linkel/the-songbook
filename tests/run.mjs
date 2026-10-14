@@ -12,9 +12,11 @@ const run = (file) => {
 run("unit.test.mjs");
 run("data.test.mjs");
 run("sheet.test.mjs");
+run("detect.test.mjs");
 try {
   const res = await fetch(BASE + "index.html");
   if (!res.ok) throw new Error(res.status);
+  run("analysis.test.mjs");
   run("ui.test.mjs");
 } catch (e) {
   console.log(`\nFAIL browser checks skipped: nothing at ${BASE} (${e.message}). Serve the repo on 8320 first.`);

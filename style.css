@@ -389,6 +389,67 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .editor:focus { outline: none; border-color: var(--mauve); }
 .editor::placeholder { color: var(--dim); }
 
+/* ---------- chords from audio ---------- */
+
+.drop {
+  display: flex; gap: 12px; align-items: center; border: 1.5px dashed var(--surface2); border-radius: 12px;
+  padding: 14px 16px; background: var(--base); cursor: pointer; min-height: 72px;
+}
+.drop .icon {
+  width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0;
+  background: color-mix(in srgb, var(--mauve) 18%, transparent); color: var(--ink-mauve);
+}
+.drop:focus-within { outline: 2px solid var(--mauve); outline-offset: 2px; }
+.ellipsis { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.steps { padding: 4px 14px; }
+.step { padding: 11px 0; border-top: 1px solid var(--surface0); font-size: 14.5px; }
+.step:first-child { border-top: none; }
+.step-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.step .v { font-weight: 800; font-variant-numeric: tabular-nums; }
+.ok { color: var(--ink-green); margin-right: 8px; font-weight: 900; }
+.ok.pending { color: var(--dim); }
+.prog { height: 6px; border-radius: 3px; background: var(--surface0); overflow: hidden; margin-top: 6px; }
+.prog i { display: block; height: 100%; background: var(--mauve); transition: width .2s; }
+.step-tools { display: flex; align-items: center; gap: 8px; padding: 4px 0 12px; flex-wrap: wrap; border-top: 1px solid var(--surface0); padding-top: 10px; }
+.step-tools .meta { flex: 1 1 160px; }
+.suggest { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; }
+.switch { width: 56px; height: 44px; flex-shrink: 0; position: relative; border: none; background: none; }
+.switch::before { content: ""; position: absolute; left: 4px; right: 4px; top: 8px; height: 28px; border-radius: 14px; background: var(--surface1); transition: background .15s; }
+.switch::after {
+  content: ""; position: absolute; left: 7px; top: 11px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--base); box-shadow: var(--shadow-sm); transition: transform .15s;
+}
+.switch.on::before { background: var(--green); }
+.switch.on::after { transform: translateX(20px); }
+.small-seg { display: inline-flex; padding: 2px; }
+.small-seg button { padding: 0 12px; }
+.bar { position: relative; }
+.bar.editbar { border-style: dashed; border-color: var(--surface2); }
+.bar .q { color: var(--meta); font-weight: 800; font-size: 15px; }
+.bar.on .q { color: var(--on-peach); }
+.bar.differs::after { content: ""; position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+.bar.edited { box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--mauve) 55%, transparent); }
+.chord-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.chord-grid.roots { grid-template-columns: repeat(6, 1fr); }
+.pick {
+  min-height: 44px; border-radius: 9px; border: 1px solid var(--surface1); background: var(--mantle);
+  font-weight: 800; font-size: 15px; color: var(--text); padding: 0 4px;
+}
+.pick.on { border-color: var(--mauve); background: color-mix(in srgb, var(--mauve) 14%, var(--base)); color: var(--ink-mauve); }
+.popover { max-height: 92dvh; overflow-y: auto; }
+.meter { position: relative; height: 10px; border-radius: 5px; background: var(--surface0); overflow: hidden; margin: 8px 0 6px; }
+.meter i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; }
+.meter .all { background: var(--overlay0); }
+.meter .rec { background: var(--mauve); }
+.err { color: var(--ink-red); }
+.row-link { display: flex; align-items: center; min-height: 44px; color: var(--ink-mauve); }
+.field select {
+  height: 48px; border-radius: 10px; border: 1px solid var(--surface1); background: var(--mantle);
+  padding: 0 10px; font-size: 16px; font-weight: 400; color: var(--text); width: 100%;
+}
+.batch-row { display: block; }
+.batch-row .title { white-space: normal; }
+
 /* ---------- desktop ---------- */
 
 @media (min-width: 860px) {

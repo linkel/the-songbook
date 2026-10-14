@@ -13,7 +13,8 @@ const dir = new URL("../songs/", import.meta.url);
 const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "index.json");
 
 const CHART_KEYS = new Set(["id", "type", "title", "artist", "spotify", "key", "capo", "time", "tempo", "style", "strum",
-  "voicings", "sections", "form", "source", "detector", "confidence", "sources", "notes", "picking", "beats"]);
+  "voicings", "sections", "form", "source", "detector", "confidence", "sources", "notes", "picking", "beats",
+  "tuning", "links", "bars", "analysis"]);
 const SECTION_KEYS = new Set(["name", "chords", "repeat", "picking", "strength"]);
 const PICKING_KEYS = new Set(["patterns", "also", "match", "source", "confidence", "part", "sources", "description", "from", "pattern"]);
 const SOURCES = new Set(["detected", "web", "mine", "verified"]);
@@ -87,6 +88,12 @@ for (const f of files) {
   }
   for (const name of c.form || []) check(`${w}: form section "${name}" exists`, sections.some((s) => s.name === name));
 
+  if (c.tuning) {
+    const notes = String(c.tuning.notes || "").split(/\s+/);
+    check(`${w}: tuning has six notes`, notes.length === 6 && notes.every((n) => C.parseChord(n) && C.parseChord(n).q === ""), c.tuning.notes);
+    check(`${w}: tuning says where it's from`, ["mine", "web", "verified"].includes(c.tuning.source), String(c.tuning.source));
+  }
+  for (const l of c.links || []) check(`${w}: link has a label and an https url`, l.label && /^https:\/\/\S+$/.test(l.url) && l.kind, JSON.stringify(l));
   const pickings = [c.picking, ...sections.map((s) => s.picking)].filter(Boolean);
   for (const p of pickings) {
     const extraP = Object.keys(p).filter((k) => !PICKING_KEYS.has(k));

@@ -108,6 +108,10 @@ eq("upstroke high to low, top strings", up.map((n) => n.string), [1, 2, 3, 4]);
 check("strum is staggered", down.every((n, i) => i === 0 || n.at > down[i - 1].at));
 eq("meter", [meter("4/4"), meter("3/4"), meter("6/8"), meter("12/8")].map((m) => m.beats), [4, 3, 2, 4]);
 
+eq("diatonic chords in G", C.diatonicChords("G"), ["G", "Am", "Bm", "C", "D", "Em", "D7"]);
+eq("diatonic chords in Gm", C.diatonicChords("Gm"), ["Gm", "Bb", "Cm", "Dm", "D", "Eb", "F", "D7"]);
+eq("diatonic chords in F#", C.diatonicChords("F#").slice(0, 3), ["F#", "G#m", "A#m"]);
+
 /* ---- song identity (library.js) ---- */
 const L = await import("../js/library.js");
 eq("normTitle drops versions and features", ["Landslide - 2004 Remaster", "Song (feat. Someone)", "The Song [Live]", "Café del Mar", "Hey - You"].map(L.normTitle),

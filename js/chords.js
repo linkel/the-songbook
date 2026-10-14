@@ -473,3 +473,17 @@ export function displayChord(name, chart, view) {
 export function prettyChord(name) {
   return String(name).replace(/([A-G])#/g, "$1♯").replace(/([A-G])b/g, "$1♭");
 }
+
+// The chords that belong to a key, for the chord picker: I ii iii IV V vi
+// (and V7) in major; i III iv v VI VII and V, V7 in minor.
+export function diatonicChords(key) {
+  if (!key) return [];
+  const minor = /m$/.test(key);
+  const c = parseChord(minor ? key.slice(0, -1) : key);
+  if (!c || c.nc) return [];
+  const sp = spellingForKey(key);
+  const name = (iv, q) => spellPc(c.root + iv, sp) + q;
+  return minor
+    ? [name(0, "m"), name(3, ""), name(5, "m"), name(7, "m"), name(7, ""), name(8, ""), name(10, ""), name(7, "7")]
+    : [name(0, ""), name(2, "m"), name(4, "m"), name(5, ""), name(7, ""), name(9, "m"), name(7, "7")];
+}

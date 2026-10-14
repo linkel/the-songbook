@@ -1,8 +1,8 @@
 // Bump the version on every change, so installed copies pick up the update.
-const CACHE = "songbook-v2";
+const CACHE = "songbook-v3";
 
-// The app shell and shipped data. Large optional assets (WASM, models) are not
-// listed: they're cached the first time they're fetched.
+// The app shell and shipped data. Large optional assets (vendor/essentia's
+// WASM, later models) are not listed: they're cached the first time they're fetched.
 const ASSETS = [
   ".",
   "index.html",
@@ -23,6 +23,14 @@ const ASSETS = [
   "js/sheet.js",
   "js/song.js",
   "js/chordpro.js",
+  "js/analysis.js",
+  "js/analysis-worker.js",
+  "js/detect.js",
+  "js/recordings.js",
+  "js/review.js",
+  "js/playalong.js",
+  "js/batch.js",
+  "js/tags.js",
   "js/ui.js",
   "vendor/chords-db/guitar.json",
   "songs/index.json",
@@ -34,6 +42,7 @@ const ASSETS = [
   "songs/freight-train.json",
   "songs/julia.json",
   "songs/landslide.json",
+  "songs/late-july.json",
   "songs/nothing-else-matters.json",
   "songs/romance.json",
   "songs/the-boxer.json",

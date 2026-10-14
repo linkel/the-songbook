@@ -14,7 +14,7 @@ export function buildIndex() {
       id: c.id, type: c.type || "song", title: c.title, artist: c.artist,
       style: c.style || null, source: c.source || null, confidence: c.confidence || null,
       hasChords: (c.sections || []).some((s) => s.chords && s.chords.trim()),
-      capo: c.capo || 0, key: c.key || null,
+      capo: c.capo || 0, key: c.key || null, tuning: c.tuning ? c.tuning.name : null,
       patterns: c.picking ? c.picking.patterns : [], pickingSource: c.picking ? c.picking.source : null,
     };
   });
