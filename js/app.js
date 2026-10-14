@@ -371,7 +371,15 @@ async function init() {
   } catch (e) {
     console.warn("chords-db didn't load; only built-in shapes are available", e);
   }
-  await go();
+  try {
+    await go();
+  } catch (e) {
+    // Never a blank app: say what went wrong and offer a reload.
+    console.error("start-up failed", e);
+    const v = document.querySelector(".view:not(.hidden)") || views.songs;
+    v.innerHTML = `<div class='view-inner'><div class='card empty' role='alert'><b>The Songbook didn't start properly.</b><br>${esc(e && e.message || String(e))}
+      <div style='margin-top:12px'><button class='btn primary' onclick='location.reload()'>Reload</button></div></div></div>`;
+  }
   document.documentElement.dataset.ready = "1";
 }
 

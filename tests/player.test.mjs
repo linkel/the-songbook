@@ -13,7 +13,7 @@
 import { chromium } from "playwright-core";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { BASE, check, eq, report, fixtureLibrary, EXAMPLE_SHEET, layout } from "./lib.mjs";
+import { BASE, check, eq, report, fixtureLibrary, EXAMPLE_SHEET, SHOTS, shot, newPage as openPage, section, show, layout } from "./lib.mjs";
 
 const out = process.argv[2] || fileURLToPath(new URL("shots/player", import.meta.url));
 fs.mkdirSync(out, { recursive: true });
@@ -44,32 +44,12 @@ const FAKE_YT = `(() => {
   if (window.onYouTubeIframeAPIReady) window.onYouTubeIframeAPIReady();
 })();`;
 
+// The app with stand-ins for YouTube's player API and its oEmbed titles.
 async function newPage(w = 375, h = 752, scheme = "dark") {
-  const phone = w < 860;
-  const context = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: phone ? 2 : 1, hasTouch: phone, isMobile: phone, colorScheme: scheme });
-  const lib = fixtureLibrary();
-  await context.route("**/private/**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(lib) }));
-  await context.route("https://www.youtube.com/iframe_api", (r) => r.fulfill({ status: 200, contentType: "text/javascript", body: FAKE_YT }));
-  // Late July's bundled clip (songs/audio/): absent unless a test serves a stand-in.
-  await context.route("**/songs/audio/**", (r) => r.fulfill({ status: 404, body: "" }));
-  await context.route("https://www.youtube.com/oembed**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ title: "A tutorial (stand-in)" }) }));
-  const page = await context.newPage();
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource.*404/.test(m.text())) errors.push(m.text()); });
-  await page.goto(BASE);
-  // Generous: a busy machine (the whole suite at once) can be slow to start a page.
-  await page.waitForSelector("html[data-ready]", { timeout: 90000 });
-  return { context, page, errors };
-}
-
-async function section(name, fn) {
-  try { await fn(); } catch (e) { check(`${name}: ran to the end`, false, e.message.split("\n").slice(0, 3).join(" | ")); }
-}
-
-async function show(page, hash) {
-  await page.evaluate((h) => { location.hash = h; }, hash);
-  await page.waitForTimeout(350);
+  const np = await openPage(browser, { w, h, scheme });
+  await np.context.route("https://www.youtube.com/iframe_api", (r) => r.fulfill({ status: 200, contentType: "text/javascript", body: FAKE_YT }));
+  await np.context.route("https://www.youtube.com/oembed**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ title: "A tutorial (stand-in)" }) }));
+  return np;
 }
 
 const P = (page) => page.evaluate(() => {
@@ -223,7 +203,7 @@ await section("player", async () => {
   check("player: duration", Math.abs(p0.duration - (truth[truth.length - 1].t1 + 2.5)) < 0.2, String(p0.duration));
   const lanes = await page.evaluate(() => document.querySelector(".karaoke").textContent);
   check("player: chord now shown before playing", /G/.test(lanes), lanes);
-  await page.screenshot({ path: `${out}/player-ready.png` });
+  await shot(page, `${out}/player-ready.png`);
 
   // 50% speed: the chord shown matches what's playing.
   for (let i = 0; i < 10; i++) await page.click("[data-hold='speed-']");
@@ -326,13 +306,13 @@ await section("player", async () => {
   await page.click("[data-act='loop-bars']");
   await page.click("[data-act='save-loop']");
   await page.fill("#loop-name", "First four bars");
-  await page.screenshot({ path: `${out}/player-save-loop.png` });
+  await shot(page, `${out}/player-save-loop.png`);
   await page.click("#loop-save");
   await page.waitForTimeout(300);
   check("loops: saved loop is a pill", (await page.textContent(".loop-pills")).includes("First four bars"));
   await show(page, "#/practice");
   check("practice: lists the saved loop", (await page.textContent("#view-practice")).includes("First four bars"));
-  await page.screenshot({ path: `${out}/practice.png` });
+  await shot(page, `${out}/practice.png`);
   await page.evaluate(() => import("/js/player.js").then((m) => m.loopTo(0, 0.5)));
   await page.click(".loop-link");
   await page.waitForTimeout(1200);
@@ -358,45 +338,29 @@ await section("player", async () => {
   await context.close();
 });
 
-/* ---- Layout of the Player at every size, both flavours ---- */
-for (const [w, h] of [[375, 752], [375, 630], [1440, 900]]) {
-  for (const [theme, scheme] of [["mocha", "dark"], ["latte", "light"]]) {
+/* ---- Layout of the Player (the whole page, both flavours) on a phone and a computer ---- */
+for (const [w, h] of SHOTS ? [[375, 752], [375, 630], [1440, 900]] : [[375, 752], [1440, 900]]) {
+  for (const [theme, scheme] of SHOTS ? [["mocha", "dark"], ["latte", "light"]] : [["mocha", "dark"]]) {
     await section(`layout ${w}x${h} ${theme}`, async () => {
       const { context, page, errors } = await newPage(w, h, scheme);
       const s = await seedSong(page, { title: "Layout Song", repeat: 2 });
       await openPlayer(page, s.id);
       await page.click("[data-act='loop-bars']");
+      await page.click("[data-act='trainer']");
       await page.waitForTimeout(200);
       const tag = `${w}x${h} ${theme}`;
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-player.png` });
-      await layout(page, `${tag} player`);
-      await page.$eval("#song-scroll", (el) => { el.scrollTop = el.scrollHeight / 2; });
-      await page.waitForTimeout(150);
-      await page.click("[data-act='trainer']");
-      await page.waitForTimeout(150);
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-player-middle.png` });
-      await layout(page, `${tag} player, controls`);
-      await page.$eval("#song-scroll", (el) => { el.scrollTop = el.scrollHeight; });
-      await page.waitForTimeout(150);
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-player-mixer.png` });
-      await layout(page, `${tag} player, mixer`);
+      await shot(page, `${out}/${w}x${h}-${theme}-player.png`);
+      await layout(page, `${tag} player, a loop and the trainer`);
       // No recording, a YouTube link (the stand-in), then its player.
       await show(page, `#/song/${await youTubeSong(page)}/player`);
       await page.waitForSelector("[data-yt]");
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-player-source.png` });
+      await shot(page, `${out}/${w}x${h}-${theme}-player-source.png`);
       await layout(page, `${tag} player, no recording`);
       await page.click("[data-yt]");
       await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "youtube" && s.duration > 0; });
       await page.waitForTimeout(300);
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-player-youtube.png` });
+      await shot(page, `${out}/${w}x${h}-${theme}-player-youtube.png`);
       await layout(page, `${tag} player, YouTube`);
-      await show(page, "#/practice");
-      await layout(page, `${tag} practice`);
-      await show(page, "#/settings");
-      await page.$eval("#player-card", (el) => el.scrollIntoView());
-      await page.waitForTimeout(100);
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-settings-player.png` });
-      await layout(page, `${tag} settings, player card`);
       check(`${tag}: no page errors`, errors.length === 0, errors.join("; "));
       await context.close();
     });
@@ -525,7 +489,7 @@ await section("lrclib", async () => {
   check("lrclib: labelled as LRCLIB with chords placed by time", /LRCLIB/.test(await page.textContent(".sources")) && /placed by time/.test(await page.textContent(".sources")));
   const st = await page.evaluate(() => window.songbook.songState());
   eq("lrclib: every line timed", st.timing.lines.length, 4);
-  await page.screenshot({ path: `${out}/lrclib-sheet.png` });
+  await shot(page, `${out}/lrclib-sheet.png`);
   // Play from the sheet: the line lights as it's sung.
   await page.click(".transport.mobile .play");
   await page.waitForFunction((t) => { const p = window.songbook.playerNow(); return p && p.pos > t; }, t[3].t + 0.4, { timeout: 15000 });
@@ -549,7 +513,7 @@ await section("tap-sync", async () => {
   await show(page, `#/song/${encodeURIComponent(s.id)}/sheet`);
   await page.click("[data-act='sync']");
   await page.waitForSelector(".sync-bar");
-  await page.screenshot({ path: `${out}/tap-sync.png` });
+  await shot(page, `${out}/tap-sync.png`);
   await page.click("[data-sync='play']");
   await page.waitForTimeout(700);
   await page.click("[data-sync='tap']");
@@ -601,7 +565,7 @@ await section("speedy-pitcher", async () => {
   eq("import: both songs listed", rows.length, 2);
   check("import: the file matches its song in the library", rows[0].sure && rows[0].choice !== "new", JSON.stringify(rows[0]));
   eq("import: the unknown one becomes a new song", rows[1].choice, "new");
-  await page.screenshot({ path: `${out}/import.png` });
+  await shot(page, `${out}/import.png`);
   await page.click("#view-import [data-act=import]");
   await page.waitForFunction(() => window.songbook.importState().rows.every((r) => r.status === "done"), null, { timeout: 15000 });
   const got = await page.evaluate(async (id) => {

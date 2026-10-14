@@ -1,9 +1,13 @@
-// Browser checks with screenshots, in Mocha and Latte at 375x752, 375x630 and
-// 1440x900. Serve the repo on 8320 first. node ui.test.mjs [shotsDir]
+// Browser checks of the app's screens: every screen's layout (overflow, tap
+// targets, contrast in Mocha and Latte) on a phone and a computer, and the
+// library, sheets, charts, import, analysis review, batch, shortcuts, picking
+// and offline. SHOTS=1 also screenshots every screen at 375x752, 375x630 and
+// 1440x900 in both flavours, for reviewing a phase.
+// Serve the repo on 8320 first. node ui.test.mjs [shotsDir]
 import { chromium } from "playwright-core";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { BASE, check, eq, report, fixtureLibrary, EXAMPLE_SHEET } from "./lib.mjs";
+import { BASE, check, eq, report, fixtureLibrary, EXAMPLE_SHEET, SHOTS, shot, newPage as openPage, section, show, layout } from "./lib.mjs";
 
 const out = process.argv[2] || fileURLToPath(new URL("shots/ui", import.meta.url));
 fs.mkdirSync(out, { recursive: true });
@@ -16,34 +20,13 @@ const WITH_CHORDS = SHIPPED.filter((x) => x.hasChords).map((x) => x.id).sort();
 const ALL_SONGS = `All songs (${1727 + SHIPPED.length})`;
 
 const browser = await chromium.launch({ channel: "chrome", args: ["--autoplay-policy=no-user-gesture-required"] });
-const SIZES = [[375, 752], [375, 630], [1440, 900]];
-const THEMES = [["mocha", "dark"], ["latte", "light"]];
+// Layout checks cover the whole page in both flavours, so a phone and a
+// computer are enough; screenshots for review want every size and flavour.
+const SIZES = SHOTS ? [[375, 752], [375, 630], [1440, 900]] : [[375, 752], [1440, 900]];
+const THEMES = SHOTS ? [["mocha", "dark"], ["latte", "light"]] : [["mocha", "dark"]];
 
-// library: the made-up export served as private/spotify-library.json, or
-// null for none (as on GitHub Pages). Tests never read the real file.
-async function newPage(w, h, scheme, { library = fixtureLibrary(), ...opts } = {}) {
-  const phone = w < 860;
-  const context = await browser.newContext({
-    viewport: { width: w, height: h }, deviceScaleFactor: phone ? 2 : 1, hasTouch: phone, isMobile: phone,
-    colorScheme: scheme, ...opts,
-  });
-  await context.route("**/private/**", (route) => library
-    ? route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(library) })
-    : route.fulfill({ status: 404, body: "" }));
-  const page = await context.newPage();
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource.*404/.test(m.text())) errors.push(m.text()); });
-  await page.goto(BASE);
-  // Generous: a busy machine (the whole suite at once) can be slow to start a page.
-  await page.waitForSelector("html[data-ready]", { timeout: 90000 });
-  return { context, page, errors };
-}
-
-// Run a block of checks; an exception fails the block instead of the run.
-async function section(name, fn) {
-  try { await fn(); } catch (e) { check(`${name}: ran to the end`, false, e.message.split("\n").slice(0, 3).join(" | ")); }
-}
+// library: the made-up export, or null for none (as on GitHub Pages). Tests never read the real file.
+const newPage = (w, h, scheme, { library = fixtureLibrary() } = {}) => openPage(browser, { w, h, scheme, library, audio404: false });
 
 // Add the invented example song with its sheet; returns its id.
 async function seedSheet(page, source = "mine") {
@@ -80,76 +63,7 @@ async function analyse(page, buffer, name = "example.wav") {
 let EXAMPLE_WAV = null;
 const rows = (page) => page.$$eval("#song-groups .row", (r) => r.map((x) => x.dataset.id));
 
-async function show(page, hash) {
-  await page.evaluate((h) => { location.hash = h; }, hash);
-  await page.waitForTimeout(350);
-}
-
-// Layout: no sideways overflow, tap targets >= 44 px, transport on screen,
-// and every visible text passes WCAG AA against what's behind it.
-async function layoutChecks(page, label, { transport = false } = {}) {
-  const r = await page.evaluate(() => {
-    const vis = (el) => { const b = el.getBoundingClientRect(); return el.offsetParent !== null && b.width > 0 && b.height > 0 && b.bottom > 0 && b.top < innerHeight; };
-    const overflow = [document.documentElement.scrollWidth - innerWidth];
-    for (const el of document.querySelectorAll(".view:not(.hidden), .song-scroll, .transport, .topbar, .toolbar, .popover, .popover .seg")) {
-      if (el.offsetParent !== null || el.classList.contains("view")) overflow.push(el.scrollWidth - el.clientWidth);
-    }
-    const small = [...document.querySelectorAll("button, a[href], input, [role=tab]")]
-      .filter((el) => vis(el) && !el.closest(".sources") && !el.closest(".hidden"))
-      .map((el) => { const b = (el.tagName === "INPUT" ? el.closest("label") || el : el).getBoundingClientRect(); return [(el.textContent || el.getAttribute("aria-label") || el.placeholder || "").trim().slice(0, 20), Math.round(b.width), Math.round(b.height)]; })
-      .filter(([, w, h]) => w < 44 || h < 44);
-    const tr = [...document.querySelectorAll(".transport")].find((t) => t.offsetParent !== null);
-    return { overflow: Math.max(...overflow), small, transportBottom: tr ? tr.getBoundingClientRect().bottom : null };
-  });
-  check(`${label}: no sideways overflow`, r.overflow <= 1, "by " + r.overflow);
-  check(`${label}: tap targets >= 44px`, r.small.length === 0, JSON.stringify(r.small));
-  if (transport) check(`${label}: transport on screen`, r.transportBottom !== null && r.transportBottom <= (await page.evaluate(() => innerHeight)) + 0.5, String(r.transportBottom));
-  const contrast = await page.evaluate(() => {
-    const parse = (c) => {
-      let m = c.match(/rgba?\(([^)]+)\)/);
-      if (m) { const p = m[1].split(/[ ,/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p[3] ?? 1]; }
-      m = c.match(/color\(srgb ([^)]+)\)/);
-      if (m) { const p = m[1].split(/[ /]+/).filter(Boolean).map(Number); return [p[0] * 255, p[1] * 255, p[2] * 255, p[3] ?? 1]; }
-      return [0, 0, 0, 0];
-    };
-    const over = (top, bot) => { const a = top[3]; return [0, 1, 2].map((i) => top[i] * a + bot[i] * (1 - a)).concat(1); };
-    const bgOf = (el) => {
-      const layers = [];
-      for (let e = el; e; e = e.parentElement) {
-        const c = parse(getComputedStyle(e).backgroundColor);
-        if (c[3] > 0) { layers.push(c); if (c[3] >= 1) break; }
-      }
-      let bg = layers.length && layers[layers.length - 1][3] >= 1 ? layers.pop() : parse(getComputedStyle(document.body).backgroundColor);
-      while (layers.length) bg = over(layers.pop(), bg);
-      return bg;
-    };
-    const lum = (c) => { const v = c.slice(0, 3).map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
-    const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
-    const bad = [];
-    let n = 0;
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    for (let t = walker.nextNode(); t; t = walker.nextNode()) {
-      if (!t.textContent.trim()) continue;
-      const el = t.parentElement;
-      if (!el || el.closest("svg, .hidden, [disabled], .sr-only, script, style")) continue;
-      const b = el.getBoundingClientRect();
-      if (el.offsetParent === null || b.width === 0 || b.bottom < 0 || b.top > innerHeight) continue;
-      const cs = getComputedStyle(el);
-      if (+cs.opacity < 1) continue;
-      const bg = bgOf(el);
-      const fg = over(parse(cs.color), bg);
-      const size = parseFloat(cs.fontSize), bold = +cs.fontWeight >= 700;
-      const need = size >= 24 || (bold && size >= 18.66) ? 3 : 4.5;
-      const r = ratio(fg, bg);
-      n++;
-      if (r < need) bad.push(`"${t.textContent.trim().slice(0, 18)}" ${r.toFixed(2)}<${need}`);
-    }
-    return { n, bad: [...new Set(bad)] };
-  });
-  check(`${label}: text contrast AA (${contrast.n} texts)`, contrast.bad.length === 0, contrast.bad.slice(0, 6).join("; "));
-}
-
-/* ---- Every size, both flavours: layout and screenshots ---- */
+/* ---- Every screen: layout (and screenshots with SHOTS=1) ---- */
 
 for (const [w, h] of SIZES) {
   for (const [theme, scheme] of THEMES) {
@@ -172,20 +86,20 @@ for (const [w, h] of SIZES) {
       ];
       for (const [name, hash, transport] of pages) {
         await show(page, hash);
-        await page.screenshot({ path: `${out}/${w}x${h}-${theme}-${name}.png` });
-        await layoutChecks(page, `${tag} ${name}`, { transport });
+        await shot(page, `${out}/${w}x${h}-${theme}-${name}.png`);
+        await layout(page, `${tag} ${name}`, { transport });
       }
       // A playlist picked in the list.
       await show(page, "#/songs");
       await page.selectOption("#song-list-pick", "Guitar Selection");
       await page.waitForTimeout(200);
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-songs-playlist.png` });
-      await layoutChecks(page, `${tag} songs, one playlist`);
+      await shot(page, `${out}/${w}x${h}-${theme}-songs-playlist.png`);
+      await layout(page, `${tag} songs, one playlist`);
       await page.selectOption("#song-list-pick", "");
       await page.click("#add-song");
       await page.waitForTimeout(150);
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-add-song.png` });
-      await layoutChecks(page, `${tag} add-song form`);
+      await shot(page, `${out}/${w}x${h}-${theme}-add-song.png`);
+      await layout(page, `${tag} add-song form`);
       await page.keyboard.press("Escape");
 
       // The sheet wraps inside its column, chords above their words.
@@ -201,55 +115,55 @@ for (const [w, h] of SIZES) {
       for (const [act, name] of [["transpose", "transpose"], ["font", "text-size"], ["capo", "sheet-capo"]]) {
         await page.click(`[data-act=${act}]`);
         await page.waitForTimeout(150);
-        await page.screenshot({ path: `${out}/${w}x${h}-${theme}-${name}.png` });
-        await layoutChecks(page, `${tag} ${name} sheet`);
+        await shot(page, `${out}/${w}x${h}-${theme}-${name}.png`);
+        await layout(page, `${tag} ${name} sheet`);
         await page.keyboard.press("Escape");
       }
       await page.click(".sheet .c[data-k='5'] > span");
       await page.waitForTimeout(150);
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-sheet-chord.png` });
-      await layoutChecks(page, `${tag} chord from the sheet`);
+      await shot(page, `${out}/${w}x${h}-${theme}-sheet-chord.png`);
+      await layout(page, `${tag} chord from the sheet`);
       await page.keyboard.press("Escape");
 
       // Chords from audio: the review screen, its chord picker, the saved chart.
       if (!EXAMPLE_WAV) EXAMPLE_WAV = await synthWav(page, { bpm: 96, bars: ["D", "Bm", "G", "A"], repeat: 2 });
       await show(page, "#/song/late-july/analyse");
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-analyse-empty.png` });
-      await layoutChecks(page, `${tag} analyse, no recording`, { transport: true });
+      await shot(page, `${out}/${w}x${h}-${theme}-analyse-empty.png`);
+      await layout(page, `${tag} analyse, no recording`, { transport: true });
       await analyse(page, EXAMPLE_WAV);
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-analyse.png` });
-      await layoutChecks(page, `${tag} analyse`, { transport: true });
+      await shot(page, `${out}/${w}x${h}-${theme}-analyse.png`);
+      await layout(page, `${tag} analyse`, { transport: true });
       await page.$eval("#song-scroll", (s) => { s.scrollTop = s.scrollHeight; });
       await page.waitForTimeout(150);
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-analyse-bars.png` });
-      await layoutChecks(page, `${tag} analyse, bars`, { transport: true });
+      await shot(page, `${out}/${w}x${h}-${theme}-analyse-bars.png`);
+      await layout(page, `${tag} analyse, bars`, { transport: true });
       await page.click(".bar[data-bar='1']");
       await page.waitForTimeout(150);
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-chord-picker.png` });
-      await layoutChecks(page, `${tag} chord picker`);
+      await shot(page, `${out}/${w}x${h}-${theme}-chord-picker.png`);
+      await layout(page, `${tag} chord picker`);
       await page.keyboard.press("Escape");
       await page.click("[data-act=save]");
       await page.waitForTimeout(600);
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-detected.png` });
-      await layoutChecks(page, `${tag} detected chart`, { transport: true });
+      await shot(page, `${out}/${w}x${h}-${theme}-detected.png`);
+      await layout(page, `${tag} detected chart`, { transport: true });
       await show(page, "#/settings");
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-settings-storage.png` });
-      await layoutChecks(page, `${tag} settings with a recording`);
+      await shot(page, `${out}/${w}x${h}-${theme}-settings-storage.png`);
+      await layout(page, `${tag} settings with a recording`);
       await show(page, "#/analyse");
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-batch.png` });
-      await layoutChecks(page, `${tag} batch`, { transport: true });
+      await shot(page, `${out}/${w}x${h}-${theme}-batch.png`);
+      await layout(page, `${tag} batch`, { transport: true });
 
       // Chord popover and capo sheet on a chart.
       await show(page, "#/song/landslide");
       await page.click(".box[data-chord]:visible");
       await page.waitForTimeout(200);
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-popover.png` });
-      await layoutChecks(page, `${tag} chord popover`);
+      await shot(page, `${out}/${w}x${h}-${theme}-popover.png`);
+      await layout(page, `${tag} chord popover`);
       await page.keyboard.press("Escape");
       await page.click("[data-act=capo]");
       await page.waitForTimeout(200);
-      await page.screenshot({ path: `${out}/${w}x${h}-${theme}-capo.png` });
-      await layoutChecks(page, `${tag} capo sheet`);
+      await shot(page, `${out}/${w}x${h}-${theme}-capo.png`);
+      await layout(page, `${tag} capo sheet`);
       await page.keyboard.press("Escape");
       check(`${tag}: no page errors`, errors.length === 0, errors.join("; "));
       await context.close();
@@ -408,7 +322,7 @@ await section("sheet", async () => {
     return outp;
   });
   check("the lit chord and line follow the audio clock", sync.filter(([, ok]) => ok).length >= 5, JSON.stringify(sync));
-  await page.screenshot({ path: `${out}/behaviour-sheet-playing.png` });
+  await shot(page, `${out}/behaviour-sheet-playing.png`);
   await page.click(".transport.mobile .play");
 
   // The Chords view of a sheet.
@@ -586,10 +500,11 @@ await section("charts", async () => {
 /* ---- On GitHub Pages: no private file, import it in Settings ---- */
 await section("import", async () => {
   const { context, page, errors } = await newPage(375, 752, "light", { library: null });
+  eq("a light system theme gives Latte", await page.evaluate(() => document.documentElement.dataset.theme), "latte");
   await show(page, "#/songs");
   check("without a library: says how to import it", (await page.textContent("#library-note")).includes("Import library file"));
   eq("without a library: the shipped charts", (await rows(page)).length, SHIPPED.length);
-  await page.screenshot({ path: `${out}/import-before.png` });
+  await shot(page, `${out}/import-before.png`);
   await show(page, "#/settings");
   await page.setInputFiles("#lib-file", { name: "broken.json", mimeType: "application/json", buffer: Buffer.from("{nope") });
   await page.waitForTimeout(300);
@@ -598,7 +513,7 @@ await section("import", async () => {
   await page.waitForTimeout(600);
   check("import confirms", (await page.textContent("#toast")).includes("Imported 958 liked songs"), await page.textContent("#toast"));
   check("settings shows the library", (await page.textContent("#lib-status")).includes("958 liked songs and 8 playlists"), await page.textContent("#lib-status"));
-  await page.screenshot({ path: `${out}/import-settings.png` });
+  await shot(page, `${out}/import-settings.png`);
   await page.reload();
   await page.waitForSelector("html[data-ready]");
   await show(page, "#/songs");
@@ -626,7 +541,7 @@ await section("analyse", async () => {
   check("no capo suggestion in open D tuning", (await page.$$(".suggest")).length === 0);
   const barsNow = () => page.$$eval(".bar[data-bar]", (b) => b.map((x) => x.textContent.replace("?", "").trim()));
   eq("detected bars", (await barsNow()).slice(0, 8), ["D", "Bm", "G", "A", "D", "Bm", "G", "A"]);
-  await page.screenshot({ path: `${out}/behaviour-analyse.png` });
+  await shot(page, `${out}/behaviour-analyse.png`);
 
   // Edit a bar with the picker: chords in the key come first.
   await page.click(".bar[data-bar='1']");
@@ -746,7 +661,7 @@ await section("batch", async () => {
   await page.waitForTimeout(500);
   eq("files matched by name", await page.$$eval(".batch-row .badge", (b) => b.map((x) => x.textContent)), ["matched", "matched", "no match"]);
   eq("unmatched file becomes a new song", await page.$eval("select[data-row='2']", (s) => s.value), "new");
-  await page.screenshot({ path: `${out}/behaviour-batch.png` });
+  await shot(page, `${out}/behaviour-batch.png`);
   await page.click("[data-act=start]");
   await page.waitForFunction(() => document.querySelectorAll(".batch-status a").length === 3, null, { timeout: 120000 });
   eq("all three analysed", await page.$$eval(".batch-status", (s) => s.map((x) => x.textContent.trim())), ["Done ✓ review", "Done ✓ review", "Done ✓ review"]);
@@ -759,7 +674,7 @@ await section("batch", async () => {
   await show(page, "#/settings");
   eq("recordings listed", (await page.$$("[data-del-rec]")).length, 3);
   check("storage meter", (await page.$$(".meter[role=meter]")).length === 1 && (await page.textContent("#storage-text")).includes("Recordings"));
-  await page.screenshot({ path: `${out}/behaviour-storage.png` });
+  await shot(page, `${out}/behaviour-storage.png`);
   await page.click("[data-del-rec='dust-in-the-wind']");
   await page.click("[data-del-rec='dust-in-the-wind']");
   await page.waitForTimeout(400);
@@ -793,7 +708,7 @@ await section("desktop", async () => {
   check("desktop: S starts auto-scroll", (await state(page)).scrolling);
   await page.keyboard.press("s");
   check("desktop: S stops it", !(await state(page)).scrolling);
-  await page.screenshot({ path: `${out}/desktop-sheet.png` });
+  await shot(page, `${out}/desktop-sheet.png`);
   await show(page, `#/song/${id}/edit`);
   await page.click(".topbar-title");
   await page.keyboard.press("Escape");
@@ -839,7 +754,7 @@ await section("picking", async () => {
   // A song with no picking pattern: nothing guessed.
   await show(page, "#/song/ssrignr/picking");
   check("picking: none for a strummed song, nothing guessed", (await page.textContent(".song-scroll")).includes("No picking pattern for this song"));
-  await page.screenshot({ path: `${out}/behaviour-picking-none.png` });
+  await shot(page, `${out}/behaviour-picking-none.png`);
   // Pimapeggio: a link when it's reachable, a note when it isn't.
   await show(page, "#/song/landslide/picking");
   await page.waitForTimeout(500);

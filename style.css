@@ -681,3 +681,4 @@ button.pick.on { border-color: var(--mauve); background: color-mix(in srgb, var(
 
 /* A tall popover scrolls as a whole: its parts (shape boxes, the step grid) keep their size. */
 .popover > * { flex-shrink: 0; }
+.fret-picker .fp-nav .btn { min-width: 44px; }

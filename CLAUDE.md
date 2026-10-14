@@ -13,5 +13,8 @@ My own Ultimate Guitar: a no-build PWA. The full brief is `docs/songbook-plan.md
 ## Running
 - App: `python -m http.server 8320 --bind 127.0.0.1`, then http://localhost:8320/
 - Tests: `cd tests && npm install && npm test` (with the app served on 8320).
+  - While iterating: `npm run quick` (node checks, under a second) plus the browser file for the area changed (`npm run ui`, `player`, `pc`, `part`, `analysis`).
+  - The full `npm test` only after significant changes: the end of a phase, or shared code (player, chords, storage, styles). `npm run shots` adds screenshots for phase review.
+  - `npm run test:helper`: the GPU checks against the running PC helper, only when its analysis changes.
 - Node is fnm's: `~/AppData/Roaming/fnm/node-versions/v24.14.0/installation/node.exe`.
 - PC helper (Python 3.12 venv in `helper/.venv`): see `helper/README.md` once it exists.

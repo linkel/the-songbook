@@ -5,21 +5,25 @@
 //    bundle comes back and is kept (chart labelled with its detector, stems in
 //    OPFS, lyric timing), the review shows the PC's draft, and the Player's
 //    mixer gets a row per stem through one stretcher (mono stems on a phone,
-//    stereo on a computer), with Full mix / Stems switching. Screenshots.
-// 3. With the real helper running (SONGBOOK_HELPER, or 127.0.0.1:8766 / 8765),
-//    guitar parts (Phase 5b) on parts rendered by tests/gen-part.js, and
-//    accuracy on songs rendered by the app's synth: tempo ±2 bpm (or ×2),
-//    the key (or its relative), >= 85% of bars right as triads, the AABB form
-//    found, and stems that add back up to the song, lined up within 1 ms.
-//    Skipped (not failed) when no helper with analysis is reachable.
-// node pc.test.mjs [shotsDir]
+//    stereo on a computer), with Full mix / Stems switching. A job survives a
+//    reload; a YouTube link analysed on the PC brings its recording back.
+// 3. With --helper (npm run test:helper; SONGBOOK_HELPER or 127.0.0.1:8765):
+//    the real helper on the GPU, on songs rendered by the app's synth. Chords:
+//    tempo ±2 bpm (or ×2), the key (or its relative), >= 85% of bars right as
+//    triads, the AABB form, stems that add back up to the song within 1 ms.
+//    Guitar parts (Phase 5b, tests/gen-part.js): >= 90% of notes at the right
+//    pitch within 30 ms, >= 80% on the right string, the right library pattern
+//    in >= 85% of bars. Minutes of GPU work, so not in the everyday run.
+// node pc.test.mjs [--helper] [shotsDir]
 import { chromium } from "playwright-core";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { BASE, check, eq, report, fixtureLibrary, EXAMPLE_SHEET, layout } from "./lib.mjs";
+import { BASE, check, eq, report, fixtureLibrary, EXAMPLE_SHEET, shot, newPage as openPage, section, show, until, layout } from "./lib.mjs";
 import { checkManifest, checkChart } from "../js/bundle.js";
 
-const out = process.argv[2] || fileURLToPath(new URL("shots/pc", import.meta.url));
+const args = process.argv.slice(2);
+const WITH_HELPER = args.includes("--helper") || !!process.env.SONGBOOK_HELPER;
+const out = args.find((x) => !x.startsWith("--")) || fileURLToPath(new URL("shots/pc", import.meta.url));
 fs.mkdirSync(out, { recursive: true });
 
 /* ---- 1. Bundle checks ---- */
@@ -44,39 +48,7 @@ fs.mkdirSync(out, { recursive: true });
 
 const browser = await chromium.launch({ channel: "chrome", args: ["--autoplay-policy=no-user-gesture-required"] });
 
-async function newPage(w = 375, h = 752, scheme = "dark") {
-  const phone = w < 860;
-  const context = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: phone ? 2 : 1, hasTouch: phone, isMobile: phone, colorScheme: scheme });
-  const lib = fixtureLibrary();
-  await context.route("**/private/**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(lib) }));
-  await context.route("**/songs/audio/**", (r) => r.fulfill({ status: 404, body: "" }));
-  const page = await context.newPage();
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
-  await page.goto(BASE);
-  await page.waitForSelector("html[data-ready]", { timeout: 90000 });
-  return { context, page, errors };
-}
-
-async function section(name, fn) {
-  try { await fn(); } catch (e) { check(`${name}: ran to the end`, false, e.message.split("\n").slice(0, 3).join(" | ")); }
-}
-
-// Poll an async check in the page (waitForFunction would take its promise as true).
-async function until(page, fn, arg, timeout = 20000) {
-  const t0 = Date.now();
-  for (;;) {
-    if (await page.evaluate(fn, arg)) return true;
-    if (Date.now() - t0 > timeout) throw new Error("timed out waiting: " + fn.toString().slice(0, 120));
-    await page.waitForTimeout(250);
-  }
-}
-
-async function show(page, hash) {
-  await page.evaluate((h) => { location.hash = h; }, hash);
-  await page.waitForTimeout(350);
-}
+const newPage = (w = 375, h = 752, scheme = "dark") => openPage(browser, { w, h, scheme });
 
 // A made-up song with a recording and a sheet (invented lyrics), no chart yet.
 async function seed(page) {
@@ -163,9 +135,10 @@ async function standIn(context, zip) {
 }
 
 /* ---- 2. The phone's side, against a stand-in helper ---- */
-for (const [w, h, scheme] of (process.env.ONLY ? [] : [[375, 752, "dark"], [1440, 900, "light"]])) {
-  await section(`stand-in ${w}`, async () => {
-    const { context, page, errors } = await newPage(w, h, scheme);
+{
+  const [w, scheme] = [375, "dark"];
+  await section("stand-in", async () => {
+    const { context, page, errors } = await newPage(w, 752, scheme);
     const { id } = await seed(page);
     const zip = await standInBundle(page, id);
     const seen = await standIn(context, zip);
@@ -174,11 +147,13 @@ for (const [w, h, scheme] of (process.env.ONLY ? [] : [[375, 752, "dark"], [1440
     await page.waitForSelector("#pc [data-pc=start]:not([disabled])", { timeout: 10000 });
     check(`${w}: the PC card names the GPU`, (await page.textContent("#pc")).includes("Test GPU"));
     check(`${w}: offers to line up the sheet's lyrics`, !!(await page.$("#pc [data-pc=lyrics]")));
-    if (w < 860) await page.screenshot({ path: `${out}/analyse-pc-${w}-${scheme}.png` });
+    await shot(page, `${out}/analyse-pc-${w}-${scheme}.png`);
+    await layout(page, "the PC card");
     await page.click("#pc [data-pc=start]");
     await page.waitForSelector("#pc .prog", { timeout: 10000 });
     await page.waitForTimeout(1700);
-    if (w < 860) await page.screenshot({ path: `${out}/analyse-pc-running-${w}-${scheme}.png` });
+    await shot(page, `${out}/analyse-pc-running-${w}-${scheme}.png`);
+    await layout(page, "the PC card, running");
     await until(page, (id) => import("/js/library.js").then((L) => L.get("charts", id)).then((c) => !!(c && c.detector && c.detector.startsWith("stand-in"))), id);
     const body = seen.posts[0] ? seen.posts[0].toString("latin1") : "";
 
@@ -205,7 +180,8 @@ for (const [w, h, scheme] of (process.env.ONLY ? [] : [[375, 752, "dark"], [1440
     check(`${w}: stems in OPFS`, st.backend === "opfs", st.backend);
     eq(`${w}: lyric timing kept for lines the sheet has`, [st.timing, st.timingSource], [[0, 1, 2], "aligned"]);
     check(`${w}: the review shows the PC's draft`, /Analysed on your PC: stand-in detector/.test(st.html) && /bars/.test(st.html), st.html.slice(0, 300));
-    await page.screenshot({ path: `${out}/analyse-pc-done-${w}-${scheme}.png` });
+    await shot(page, `${out}/analyse-pc-done-${w}-${scheme}.png`);
+    await layout(page, "the PC's draft in review", { transport: true });
 
     // The Player: one row per stem.
     await show(page, `#/song/${encodeURIComponent(id)}/player`);
@@ -213,7 +189,8 @@ for (const [w, h, scheme] of (process.env.ONLY ? [] : [[375, 752, "dark"], [1440
     await page.waitForTimeout(500);
     const ps = await page.evaluate(() => window.songbook.playerState());
     eq(`${w}: plays the stems`, ps.stems, true);
-    eq(`${w}: one stretcher, ${w < 860 ? "a mono channel" : "two channels"} per stem`, ps.layout, ["vocals", "guitar", "drums"].map((n) => ({ track: "stem-" + n, channels: w < 860 ? 1 : 2 })));
+    eq(`${w}: one stretcher, a mono channel per stem`, ps.layout, ["vocals", "guitar", "drums"].map((n) => ({ track: "stem-" + n, channels: 1 })));
+    await layout(page, "the stems mixer");
     const rows = await page.$$eval(".mixer .track .tn", (els) => els.map((e) => e.firstChild.textContent.trim()));
     eq(`${w}: mixer rows`, rows, ["Vocals", "Guitar", "Drums", "App guitar", "Count-in"]);
     await page.click(".mixer [data-mute='stem:guitar']");
@@ -224,7 +201,7 @@ for (const [w, h, scheme] of (process.env.ONLY ? [] : [[375, 752, "dark"], [1440
     await page.waitForTimeout(1500);
     const pos = (await page.evaluate(() => window.songbook.playerState().engine.position));
     check(`${w}: stems play (${pos.toFixed(2)} s in)`, pos > 0.8);
-    await page.screenshot({ path: `${out}/player-stems-${w}-${scheme}.png`, fullPage: false });
+    await shot(page, `${out}/player-stems-${w}-${scheme}.png`);
     await page.click(".mixer [data-stems='0']");
     await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && !s.stems && !s.layout; }, null, { timeout: 15000 });
     await page.waitForTimeout(600);
@@ -237,48 +214,32 @@ for (const [w, h, scheme] of (process.env.ONLY ? [] : [[375, 752, "dark"], [1440
     await show(page, "#/settings");
     await page.waitForSelector("[data-del-stems]");
     check(`${w}: Settings lists the stems`, (await page.textContent("#view-settings")).includes("PC Song: stems"));
+    await layout(page, "settings with stems");
     check(`${w}: no page errors`, errors.length === 0, errors.join("; "));
     await context.close();
   });
 }
 
-/* ---- Layout of the new screens: 375×752, 375×630, 1440×900, Mocha and Latte ---- */
-for (const [w, h] of [[375, 752], [375, 630], [1440, 900]]) {
-  for (const scheme of ["dark", "light"]) {
-    if (process.env.ONLY) break;
-    await section(`layout ${w}x${h} ${scheme}`, async () => {
-      const { context, page } = await newPage(w, h, scheme);
-      const { id } = await seed(page);
-      const zip = await standInBundle(page, id);
-      await standIn(context, zip);
-      await page.evaluate(() => localStorage.setItem("songbook-helper-url", "http://127.0.0.1:8799"));
-      const tag = `${w}x${h} ${scheme === "dark" ? "Mocha" : "Latte"}`;
-      await show(page, `#/song/${encodeURIComponent(id)}/analyse`);
-      await page.waitForSelector("#pc [data-pc=start]:not([disabled])");
-      await layout(page, `PC card ${tag}`);
-      await page.click("#pc [data-pc=start]");
-      await page.waitForSelector("#pc .prog");
-      await page.waitForTimeout(1600);
-      await layout(page, `PC running ${tag}`);
-      await until(page, (id) => import("/js/library.js").then((L) => L.get("charts", id)).then((c) => !!(c && c.detector)), id);
-      await page.waitForTimeout(800);
-      await show(page, `#/song/${encodeURIComponent(id)}/player`);
-      await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.layout; }, null, { timeout: 30000 });
-      await page.waitForTimeout(400);
-      await page.evaluate(() => document.querySelector(".mixer").scrollIntoView());
-      await layout(page, `stems mixer ${tag}`);
-      if (h === 630 || w > 860) await page.screenshot({ path: `${out}/player-stems-${w}x${h}-${scheme}.png` });
-      await show(page, "#/settings");
-      await page.waitForSelector("#bundle-file");
-      await page.evaluate(() => document.querySelector("#bundle-file").closest(".set-row").scrollIntoView());
-      await layout(page, `settings ${tag}`);
-      await context.close();
-    });
-  }
-}
+/* ---- On a computer: stems in stereo ---- */
+await section("stems on a computer", async () => {
+  const { context, page, errors } = await newPage(1440, 900, "light");
+  const { id } = await seed(page);
+  const zip = await standInBundle(page, id);
+  await page.evaluate(async ({ id, zip }) => {
+    const B = await import("/js/bundle.js");
+    await B.importBundle(new Blob([new Uint8Array(zip)]), id, { title: "PC Song", artist: "Nobody", lyricCount: 0 });
+  }, { id, zip });
+  await show(page, `#/song/${encodeURIComponent(id)}/player`);
+  await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.layout; }, null, { timeout: 30000 });
+  eq("computer: two channels per stem", (await page.evaluate(() => window.songbook.playerState().layout)).map((l) => l.channels), [2, 2, 2]);
+  await shot(page, `${out}/player-stems-1440-light.png`);
+  await layout(page, "computer: the stems mixer");
+  check("computer: no page errors", errors.length === 0, errors.join("; "));
+  await context.close();
+});
 
 /* ---- Resuming a job after a reload ---- */
-if (!process.env.ONLY) await section("resume", async () => {
+await section("resume", async () => {
   const { context, page, errors } = await newPage();
   const { id } = await seed(page);
   const zip = await standInBundle(page, id);
@@ -323,7 +284,7 @@ await section("link", async () => {
   await page.click("[data-pcl]");
   await page.waitForTimeout(1000);
   await page.waitForSelector(".pc-status .prog", { timeout: 10000 });
-  await page.screenshot({ path: `${out}/player-link-running-375-dark.png` });
+  await shot(page, `${out}/player-link-running-375-dark.png`);
   await until(page, (id) => import("/js/recordings.js").then((R) => R.recordingMeta(id)).then((m) => !!(m && m.source === "helper")), id);
   check("link: asked the PC to download and analyse the link", asked && asked.includes("/analyze?url=") && asked.includes("H_p4siY3Zc4"), asked);
   check("link: sent no file", seen.posts[0] && !/name="file"/.test(seen.posts[0].toString("latin1")));
@@ -347,7 +308,7 @@ const SONGS = [
 ];
 
 async function realHelper() {
-  const tries = [process.env.SONGBOOK_HELPER, "http://127.0.0.1:8766", "http://127.0.0.1:8765"].filter(Boolean);
+  const tries = [process.env.SONGBOOK_HELPER || "http://127.0.0.1:8765"];
   for (const u of tries) {
     try {
       const r = await fetch(u + "/ping", { signal: AbortSignal.timeout(2000) });
@@ -358,10 +319,10 @@ async function realHelper() {
   return null;
 }
 
-const HELPER = process.env.ONLY ? null : await realHelper();
-if (!HELPER) {
-  console.log("  (the real-helper checks were skipped: no helper with analysis at SONGBOOK_HELPER, :8766 or :8765)");
-} else {
+const HELPER = WITH_HELPER ? await realHelper() : null;
+if (WITH_HELPER && !HELPER) {
+  check("--helper: a helper with analysis is running (SONGBOOK_HELPER or 127.0.0.1:8765)", false);
+} else if (HELPER) {
   await section("real helper", async () => {
     const { context, page, errors } = await newPage(1440, 900);
     for (const s of SONGS) {
