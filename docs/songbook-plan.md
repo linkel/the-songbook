@@ -38,7 +38,7 @@ This file is the brief for the agent building it. Read all of it, plus `CLAUDE.m
   - **mine**, entered or confirmed by the owner;
   - **verified**, when two independent sources agree or the owner confirmed it by ear.
 
-  A picking pattern is either sourced, described by the owner, or labelled "suggested pattern for an acoustic version". Synth-band parts are labelled "generated" or "transcribed from your recording".
+  A picking pattern is either sourced, described by the owner, detected from the owner's recording (Phase 5b, with how well it matched), or labelled "suggested pattern for an acoustic version". Synth-band parts are labelled "generated" or "transcribed from your recording".
 - **Audio:**
   - Schedule everything on the AudioContext clock.
   - Resume the context on pointerup/touchend/click/keydown and handle iOS's "interrupted" state.
@@ -147,6 +147,7 @@ Its README also records the time-stretch comparison (Signalsmith vs SoundTouch v
    - Tempo: can be off by a factor of 2.
    - Stem separation: good, with some bleed.
    - Melody, bass and drum transcription: usable, but the synth band will sound like a MIDI rendition, and its "vocals" are a melody line, not sung words.
+   - Guitar parts (Phase 5b): notes come through fairly well from a clean guitar stem. Strings and frets are a best guess, since several positions play the same pitch. Which picking finger played a note can't be heard at all, so p/i/m/a is inferred by rule. Hammer-ons, slides and slaps are the weakest.
 
    Treat every result as a draft, with easy correction and play-along checking.
 
@@ -198,6 +199,7 @@ the-songbook/
 - **Simplify** for an acoustic version, with a toggle.
 - **Capo suggestion:** choose capo 0–7 so the shapes are the easiest.
 - Output is compatible with Pimapeggio's `chordMidi`/`noteString`, so its patterns play over any chord.
+- **Tunings** (Phase 5b): shapes are frets in the chart's `tuning` (§7). chords-db only covers standard tuning; in any other tuning, shapes come from a fret search ranked by `difficulty`.
 
 **Audio** (`js/audio.js`, `js/engine.js`):
 - Strum synthesis: staggered `playNote` calls, with down and up strokes and text strum patterns like `"D - D U - U D U"`.
@@ -208,7 +210,7 @@ the-songbook/
 **Storage:**
 - Shipped: `songs/index.json` plus `songs/<id>.json`.
 - On the device:
-  - IndexedDB `songbook`: `library`, `charts`, `sheets`, `lyricTiming`, `arrangements`, `loops`, `songPrefs`;
+  - IndexedDB `songbook`: `library`, `charts`, `sheets`, `lyricTiming`, `arrangements`, `parts`, `loops`, `songPrefs`;
   - **OPFS** for audio and stems; call `navigator.storage.persist()`.
 - On the PC: `private/songs/<slug>/` (analysis bundles).
 - Export/Import backup in Settings (JSON; audio optional and kept separate).
@@ -283,6 +285,47 @@ The reference is `docs/design/songbook-mockup.html`.
 - **Seed data:** the 12 songs and 2 pieces in `../pimapeggio/suggestions.json` become charts in `songs/`, keeping their sources, confidence and pattern ids. Studies stay in Pimapeggio.
 - `tests/data.test.mjs` validates shipped charts: chords parse, pattern ids exist, `web` charts have sources, and there are no lyric-like fields.
 
+### Tuning (Phase 5b)
+`"tuning": { "name": "Open D", "notes": "D A D F# A D", "source": "mine" }`
+- Notes run from the low string to the high string. Without octaves, each string takes the octave closest to its standard pitch (D2 A2 D3 F♯3 A3 D4 here); octaves may be written out (`D2 A2 …`).
+- No `tuning` means standard. `voicings`, bar shapes and every diagram are frets in the chart's tuning, with the capo on top.
+- Presets: Standard, Half step down, Drop D, Open D, Open G, DADGAD, Open C, plus custom notes.
+
+### Guitar part (Phase 5b)
+What the hands actually do, bar by bar, for picking patterns that change and shapes that differ from the chord's usual voicing. It sits on a section, and its bars line up with that section's `chords` bars. If the repeats of a section are played differently, split it into separate sections (Verse 1, Verse 2) in `form`.
+
+```json
+"part": {
+  "source": "detected", "detector": "…", "fingers": "inferred",
+  "patterns": { "a": "pB i pA m", "b": "pB+m i pA i3@2h4 pB i pA m" },
+  "bars": [
+    { "pattern": "travis" },
+    { "pattern": "a", "shape": "x00232" },
+    {},
+    { "steps": "pB - pA+i - px m2@3 pA i", "confidence": 0.62, "match": null },
+    { "pattern": "b", "confidence": 0.81, "match": { "pattern": "b", "hits": 7, "of": 8 } }
+  ]
+}
+```
+
+- **A bar has one of:**
+  - `pattern`: a library id from `patterns.js`, or a key in the part's own `patterns`. It repeats to fill the bar, as in Pimapeggio.
+  - `steps`: the bar written out.
+  - neither (`{}`): the bar repeats the bar before it.
+- **`shape`** is the fretting hand's shape for that bar. It overrides `voicings` for that bar's chord; for a bar with two chords, use an array.
+- **Written-out steps divide the bar evenly,** as chords do: 8 steps are eighth notes, 12 are triplets, 16 are sixteenths.
+- **Provenance:** `source` is `mine`, `detected` (with `detector`) or `verified`. Detected bars add `confidence` (0–1) and `match`: how many of the bar's steps fit the named pattern. `fingers: "inferred"` says the p/i/m/a letters came from the rule in §8.4, not from what was heard.
+- **Step notation:** an extension of Pimapeggio's notation. Its patterns keep their meaning, and both apps share the parser.
+  - `p i m a`, `pB`/`pA`, `i4` and `+` work as they do now.
+  - `-` is a rest; the strings keep ringing.
+  - `@n` plays fret n on that string instead of the shape's fret: `m2@3`.
+  - After the fret: `h5` is a hammer-on to fret 5, `o3` a pull-off to fret 3 (not `p`, which is the thumb), `/7` and `\5` are slides. The second note sounds halfway through the step.
+  - A trailing `x` makes a note muted or percussive: `px` is a thumb slap on the bass strings.
+- **Where it lives:**
+  - A part that only names library patterns and shapes, with no `@` frets or techniques, is a generic description and may ship in `songs/`.
+  - A part with notes taken from a recording, or entered note for note from one, is a transcription. It stays on the device (IndexedDB `parts`) and in `private/` bundles.
+  - `tests/data.test.mjs` fails if a shipped part contains `@`, `h`, `o`, `/` or `\`.
+
 ### Sheet (owner's, device only)
 - ChordPro text (`{title}`, `{capo}`, `{start_of_chorus}`, inline `[Am]`), linked to a library song.
 - Paste import accepts ChordPro or chords-over-lyrics text: chord-only lines are merged into the lyric line below by character column, and headings like `[Verse]` are recognised.
@@ -330,13 +373,41 @@ The phone reaches it over Tailscale (`tailscale serve --bg 8765`). The flow: pas
 - **Transcription for the synth band:** basic-pitch (Apache-2.0) on the vocal and bass stems. Drums come from a drum-transcription model on the drum stem, or from onset classes as a fallback.
 - **Lyric alignment:** force-align the owner's pasted lyrics to the vocal stem (e.g. WhisperX or stable-ts; check what's current).
 - **Setup:** `py -3.12 -m venv helper/.venv`, then PyTorch for CUDA 12.8 or newer, then the models. Write the steps in `helper/README.md`, along with Tailscale setup (reuse speedy-pitcher's README section).
-- **Output:** a bundle at `private/songs/<slug>/` (`chart.json`, `arrangement.json`, `timing.json`, `stems/*.m4a`), plus `<slug>.zip` for manual import as a fallback.
+- **Guitar parts:** see §8.4 (Phase 5b).
+- **Output:** a bundle at `private/songs/<slug>/` (`chart.json`, `arrangement.json`, `timing.json`, `part.json` from Phase 5b, `stems/*.m4a`), plus `<slug>.zip` for manual import as a fallback.
 
 ### 8.3 Checking a chart
 - **Play along:** the recording, with bars highlighted on its own clock and an optional soft strum layer.
 - Tap a bar to edit it with a chord picker (chords in the key first); long-press to split a bar.
 - **Mark as checked** turns the chart into "mine".
 - If a web chart exists for the song, show where the two agree and disagree.
+
+### 8.4 Guitar parts from a recording (PC helper, Phase 5b)
+The chord detector averages each beat into pitch classes, so it can't see strings, frets or picking. This is a separate pass, run by the helper on Phase 5a's stems and beats: `POST /analyze?parts=guitar`, which can also re-run on an existing job. It adds `part.json` to the bundle, with each section's `part` set to `source: "detected"`.
+
+1. **Guitar stem:** Demucs's 6-stem model (it has a guitar stem), which drops the voice and drums such as a suitcase kick. Use "other" when the guitar stem is nearly empty.
+2. **Grid:** the beats and downbeats from 5a, and the chart's bars.
+3. **Notes** (pitch, onset, length): basic-pitch as the baseline. Also evaluate a guitar tab model (TabCNN- or FretNet-style, trained on GuitarSet; check what's current) for string hints. Those models are trained on standard tuning, so in open tunings expect to rely on pitch plus step 4.
+4. **Strings and frets:** a dynamic-programming pass over every playable (string, fret) for each note, in the chart's tuning and capo. It costs:
+   - leaving the shape of the chart's chord at that moment;
+   - stretching beyond the hand's span;
+   - moving the hand from the previous note;
+   - two notes at one onset never share a string.
+
+   The frets held through each bar become its `shape`: the best-effort fingering.
+5. **Picking hand, inferred:**
+   - At each onset, the lowest note, if it's on the chord's bass or alternate-bass string, is `p` (`pB` or `pA`).
+   - Other notes are `i`, `m` or `a` by string, from their home strings shifted to the shape.
+   - The part says `fingers: "inferred"`.
+6. **Steps:** quantize each bar to 8, 12 or 16 steps, whichever has the smallest timing error, and add `@` frets, techniques (hammer-ons and slides from pitch changes with no new attack) and `x` for unpitched hits.
+7. **Patterns:**
+   - Compare each bar with every library pattern stretched to the bar, by edit distance. One edit or fewer gives `pattern` plus `match`; anything else stays as `steps`.
+   - Bars whose steps repeat become the part's own `patterns` (a, b, c…).
+   - The Picking mode's bar strip then shows where the pattern changes through the song.
+8. **Review:**
+   - Picking mode plays the part along with the recording, at any speed and on the recording's clock, and can A/B it against the guitar stem.
+   - Low-confidence bars show "?".
+   - Tap a bar to fix it in the step editor. Mark as checked turns the part into `mine`.
 
 ## 9. Play song
 
@@ -365,7 +436,7 @@ The phone reaches it over Tailscale (`tailscale serve --bg 8765`). The flow: pas
 - **YouTube without the helper:** `YouTubeEngine`. Speed and loops work, but pitch, stems and play-along analysis are greyed out with a "needs the helper" note. The sheet can still follow by tap-to-sync timing.
 
 ### 9.2 Synth band mode
-- **Parts:** from the arrangement. Transcribed tracks are labelled as such; otherwise parts are **generated** from the chart: bass from roots and fifths, drums from a groove chosen by meter and tempo, and guitar from the strum or picking pattern.
+- **Parts:** from the arrangement. Transcribed tracks are labelled as such; otherwise parts are **generated** from the chart: bass from roots and fifths, drums from a groove chosen by meter and tempo, and guitar from the section's guitar part (§7) when it has one, else from the strum or picking pattern.
 - **Voices:** pluck guitar, low pluck bass, synthesized kick, snare and hat, and a soft lead labelled "melody". The app doesn't synthesize sung lyrics.
 - **Controls:** the same mixer, any tempo with no artefacts, and transpose applied to every part. It works for every song with a chart, even without a recording.
 
@@ -402,11 +473,27 @@ Each phase ends with tests passing, screenshots reviewed at 375×752, 375×630 a
   - The Picking mode, as in mockup 4: Pimapeggio's stage (letters, string diagram, notation) over the section's chords, played with the scheduler.
   - Sourced, owner-described or suggested patterns, each clearly labelled.
   - "Open in Pimapeggio": add URL parameters to Pimapeggio (pattern, progression, capo) and link to it for the full trainer with ratings and the tempo ladder.
-- **Phase 5: helper analysis on the GPU** (§8.2).
+- **Phase 5a: helper analysis on the GPU** (§8.2).
   - Evaluate ChordMini first.
   - Then stems, better chords and sections, lyric alignment, jobs started from the phone, and bundles straight into OPFS.
   - Stem rows join the mixer (§9.1).
-- **Phase 6: synth band** (§9.2): generated parts first, then transcribed parts from Phase 5 bundles.
+- **Phase 5b: guitar parts: tunings, your fingerings, and picking that changes** (§7 Tuning and Guitar part, §8.4). Steps 1–3 don't need the helper and can start before 5a is finished; step 4 needs 5a's stems and beats.
+  1. **Tunings:**
+     - Replace the hard-coded standard tuning (`OPEN_MIDI`) with the chart's `tuning` everywhere: `chords.js` shapes and `difficulty`, `chordMidi`/`noteString`, diagrams, Hear, strum and picking playback, and the stage's string note names.
+     - Shape search for any tuning, a tuning picker with presets, and the capo on top.
+     - Give Pimapeggio's `chordMidi` a tuning argument too (keep its tests passing).
+     - Late July then shows and plays open-D shapes.
+  2. **Your own fingering:**
+     - Type a shape (`x00232`), or tap frets on a diagram, for the whole song or for one bar.
+     - It's used everywhere that chord is shown or played, and it's labelled as yours.
+  3. **Part editor in Picking mode:**
+     - A bar strip showing each bar's pattern.
+     - Per bar, choose a library pattern or one of the song's own, or write the bar out on a step grid (strings × steps; tap to place a finger, long-press for fret, technique or mute). Repeat it over the following bars, or copy it.
+     - Play picks the part bar by bar, with its frets and techniques, and the stage follows the pattern changes.
+     - "Open in Pimapeggio" passes written-out steps; add a `steps=` URL parameter to Pimapeggio.
+  4. **PC detector** (§8.4): a draft `part.json` in the bundle, imported like the rest of it.
+  5. **Review** (§8.4 step 8): play along, fix bars, mark as checked.
+- **Phase 6: synth band** (§9.2): generated parts first, then transcribed parts from Phase 5a and 5b bundles.
 - **Phase 7, optional:** a web research pass for cited chord charts (chords only), and LRCLIB. Each one only if the owner approves (§12).
 
 ## 11. UI notes and testing
@@ -418,10 +505,17 @@ Each phase ends with tests passing, screenshots reviewed at 375×752, 375×630 a
 
 **Tests** (in `tests/`: `npm install`, serve on 8320, `npm test`):
 - **Unit:** chord engine, ChordPro and chords-over-lyrics parsers (invented lyrics), analysis post-processing on synthetic arrays, generated bass and drum parts, the bundle format, and the shipped charts.
+- **Unit, Phase 5b:**
+  - the step notation (rests, frets, techniques, mutes, and every library pattern parsing as before);
+  - tuning notes with and without octaves;
+  - shape search in open D and DADGAD;
+  - expanding a part (patterns filling a bar, `{}` repeating);
+  - fingering assignment and pattern matching on made-up note lists.
 - **Analysis and sync accuracy:**
   - Render test songs with the app's own synth: known progressions, keys and tempos.
   - Assert that tempo is within ±2 bpm (or ×2), the key is correct (or the relative major/minor), and at least 85 % of bars have the right triad.
   - Assert that the play-along highlight is within 50 ms of the bar times.
+  - Guitar parts (Phase 5b): render made-up progressions with library patterns, and some bars with `@` frets, in standard tuning and open D. Assert that at least 90 % of notes come back at the right pitch within 30 ms, at least 80 % on the right string, and the right library pattern in at least 85 % of bars.
   - Commit the generator, never audio.
 - **Browser checks** (both flavors, all three sizes):
   - no overflow, and tap targets ≥ 44 px;
@@ -445,7 +539,8 @@ Each phase ends with tests passing, screenshots reviewed at 375×752, 375×630 a
   - stem sync and CPU with time-stretch ("Test stretch speed");
   - YouTube embed playback;
   - the helper over Tailscale (download and analysis);
-  - auto-scroll on a stand.
+  - auto-scroll on a stand;
+  - the step editor and bar strip with a thumb, and detected parts on real songs, by ear (Phase 5b).
 
 ## 12. Open decisions for the owner (ask before the phase that needs them)
 
@@ -454,8 +549,9 @@ Each phase ends with tests passing, screenshots reviewed at 375×752, 375×630 a
 3. **Import speedy-pitcher's existing library?** Recommended: yes, once both are on Pages. *(Phase 3)*
 4. **Lyrics:** pasted only (default), or also LRCLIB lookup with synced timestamps? *(Phase 3)*
 5. **Cross-repo changes:** answered. Changes to Pimapeggio and speedy-pitcher are allowed (§1), e.g. Pimapeggio URL parameters for "Open in Pimapeggio", and pointing speedy-pitcher at the new helper.
-6. **PC helper:** try the ChordMini backend first, or build our own analysis? If some models need Linux, install Ubuntu in WSL2 (`wsl --install -d Ubuntu-24.04`), or use a GPU Docker container? *(Phase 5)*
+6. **PC helper:** try the ChordMini backend first, or build our own analysis? If some models need Linux, install Ubuntu in WSL2 (`wsl --install -d Ubuntu-24.04`), or use a GPU Docker container? *(Phase 5a)*
 7. **Hosting:** GitHub Pages at `https://linkel.github.io/the-songbook/` needs a remote and a push. Only public code is deployed; `private/` never is. Should `docs/` (the mockup shows some of the owner's song titles) be public? *(any time)*
+8. **Guitar transcription:** basic-pitch plus our own string assignment, or also a tab model? Recommended: start with basic-pitch, measure it on the synthetic renders and one real song, and ask before installing a larger model. *(Phase 5b, step 4)*
 
 ## 13. Prompt to hand to the agent
 

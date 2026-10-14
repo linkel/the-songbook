@@ -6,5 +6,6 @@ For easier access to some songs I might want to play on the guitar.
 
 - [x] Phases 0–3: library, sheets, chords from recordings, the player
 - [x] Phase 4: picking guide
-- [ ] Phase 5: better analysis on the PC's GPU (next)
+- [ ] Phase 5a: better analysis on the PC's GPU (next)
+- [ ] Phase 5b: guitar parts: open tunings, my own fingerings, picking patterns that change, and parts detected from recordings
 - [ ] Phase 6: synth band
