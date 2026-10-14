@@ -7,30 +7,39 @@
 // Everything that follows the music (lanes, chord now, the synced sheet, the
 // app guitar) works in song time, mapped through the engine's schedule, so it
 // stays locked at any speed and across loop jumps.
+// With stems from the PC helper, the mixer has a row per stem instead of the
+// one recording row: all of them go through one stretcher, so they stay in
+// sync at any speed and pitch.
 
 import { FileEngine } from "./engine.js";
 import { YouTubeEngine, parseYouTubeId, youTubeTitle } from "./youtube.js";
 import { WaveView } from "./waveform.js";
-import { decodeSong, estimateTuning } from "./wavedata.js";
+import { decodeSong, estimateTuning, makeAnalysis } from "./wavedata.js";
 import { SPEED_MIN, SPEED_MAX, fmtTime, fmtSemis, fmtCents, clamp } from "./trainer.js";
 import { audioContext, resumeAudio, track, StringVoices, strum, warmNotes, requestWakeLock, releaseWakeLock } from "./audio.js";
 import { Lookahead } from "./scheduler.js";
-import { getRecording, recordingMeta, saveRecording, fmtBytes } from "./recordings.js";
+import { getRecording, recordingMeta, saveRecording, fmtBytes, stemsMeta, getStems } from "./recordings.js";
 import { put, getAll, savePrefs } from "./library.js";
 import { findSections } from "./detect.js";
 import { bestVoicing, prettyChord } from "./chords.js";
 import { helperUrl, downloadAudio } from "./helper-client.js";
+import { pcJob, onPcJob, startPcJob, cancelPcJob, clearPcJob } from "./pcjob.js";
 import { esc, toast, showPopover, closePopover, ICONS } from "./ui.js";
 
 const SECTION_COLORS = ["--blue", "--mauve", "--lavender", "--teal", "--pink", "--sky"];
 const MIX = [["recording", "Recording", "your file"], ["guitar", "App guitar", "strums the chords"], ["click", "Count-in", "clicks"]];
 const TRACK = { recording: "recording", guitar: "app-guitar", click: "click" };
+const trackOf = (key) => TRACK[key] || "stem-" + key.slice(5);
+// Stems play in stereo on a computer; on a phone each is mono, which halves
+// the memory and the stretcher's work.
+const stereoStems = () => !(typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches);
 
 export const PLAYER_DEFAULTS = {
   source: null,          // "file" | "youtube"
   youtube: null,         // { id, title }
   speed: 1, semis: 0, cents: 0, formant: false,
   a: null, b: null, loopOn: false, loopId: null, snap: true,
+  stems: true,           // play the stems (when the helper made some) rather than the recording
   countIn: 0,            // bars
   trainerOn: false, trainer: { start: 0.7, step: 0.05, every: 2, target: 1 },
   mix: { recording: { vol: 1, on: true }, guitar: { vol: 0.6, on: false }, click: { vol: 0.8, on: true } },
@@ -97,6 +106,16 @@ export async function playRecording(ctx) {
   prepareBars();
   if (S.kind !== "file") await loadFile();
   if (S.kind === "file") await togglePlayer();
+}
+
+// The mixer's rows: the recording, or one per stem; then the app guitar and the count-in.
+function mixRows() {
+  if (S.playingStems) return [...S.stems.stems.map((x) => ["stem:" + x.name, x.label || x.name, "stem"]), MIX[1], MIX[2]];
+  return MIX;
+}
+function mixOf(key) {
+  if (!S.set.mix[key]) S.set.mix[key] = { vol: 1, on: true };
+  return S.set.mix[key];
 }
 
 export function closePlayer() {
@@ -167,7 +186,12 @@ function prepareBars() {
     const next = bars[i + 1];
     b.t1 = next ? next.t : Math.max(b.t + 0.5, lastBeat && lastBeat > b.t ? lastBeat : b.t + 2);
   });
-  const { form, spans } = findSections(bars);
+  // The PC helper finds sections by sound as well as chords; otherwise they
+  // come from repeated chord blocks.
+  const segs = c.analysis && Array.isArray(c.analysis.segments) && c.analysis.segments.length ? c.analysis.segments : null;
+  const { form, spans } = segs && segs.every((x) => x.bars[1] < bars.length)
+    ? { form: segs.map((x) => x.name), spans: segs.map((x) => Array.from({ length: x.bars[1] - x.bars[0] + 1 }, (_, k) => x.bars[0] + k)) }
+    : findSections(bars);
   const names = [...new Set(form)];
   const sections = form.map((name, i) => {
     const span = spans[i];
@@ -193,9 +217,12 @@ function prepareBars() {
 
 async function autoLoad() {
   const want = S.set.source;
-  const meta = S.ctx.rec || await recordingMeta(S.id);
-  if (!S) return;
+  const s = S;
+  const meta = s.ctx.rec || await recordingMeta(s.id);
+  s.stems = await stemsMeta(s.id);
+  if (S !== s) return;
   const bundled = S.ctx.chart && S.ctx.chart.audio;
+  if (S.stems && want !== "youtube") return loadFile();
   if (meta && (want !== "youtube" || bundled)) return loadFile();
   // A song with its own recording in the app (songs/audio/) opens that, not a YouTube link.
   if (bundled) return loadShipped();
@@ -228,28 +255,42 @@ async function loadShipped() {
 // browser wouldn't store); otherwise the recording kept on this device.
 async function loadFile(direct = null, directMeta = null) {
   const s = S;
-  s.loading = "Reading the recording…";
+  if (s.stems === undefined) s.stems = await stemsMeta(s.id);
+  const useStems = !direct && !!s.stems && (s.set.stems || !(await recordingMeta(s.id)));
+  s.loading = useStems ? "Reading the stems…" : "Reading the recording…";
   s.error = null;
   if (s.view) render();
   try {
-    const blob = direct || await getRecording(s.id);
-    if (!blob) throw new Error("The recording isn't on this device any more.");
-    s.meta = direct ? directMeta : await recordingMeta(s.id);
+    let dec, layout = null;
+    if (useStems) {
+      s.meta = await recordingMeta(s.id);
+      dec = await decodeStems(s.id);
+      layout = dec.layout;
+    } else {
+      const blob = direct || await getRecording(s.id);
+      if (!blob) throw new Error("The recording isn't on this device any more.");
+      s.meta = direct ? directMeta : await recordingMeta(s.id);
+      dec = await decodeSong(blob, audioContext());
+    }
+    if (S !== s) return;
     if (ytEngine && s.kind === "youtube") ytEngine.unload();
     const engine = getFileEngine();
-    const dec = await decodeSong(blob, audioContext());
-    if (S !== s) return;
+    // Switching full mix <-> stems keeps the place, and plays on if it was.
+    const at = s.kind === "file" && engine.duration ? engine.position : null;
+    const was = s.kind === "file" && engine.playing;
+    s.playingStems = !!layout;
     s.an = dec.analysis;
     s.duration = dec.duration;
     s.kind = "file";
     s.engine = engine;
     s.set.source = "file";
-    s.enginePromise = engine.load(dec.channels, dec.duration).then(() => {
+    s.enginePromise = engine.load(dec.channels, dec.duration, layout).then(() => {
       if (S !== s) return;
       // First time: start where the analysed bars start (after a spoken intro, say).
       const first = s.timed && s.timed.bars[0].t > 15 ? s.timed.bars[0].t : 0;
-      engine.pausedAt = clamp(s.set.position || first, 0, dec.duration);
+      engine.pausedAt = clamp(at ?? (s.set.position || first), 0, dec.duration);
       applyAll();
+      if (was) engine.play();
     });
     s.loading = null;
     if (s.view) render();
@@ -261,6 +302,45 @@ async function loadFile(direct = null, directMeta = null) {
     s.error = e.message || String(e);
     if (s.view) render();
   }
+}
+
+// The helper's stems -> channels for the engine, a layout saying which
+// channels are which stem, and a waveform of them all together.
+async function decodeStems(id) {
+  const files = await getStems(id);
+  if (!files) throw new Error("The stems aren't on this device any more. Analyse on the PC again, or switch the mixer to Full mix.");
+  const c = audioContext();
+  const stereo = stereoStems();
+  const channels = [], layout = [];
+  let sum = new Float32Array(0), len = 0;
+  for (const f of files) {
+    let buf;
+    try { buf = await c.decodeAudioData(await f.blob.arrayBuffer()); } catch (e) { throw new Error(`Couldn't decode the ${f.label || f.name} stem.`); }
+    const l = buf.getChannelData(0), r = buf.numberOfChannels > 1 ? buf.getChannelData(1) : l;
+    if (buf.length > sum.length) { const n = new Float32Array(buf.length); n.set(sum); sum = n; }
+    len = Math.max(len, buf.length);
+    const at = channels.length;
+    if (stereo) {
+      channels.push(l, r === l ? l.slice() : r);
+      layout.push({ track: "stem-" + f.name, channels: [at, at + 1] });
+      for (let i = 0; i < buf.length; i++) sum[i] += 0.5 * (l[i] + r[i]);
+    } else {
+      const m = new Float32Array(buf.length);
+      for (let i = 0; i < m.length; i++) { m[i] = 0.5 * (l[i] + r[i]); sum[i] += m[i]; }
+      channels.push(m);
+      layout.push({ track: "stem-" + f.name, channels: [at] });
+    }
+  }
+  // The stretcher reads the channels side by side, so they're all one length.
+  for (let k = 0; k < channels.length; k++) if (channels[k].length < len) { const n = new Float32Array(len); n.set(channels[k]); channels[k] = n; }
+  const analysis = makeAnalysis({ sampleRate: c.sampleRate, length: sum.length, numberOfChannels: 1, getChannelData: () => sum });
+  return { channels, layout, duration: len / c.sampleRate, analysis };
+}
+
+async function setStems(on) {
+  S.set.stems = on;
+  persist();
+  await loadFile();
 }
 
 async function loadYouTube(id) {
@@ -377,9 +457,9 @@ function applyTrainer(save = true) {
 }
 
 function applyMix() {
-  for (const [key] of MIX) {
-    const m = S.set.mix[key];
-    const t = track(TRACK[key]);
+  for (const [key] of mixRows()) {
+    const m = mixOf(key);
+    const t = track(trackOf(key));
     t.setVolume(m.vol);
     t.setMuted(!m.on);
   }
@@ -769,6 +849,7 @@ function render() {
 }
 
 function sourceBadge() {
+  if (S.kind === "file" && S.playingStems) return "<span class='badge mine'>Stems</span>";
   if (S.kind === "file") return `<span class='badge mine'>${S.meta && S.meta.source === "helper" ? "Downloaded" : S.meta && S.meta.source === "app" ? "With the app" : "Your file"}</span>`;
   if (S.kind === "youtube") return "<span class='badge pick'>YouTube</span>";
   return "";
@@ -798,13 +879,62 @@ function sourceHtml() {
     ${yts.map((y) => `<div class='set-row'><div style='min-width:0'><div class='set-label ellipsis'>${esc(y.label || "YouTube")}</div>
         <div class='meta'>In YouTube's player: speed and loops. Pitch needs the audio${helper ? ", which the helper can download" : ""}.</div></div>
       <div class='row-btns'><button class='btn outline small' data-yt='${esc(y.id)}'>Play</button>
-      ${helper ? `<button class='btn outline small' data-dl='${esc(y.url)}'>Download</button>` : ""}</div></div>`).join("")}
+      ${helper ? `<button class='btn outline small' data-dl='${esc(y.url)}'>Download</button><button class='btn outline small' data-pcl='${esc(y.url)}'>Analyse</button>` : ""}</div></div>`).join("")}
     <form class='set-row link-row' data-act='link'>
       <input class='text-input' name='link' type='url' inputmode='url' placeholder='Paste a YouTube link' aria-label='YouTube link' autocomplete='off'>
       <button class='btn outline small' type='submit'>Add</button></form>
     ${helper ? "" : "<p class='note'>To shift a YouTube video's pitch, set up the PC helper (Settings → PC helper). It downloads the audio at home.</p>"}
     ${S.dl ? `<div class='prog' aria-label='Downloading'><i style='width:${Math.round((S.dl.p || 0) * 100)}%'></i></div><p class='note'>${esc(S.dl.text)}</p>` : ""}
+    ${helper ? "<p class='note'>Analyse: your PC downloads it and finds the chords, stems and sections, then the phone keeps it all.</p>" : ""}
+    <div class='pc-status'>${pcStatusHtml()}</div>
   </div>`;
+}
+
+/* ---- A link analysed on the PC (js/pcjob.js) ---- */
+
+function pcStatusHtml() {
+  const st = pcJob(S.id);
+  if (!st || st.phase === "done" || st.phase === "cleared") return "";
+  if (st.phase === "failed" || st.phase === "cancelled") return `<p class='note' role='alert'>On your PC: ${esc(st.error || "that didn't work.")}</p>`;
+  const step = st.job && st.job.steps && st.job.steps.find((x) => x.p < 1);
+  const text = !st.id ? "Asking your PC…" : st.phase === "fetching" ? "Bringing the results over…" : st.phase === "importing" ? "Keeping them on this device…"
+    : st.offline ? "Can't reach the PC right now; still trying." : (step ? step.label : "Finishing") + "…";
+  const p = st.phase === "running" ? (st.job && st.job.progress) || 0 : 1;
+  return `<div class='prog' aria-label='Analysing on your PC'><i style='width:${Math.round(p * 100)}%'></i></div>
+    <div class='set-row'><p class='note' aria-live='polite' style='margin:0'>On your PC: ${esc(text)}</p><button class='btn outline small' data-pc-cancel>Cancel</button></div>`;
+}
+
+function listenPc() {
+  if (S.unlistenPc) S.unlistenPc();
+  const s = S;
+  S.unlistenPc = onPcJob(S.id, (st) => {
+    if (S !== s) return;
+    if (st.phase === "done") {
+      const r = st.result;
+      toast(`From your PC: the recording, ${r.chart.bars.length} bars of chords${r.stems ? ` and ${r.stems} stems` : ""}. Check the chords by ear.`, 4500);
+      clearPcJob(s.id);
+      // Play the recording that came back, not the YouTube video.
+      if (r.audio) { s.set.source = "file"; persist(true); }
+      if (s.ctx.onImported) s.ctx.onImported();
+      return;
+    }
+    const el = s.view && s.view.querySelector(".pc-status");
+    if (el) { el.innerHTML = pcStatusHtml(); wirePcStatus(el); }
+  });
+}
+
+function wirePcStatus(el) {
+  const b = el.querySelector("[data-pc-cancel]");
+  if (b) b.addEventListener("click", () => cancelPcJob(S.id));
+}
+
+async function analyseLink(link) {
+  const lines = S.ctx.lyrics ? S.ctx.lyrics.lines : [];
+  await startPcJob(S.id, { link, title: S.ctx.title, artist: S.ctx.artist, lyricCount: lines.length,
+    lyrics: lines.map((text, index) => ({ index, text })).filter((x) => x.text) });
+  listenPc();
+  const el = S.view && S.view.querySelector(".pc-status");
+  if (el) { el.innerHTML = pcStatusHtml(); wirePcStatus(el); }
 }
 
 function stageHtml() {
@@ -871,9 +1001,10 @@ function sourceDetails() {
   return `<div class='card set-group'>
     <div class='set-row'><div style='min-width:0'><div class='set-label ellipsis'>${esc((S.set.youtube && S.set.youtube.title) || "YouTube")}</div>
       <div class='meta'>Speed 25–200% and loops. Pitch, the waveform and chords need the audio.</div></div>
-      ${helper ? `<button class='btn outline small' data-dl='${esc("https://www.youtube.com/watch?v=" + S.set.youtube.id)}'>Download</button>` : ""}</div>
+      ${helper ? `<div class='row-btns'><button class='btn outline small' data-dl='${esc("https://www.youtube.com/watch?v=" + S.set.youtube.id)}'>Download</button><button class='btn outline small' data-pcl='${esc("https://www.youtube.com/watch?v=" + S.set.youtube.id)}'>Analyse</button></div>` : ""}</div>
     ${helper ? "" : "<p class='note'>Set up the PC helper (Settings → PC helper) to download this audio at home; then pitch works too.</p>"}
     ${S.dl ? `<div class='prog'><i style='width:${Math.round((S.dl.p || 0) * 100)}%'></i></div><p class='note'>${esc(S.dl.text)}</p>` : ""}
+    <div class='pc-status'>${pcStatusHtml()}</div>
     <div class='set-row'><div class='meta'>Or use your own file.</div><label class='btn outline small file-btn'>Choose file${FILE_INPUT}</label></div>
   </div>`;
 }
@@ -988,26 +1119,34 @@ function syncMixer() {
   const box = S.view.querySelector(".mixer");
   if (!box) return;
   const guitarOk = !!S.timed && S.kind === "file";
-  box.innerHTML = `<div class='h2'>Mixer</div>` + MIX.map(([key, name, sub]) => {
-    const m = S.set.mix[key];
+  const hasRec = !!(S.meta && S.meta.source !== "unsaved");
+  const seg = S.stems && S.kind === "file" ? `<div class='seg small-seg' role='group' aria-label='Play the recording or its stems' style='margin-bottom:8px'>
+      <button data-stems='0' class='${S.playingStems ? "" : "on"}' aria-pressed='${!S.playingStems}' ${hasRec ? "" : "disabled"}>Full mix</button>
+      <button data-stems='1' class='${S.playingStems ? "on" : ""}' aria-pressed='${!!S.playingStems}'>Stems</button></div>` : "";
+  box.innerHTML = `<div class='h2'>Mixer</div>` + seg + mixRows().map(([key, name, sub]) => {
+    const m = mixOf(key);
     const off = key === "guitar" && !guitarOk;
     const subText = key === "recording" && S.kind === "youtube" ? "YouTube sets its own volume" : off ? "needs analysed bars" : sub;
     return `<div class='track ${m.on && !off ? "" : "off"}'>
-      <span class='tn'>${name}<span class='ts'>${subText}</span></span>
-      <input type='range' min='0' max='1' step='0.05' value='${m.vol}' data-vol='${key}' aria-label='${name} volume' ${off || (key === "recording" && S.kind === "youtube") ? "disabled" : ""}>
-      <button class='mute ${m.on && !off ? "on" : ""}' data-mute='${key}' aria-pressed='${m.on && !off}' aria-label='${name} on or off' ${off ? "disabled" : ""}>${m.on && !off ? "On" : "Off"}</button></div>`;
-  }).join("");
+      <span class='tn'>${esc(name)}<span class='ts'>${subText}</span></span>
+      <input type='range' min='0' max='1' step='0.05' value='${m.vol}' data-vol='${esc(key)}' aria-label='${esc(name)} volume' ${off || (key === "recording" && S.kind === "youtube") ? "disabled" : ""}>
+      <button class='mute ${m.on && !off ? "on" : ""}' data-mute='${esc(key)}' aria-pressed='${m.on && !off}' aria-label='${esc(name)} on or off' ${off ? "disabled" : ""}>${m.on && !off ? "On" : "Off"}</button></div>`;
+  }).join("") + (S.playingStems ? `<p class='note'>Stems separated on the PC by Demucs from ${esc(S.stems.file || "your recording")}; a little bleed between them is normal.</p>` : "");
   box.querySelectorAll("[data-vol]").forEach((r) => r.addEventListener("input", () => {
-    S.set.mix[r.dataset.vol].vol = +r.value;
+    mixOf(r.dataset.vol).vol = +r.value;
     applyMix();
     persist();
   }));
   box.querySelectorAll("[data-mute]").forEach((b) => b.addEventListener("click", () => {
-    const m = S.set.mix[b.dataset.mute];
+    const m = mixOf(b.dataset.mute);
     m.on = !m.on;
     applyMix();
     syncMixer();
     persist();
+  }));
+  box.querySelectorAll("[data-stems]").forEach((b) => b.addEventListener("click", () => {
+    const on = b.dataset.stems === "1";
+    if (on !== !!S.playingStems && !b.disabled) setStems(on);
   }));
 }
 
@@ -1044,6 +1183,9 @@ function wire() {
   }));
   v.querySelectorAll("[data-yt]").forEach((b) => b.addEventListener("click", async () => { await resumeAudio(); loadYouTube(b.dataset.yt); }));
   v.querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => download(b.dataset.dl)));
+  v.querySelectorAll("[data-pcl]").forEach((b) => b.addEventListener("click", () => analyseLink(b.dataset.pcl)));
+  v.querySelectorAll(".pc-status").forEach(wirePcStatus);
+  if (pcJob(S.id)) listenPc();
   const form = v.querySelector("form[data-act=link]");
   if (form) form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -1207,7 +1349,8 @@ if (typeof document !== "undefined") {
 
 // For the browser tests.
 export const playerState = () => S && {
-  id: S.id, kind: S.kind, set: S.set, duration: S.duration, timed: !!S.timed, loops: S.loops.map((l) => l.id),
+  id: S.id, kind: S.kind, set: S.set, duration: S.duration, timed: !!S.timed, loops: S.loops.map((l) => l.id), stems: !!S.playingStems,
+  layout: S.engine && S.engine.layout ? S.engine.layout.map((l) => ({ track: l.track, channels: l.channels.length })) : null,
   engine: S.engine, voicesCents: S.voices.cents, scheduled: S.scheduled.size, passes: S.passes || 0,
   strums: [...S.scheduled].map(([key, at]) => ({ key, at, song: S.timed ? S.timed.strumTimes[+key.split(":")[1]] : null })),
 };

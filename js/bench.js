@@ -2,12 +2,13 @@
 // fast Signalsmith Stretch runs: renders 10 s of a
 // synthetic stereo mix at 75% speed, +2 semitones, offline, and returns how
 // many times faster than real time that was. Real-time playback needs > 1×;
-// several × leaves room for the phone to do other things.
+// several × leaves room for the phone to do other things. channels > 2 times
+// stems the way the player runs them: one node, a channel per stem (mono).
 
 import SignalsmithStretch from "../vendor/signalsmith-stretch/SignalsmithStretch.mjs";
 import { STRETCH_CONFIG } from "./engine.js";
 
-export async function benchmark(seconds = 10) {
+export async function benchmark(seconds = 10, channels = 2) {
   const sr = 48000, rate = 0.75;
   const n = seconds * sr;
   const L = new Float32Array(n), R = new Float32Array(n);
@@ -23,10 +24,12 @@ export async function benchmark(seconds = 10) {
   }
   const outLen = Math.ceil(n / rate);
   const oc = new OfflineAudioContext(2, outLen, sr);
-  const node = await SignalsmithStretch(oc);
+  const node = await SignalsmithStretch(oc, channels === 2 ? undefined : { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [channels] });
   await node.configure(STRETCH_CONFIG);
   node.connect(oc.destination);
-  await node.addBuffers([L, R]);
+  const input = [L, R];
+  for (let c = 2; c < channels; c++) input.push(c % 2 ? R.slice() : L.slice());
+  await node.addBuffers(input.slice(0, channels));
   await node.schedule({ output: 0, outputTime: 0, input: 0, active: true, rate, semitones: 2 });
   const t0 = performance.now();
   await oc.startRendering();

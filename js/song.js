@@ -7,7 +7,7 @@
 
 import { loadPrefs, savePrefs, getEntry, getSheet, saveSheet, deleteSheet, deleteManualSong, get, shippedChart, deleteChart } from "./library.js";
 import { recordingMeta, fmtBytes } from "./recordings.js";
-import { openReview, closeReview } from "./review.js";
+import { openReview, closeReview, resetReview } from "./review.js";
 import {
   displayChord, transposeChord, transposeKey, guessKey, splitBars, voicingsFor, pimaChord, suggestCapo,
   prettyChord, simplifyChord,
@@ -221,6 +221,15 @@ function render() {
       cited: hasChords(cur.shipped) ? cur.shipped : null, prefs: cur.prefs,
       setCapo: (c) => { cur.prefs.capo = c; savePrefs(cur.id, cur.prefs); },
       onSaved: async () => { const id = await reload(); location.hash = `#/song/${encodeURIComponent(id)}/chords`; },
+      // For the PC: your sheet's lyric lines (by their index in the sheet), to line up with the singing.
+      lyrics: cur.doc ? lyricLines(cur.doc).map((x, index) => ({ index, text: x.text })).filter((x) => x.text) : null,
+      lyricCount: cur.doc ? lyricLines(cur.doc).length : 0,
+      onImported: async () => {
+        const id = await reload();
+        resetReview();
+        closePlayer();
+        if (location.hash === `#/song/${encodeURIComponent(id)}/analyse`) await openSong(cur ? cur.view : document.getElementById("view-song"), id, "analyse");
+      },
     });
     return;
   }
@@ -417,6 +426,12 @@ function playerCtx() {
     lyrics: cur.doc ? { lines: lyricLines(cur.doc).map((x) => x.text), timing: cur.timing ? cur.timing.lines : [] } : null,
     onPitch: () => {},
     startLoop: cur.startLoop,
+    // A link analysed on the PC came back with its recording, chords and stems.
+    onImported: async () => {
+      const id = await reload();
+      closePlayer();
+      if (location.hash.startsWith(`#/song/${encodeURIComponent(id)}/player`)) await openSong(document.getElementById("view-song"), id, "player");
+    },
   };
 }
 

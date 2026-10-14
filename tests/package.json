@@ -7,7 +7,8 @@
     "test": "node run.mjs",
     "unit": "node unit.test.mjs && node data.test.mjs && node sheet.test.mjs && node detect.test.mjs && node lyrics.test.mjs",
     "ui": "node ui.test.mjs",
-    "player": "node player.test.mjs"
+    "player": "node player.test.mjs",
+    "pc": "node pc.test.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.64.0"

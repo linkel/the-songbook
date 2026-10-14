@@ -1,17 +1,20 @@
 // Your recordings, kept on this device: the files go in the Origin Private
 // File System (OPFS, a private folder only this site can see), with an
 // IndexedDB fallback where OPFS can't write. Their details (name, size...)
-// are in IndexedDB "songbook" -> recordings. Nothing is uploaded.
+// are in IndexedDB "songbook" -> recordings. A recording's stems (from the PC
+// helper's analysis) are kept the same way, one file per stem. Nothing is
+// uploaded, except when you ask the PC helper to analyse a recording.
 
 import { get, getAll, put, del, requestPersist } from "./library.js";
 
 const DIR = "songbook-recordings";
+const STEMS_DIR = "songbook-stems";
 
-async function dir() {
+async function dir(name = DIR) {
   if (!navigator.storage || !navigator.storage.getDirectory) return null;
   try {
     const root = await navigator.storage.getDirectory();
-    return await root.getDirectoryHandle(DIR, { create: true });
+    return await root.getDirectoryHandle(name, { create: true });
   } catch (e) {
     return null;
   }
@@ -19,8 +22,8 @@ async function dir() {
 
 // Writable OPFS files (Safari 17+ has createWritable; older Safari only has
 // sync handles in workers, so those fall back to IndexedDB).
-async function writeOpfs(name, blob) {
-  const d = await dir();
+async function writeOpfs(name, blob, folder = DIR) {
+  const d = await dir(folder);
   if (!d) return false;
   try {
     const fh = await d.getFileHandle(name, { create: true });
@@ -93,7 +96,71 @@ export async function listRecordings() {
   return (await getAll("recordings").catch(() => [])).filter((r) => r.kind === "meta").sort((a, b) => b.savedAt - a.savedAt);
 }
 
-// { usage, quota, persisted, recordings: total bytes of recordings }.
+/* ---- Stems: { id: "stems:<song>", kind: "stems", stems: [{ name, label, size, type, backend }], detector, from } ---- */
+
+const stemFile = (songId, name) => fileName(songId) + "__" + name.replace(/[^a-z0-9]/gi, "_") + ".m4a";
+
+// stems: [{ name, label, blob }]. Replaces the song's earlier stems.
+export async function saveStems(songId, stems, extra = {}) {
+  await deleteStems(songId);
+  const list = [];
+  for (const s of stems) {
+    let backend = "opfs";
+    if (!(await writeOpfs(stemFile(songId, s.name), s.blob, STEMS_DIR))) {
+      backend = "idb";
+      await put("recordings", { id: "stem:" + songId + ":" + s.name, blob: s.blob });
+    }
+    list.push({ name: s.name, label: s.label || s.name, size: s.blob.size, type: s.blob.type || "audio/mp4", backend });
+  }
+  const meta = { id: "stems:" + songId, kind: "stems", songId, stems: list, savedAt: Date.now(), ...extra };
+  await put("recordings", meta);
+  requestPersist();
+  return meta;
+}
+
+export async function stemsMeta(songId) {
+  const m = await get("recordings", "stems:" + songId).catch(() => null);
+  return m && m.kind === "stems" ? m : null;
+}
+
+// The stem files: [{ name, label, blob }], or null when any is missing.
+export async function getStems(songId) {
+  const m = await stemsMeta(songId);
+  if (!m) return null;
+  const d = await dir(STEMS_DIR);
+  const out = [];
+  for (const s of m.stems) {
+    let blob = null;
+    if (s.backend === "opfs" && d) {
+      try { blob = await (await d.getFileHandle(stemFile(songId, s.name))).getFile(); } catch (e) { blob = null; }
+    } else {
+      const rec = await get("recordings", "stem:" + songId + ":" + s.name).catch(() => null);
+      blob = rec ? rec.blob : null;
+    }
+    if (!blob) return null;
+    out.push({ name: s.name, label: s.label, blob });
+  }
+  return out;
+}
+
+export async function deleteStems(songId) {
+  const m = await stemsMeta(songId);
+  if (!m) return;
+  const d = await dir(STEMS_DIR);
+  for (const s of m.stems) {
+    if (d) await d.removeEntry(stemFile(songId, s.name)).catch(() => {});
+    await del("recordings", "stem:" + songId + ":" + s.name).catch(() => {});
+  }
+  await del("recordings", "stems:" + songId).catch(() => {});
+}
+
+export async function listStems() {
+  return (await getAll("recordings").catch(() => [])).filter((r) => r.kind === "stems");
+}
+
+export const stemsSize = (m) => (m ? m.stems.reduce((s, x) => s + (x.size || 0), 0) : 0);
+
+// { usage, quota, persisted, recordings: total bytes of recordings and stems }.
 export async function storageInfo() {
   const out = { usage: null, quota: null, persisted: null, recordings: 0 };
   if (navigator.storage && navigator.storage.estimate) {
@@ -102,7 +169,7 @@ export async function storageInfo() {
   if (navigator.storage && navigator.storage.persisted) {
     try { out.persisted = await navigator.storage.persisted(); } catch (e) { /* ignore */ }
   }
-  out.recordings = (await listRecordings()).reduce((s, r) => s + (r.size || 0), 0);
+  out.recordings = (await listRecordings()).reduce((s, r) => s + (r.size || 0), 0) + (await listStems()).reduce((s, m) => s + stemsSize(m), 0);
   return out;
 }
 

@@ -4,9 +4,13 @@
 import { setChordDb } from "./chords.js";
 import { renderSongs, invalidateSongs } from "./songs.js";
 import { openSong, closeSong, togglePlay, transposeBy, tempoBy, toggleScroll, songMode, songState, getPlayer } from "./song.js";
-import { loadLibrary, importLibraryText, get, deviceCharts } from "./library.js";
+import { loadLibrary, importLibraryText, get, deviceCharts, shippedChart, songIdFor, getSheet } from "./library.js";
+import { parseChordPro } from "./chordpro.js";
+import { lyricLines } from "./lyrics.js";
 import { chartsFile } from "./chartfile.js";
-import { storageInfo, listRecordings, deleteRecording, fmtBytes } from "./recordings.js";
+import { storageInfo, listRecordings, deleteRecording, fmtBytes, listStems, deleteStems, stemsSize } from "./recordings.js";
+import { importBundle } from "./bundle.js";
+import { readZip } from "./zip.js";
 import { renderBatch } from "./batch.js";
 import { onAudioState, resumeAudio, StringVoices, strum, warmNotes, audioContext } from "./audio.js";
 import { esc, toast, hideToast, popoverOpen, closePopover } from "./ui.js";
@@ -15,8 +19,9 @@ import { playerState, speedBy, pitchBy, loopCurrentSection, focusMixer, playerNo
 import { helperUrl, setHelperUrl, pingHelper } from "./helper-client.js";
 import { lrclibOn, setLrclib } from "./prefs.js";
 import { speedyPitcherHere, loadFromHere, loadFromZip, startImport, renderImport, importState } from "./spimport.js";
+import { pcJobs } from "./pcjob.js";
 
-export const VERSION = "0.5.0";
+export const VERSION = "0.6.0";
 
 const views = {
   songs: document.getElementById("view-songs"),
@@ -139,6 +144,12 @@ async function renderSettings() {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     out.textContent = `${file.charts.length} chart${file.charts.length === 1 ? "" : "s"}: ${file.charts.map((c) => c.title).join(", ")}. Then: node tools/add-charts.mjs <that file>.`;
   });
+  views.settings.querySelectorAll("[data-del-stems]").forEach((b) => b.addEventListener("click", async () => {
+    if (!b.classList.contains("armed")) { b.classList.add("armed"); b.textContent = "Tap again"; return; }
+    await deleteStems(b.dataset.delStems);
+    toast("Stems deleted. The recording and chords stay.");
+    renderSettings();
+  }));
   views.settings.querySelectorAll("[data-del-rec]").forEach((b) => b.addEventListener("click", async () => {
     if (!b.classList.contains("armed")) { b.classList.add("armed"); b.textContent = "Tap again"; return; }
     await deleteRecording(b.dataset.delRec);
@@ -162,7 +173,7 @@ async function renderSettings() {
 
 // Storage: a meter, whether the browser keeps it, and each recording with Delete.
 async function storageCard(lib) {
-  const [info, recs] = await Promise.all([storageInfo(), listRecordings()]);
+  const [info, recs, stems] = await Promise.all([storageInfo(), listRecordings(), listStems()]);
   const pct = info.quota ? Math.max(1, Math.min(100, (info.usage / info.quota) * 100)) : 0;
   const recPct = info.quota ? Math.min(pct, (info.recordings / info.quota) * 100) : 0;
   const titleOf = async (id) => {
@@ -175,6 +186,11 @@ async function storageCard(lib) {
       <a class='set-label ellipsis row-link' href='#/song/${encodeURIComponent(r.id)}/chords'>${esc(await titleOf(r.id))}</a>
       <div class='meta ellipsis'>${esc(r.name)} · ${fmtBytes(r.size)}</div></div>
       <button class='btn outline small' data-del-rec='${esc(r.id)}'>Delete</button></div>`));
+  const stemRows = await Promise.all(stems.map(async (m) => `<div class='set-row'><div style='min-width:0'>
+      <a class='set-label ellipsis row-link' href='#/song/${encodeURIComponent(m.songId)}/player'>${esc(await titleOf(m.songId))}: stems</a>
+      <div class='meta ellipsis'>${esc(m.stems.map((x) => x.label).join(", "))} · ${fmtBytes(stemsSize(m))}</div></div>
+      <button class='btn outline small' data-del-stems='${esc(m.songId)}'>Delete</button></div>`));
+  rows.push(...stemRows);
   return `<div class='card set-group'>
     <div class='set-row'><div style='flex:1'><div class='set-label'>Storage</div>
       <div class='meta' id='storage-text'>Recordings ${fmtBytes(info.recordings)} · everything ${fmtBytes(info.usage)}${info.quota ? " of " + fmtBytes(info.quota) + " available" : ""}</div>
@@ -190,11 +206,13 @@ async function storageCard(lib) {
 async function playerCard() {
   const here = await speedyPitcherHere();
   return `<div class='card set-group' id='player-card'>
-    <div class='set-row'><div><div class='set-label'>PC helper</div><div class='meta'>Downloads a YouTube link's audio at home, so pitch and analysis work on it. Setup: helper/README.md in the repo.</div></div></div>
+    <div class='set-row'><div><div class='set-label'>PC helper</div><div class='meta'>Downloads a YouTube link's audio at home, and analyses recordings on the PC's GPU: stems, chords, sections and lyric timing. Setup: helper/README.md in the repo.</div></div></div>
     <form class='set-row link-row' id='helper-form'>
       <input class='text-input' id='helper-url' type='url' inputmode='url' placeholder='https://your-pc.tailnet.ts.net' value='${esc(helperUrl())}' aria-label='Helper address' autocomplete='off'>
       <button class='btn outline small' type='submit'>Test</button></form>
     <div class='meta' id='helper-status' aria-live='polite' style='padding:0 0 10px'></div>
+    <div class='set-row'><div><div class='set-label'>Import an analysis bundle</div><div class='meta' id='bundle-out'>A .zip from the helper's private/songs folder, if a job's results didn't come over by themselves.</div></div>
+      <label class='btn outline small file-btn'>Choose zip<input type='file' id='bundle-file' accept='.zip,application/zip' class='sr-only'></label></div>
     <div class='set-row'><div><div class='set-label'>Synced lyrics (LRCLIB)</div><div class='meta'>"Find on LRCLIB" in a sheet looks up line timings at lrclib.net, sending the title, artist and length. Nothing is sent otherwise.</div></div>
       <button class='switch ${lrclibOn() ? "on" : ""}' role='switch' aria-checked='${lrclibOn()}' id='lrclib-switch' aria-label='Synced lyrics from LRCLIB'></button></div>
     <div class='set-row'><div><div class='set-label'>speedy-pitcher</div><div class='meta'>${here ? "Its library is on this site: bring over recordings, loops and settings." : "Bring over its recordings, loops and settings: in speedy-pitcher, Settings → Export library, then choose that file here."}</div></div>
@@ -217,12 +235,27 @@ function wirePlayerCard() {
     out.textContent = "Testing…";
     try {
       const r = await pingHelper(url);
-      out.textContent = `Connected: yt-dlp ${r.yt_dlp || "?"}.`;
+      const a = r.analysis;
+      out.textContent = `Connected: yt-dlp ${r.yt_dlp || "?"}. ` + (a && a.available ? `Analysis ready on ${a.gpu || "the CPU"}.` : a ? "Downloads only: " + a.reason : "Downloads only (an older helper).");
     } catch (err) {
       out.textContent = err.message;
     }
   });
   v.querySelector("#lrclib-switch").addEventListener("click", () => { setLrclib(!lrclibOn()); renderSettings(); });
+  v.querySelector("#bundle-file").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    const out = v.querySelector("#bundle-out");
+    out.textContent = "Importing…";
+    try {
+      const r = await importBundleFile(f);
+      out.textContent = `${r.chart.title || "The song"}: ${r.chart.bars.length} bars of chords${r.stems ? `, ${r.stems} stems` : ""}${r.timing ? `, timing for ${r.timing} lyric lines` : ""}${r.audio ? ", and the recording" : ""}.`;
+      invalidateSongs();
+    } catch (err) {
+      out.textContent = err.message;
+    }
+  });
   const here = v.querySelector("#sp-here");
   if (here) here.addEventListener("click", async () => {
     try { await startImport("here", await loadFromHere()); } catch (err) { toast(err.message, 4000); }
@@ -236,16 +269,33 @@ function wirePlayerCard() {
   v.querySelector("#bench").addEventListener("click", async (e) => {
     const b = e.currentTarget, out = v.querySelector("#bench-out");
     b.disabled = true;
-    out.textContent = "Running (about 10 seconds of audio)…";
+    out.textContent = "Running (10 seconds of audio, twice)…";
     try {
       const { benchmark } = await import("./bench.js");
       const x = await benchmark();
-      out.textContent = `${x.toFixed(1)}× real time at 75% speed, +2 semitones. ${x > 4 ? "Plenty of headroom." : x > 1.5 ? "Fine, with some headroom." : "Tight: expect dropouts."}`;
+      const verdict = (y) => (y > 4 ? "plenty of headroom" : y > 1.5 ? "fine, with some headroom" : "tight: expect dropouts");
+      out.textContent = `Recording: ${x.toFixed(1)}× real time at 75% speed, +2 semitones (${verdict(x)}). Now 6 stems…`;
+      const y = await benchmark(10, 6);
+      out.textContent = `Recording: ${x.toFixed(1)}× real time (${verdict(x)}). Six stems: ${y.toFixed(1)}× (${verdict(y)}). At 75% speed, +2 semitones.`;
     } catch (err) {
       out.textContent = "Couldn't run: " + err.message;
     }
     b.disabled = false;
   });
+}
+
+// A bundle zip chosen by hand: it's for the song it says, or the one with its title and artist.
+async function importBundleFile(f) {
+  const files = await readZip(f);
+  const mf = files.get("bundle.json");
+  if (!mf) throw new Error("That zip isn't an analysis bundle from the PC helper.");
+  const m = JSON.parse(await mf.blob.text());
+  const lib = await loadLibrary();
+  const id = m.songId && (lib.entries.has(m.songId) || await get("charts", m.songId).catch(() => null)) ? m.songId : songIdFor(m.title || "", m.artist || "");
+  const e = lib.entries.get(id);
+  const sheet = await getSheet(id);
+  return importBundle(f, id, { title: (e && e.title) || m.title, artist: (e && e.artist) || m.artist, shipped: await shippedChart(id).catch(() => null),
+    lyricCount: sheet ? lyricLines(parseChordPro(sheet.chordpro)).length : 0 });
 }
 
 let checkVoices = null;
@@ -323,7 +373,7 @@ async function init() {
 }
 
 // For the browser tests.
-window.songbook = { songState, getPlayer, playerState, playerNow, importState, VERSION };
+window.songbook = { songState, getPlayer, playerState, playerNow, importState, pcJobs, VERSION };
 
 init();
 

@@ -1,47 +1,105 @@
 # The Songbook's PC helper
 
-`songbook_helper.py` runs on your PC at home. Today it does one job: it
-**downloads a link's audio** (YouTube and anything else yt-dlp supports), so the
-Songbook can change its pitch, draw its waveform and analyse its chords. Your
-phone reaches it privately over **Tailscale**. Later phases add chord, stem and
-lyric analysis on the GPU.
+`songbook_helper.py` runs on your PC at home and does two jobs:
+
+1. It **downloads a link's audio** (YouTube and anything else yt-dlp supports), so
+   the Songbook can change its pitch, draw its waveform and analyse its chords.
+2. It **analyses recordings on the PC's GPU** (Phase 5a): stems, beats and bar
+   lines, chords, sections, and your pasted lyrics lined up with the singing.
+   The results come back to the phone as a bundle.
+
+Your phone reaches it privately over **Tailscale**.
 
 It started as speedy-pitcher's `helper/yt_helper.py`. It keeps the same
-endpoints (`/ping`, `/audio?url=`) and port (8765), so speedy-pitcher can use
-this helper too: put the same address in its Settings.
+download endpoints (`/ping`, `/audio?url=`) and port (8765), so speedy-pitcher
+can use this helper too: put the same address in its Settings.
 
 Downloading from YouTube is against YouTube's Terms of Service; that's your
-call, and you've made it. The audio goes from your PC to your phone and stays
-there. Nothing is uploaded anywhere else.
+call, and you've made it. Audio goes between your PC and your phone and nowhere
+else. The analysis bundles stay in `private/songs/` (gitignored) and on the phone.
 
-## 1. Install (once, about 5 minutes)
+## What the analysis uses
+
+| Step | What does it | Licence |
+|---|---|---|
+| Stems: vocals, guitar, bass, drums, piano, other | [Demucs](https://github.com/adefossez/demucs) `htdemucs_6s` | MIT |
+| Beats and downbeats (bar lines, 3/4 or 4/4) | [beat_this](https://github.com/CPJKU/beat_this) (CPJKU, ISMIR 2024) | MIT |
+| Chords (170 kinds: triads, 6ths, 7ths, sus, dim, aug) | [ChordMini](https://github.com/ptnghia-j/ChordMini)'s BTC model (`btc_model_best.pth`), run on the stems without the vocals | MIT |
+| Slash chords (G/B) | the bass stem's note, when it's clearly the chord's third or fifth | ours |
+| Key, tuning, bars, sections | key profiles (Krumhansl, Temperley), librosa's tuning estimate, the app's half-bar rule, bar blocks that repeat by chords and sound | ours |
+| Lyric timing | [stable-ts](https://github.com/jianfch/stable-ts) on Whisper large-v3, aligning your pasted lines to the vocal stem | MIT |
+
+Every result is a draft: the chart says "detected" and names these detectors.
+
+**Why not ChordMini's whole backend?** It's the plan's first choice, so it was
+tried first (2026-10-14). Its Flask backend pins PyTorch 2.6 and TensorFlow
+2.15 on Python 3.10, plus Spleeter and madmom. PyTorch 2.6 has no build for
+the RTX 5090 (sm_120), so it would run on the CPU, and its own README says
+native Windows installs aren't reliable. Its *model* repo (ChordMini, MIT,
+PyTorch 2.9, checkpoints included) works fine, so the helper calls that
+directly. allin1 (sections by name) was skipped: it needs NATTEN, which would
+have to be built against CUDA here. beat_this does the beats instead, and the
+helper finds the sections itself.
+
+**Measured on the RTX 5090** with songs rendered by the app's synth
+(`tests/pc.test.mjs`): tempo within 1 bpm and the key right on all 6, 100% of
+bars right as triads, the AABB form found, D/F♯ named, and stems that add back
+up to the song within 0 samples. A 5-minute song takes about 25 s, plus about
+10 s to load the models the first time. Lyric timing on two real songs: a
+median of 0.15 s from Whisper's own word times, with two or three lines per
+song off by 2–5 s (nudge those with tap-to-sync).
+
+## 1. Install
+
+### Downloads only (Windows, about 5 minutes)
 
 From the repo root, in PowerShell:
 
 ```powershell
 py -3.12 -m venv helper\.venv
 helper\.venv\Scripts\python -m pip install -r helper\requirements.txt
+helper\.venv\Scripts\python helper\songbook_helper.py
 ```
 
-- `yt-dlp[default]` does the downloading.
-- `deno` is the JavaScript runtime yt-dlp now needs for YouTube.
-- `imageio-ffmpeg` brings an ffmpeg, which turns YouTube's audio into a plain
-  m4a that iPhones can play.
+The phone's "Analyse on your PC" then says this helper only downloads.
 
-`helper\.venv` is gitignored.
+### With analysis: WSL2 Ubuntu (about 15 minutes, 15 GB)
+
+The models want Linux, so the helper runs in Ubuntu under WSL2 on the same PC.
+CUDA works there through the Windows NVIDIA driver; nothing else to install on
+Windows. Ubuntu 24.04 is already installed (`wsl -l -v` lists `Ubuntu-24.04`),
+with a user `ironc` that has no password yet. To set one, for `sudo`:
+`wsl -d Ubuntu-24.04 -u root passwd ironc`.
+
+In PowerShell, from the repo root:
+
+```powershell
+wsl -d Ubuntu-24.04 -- bash helper/setup-wsl.sh
+```
+
+This installs uv, a Python 3.12 venv in `~/.venvs/songbook` (inside Ubuntu,
+not in the repo), PyTorch for CUDA 12.8, the libraries in
+`requirements-gpu.txt`, and ChordMini's code and checkpoints in
+`~/src/ChordMini-model` (pinned to a tested commit). The models download on
+the first analysis: Demucs and beat_this (about 0.2 GB) and Whisper large-v3
+(3 GB, only when you send lyrics). It's safe to run again.
 
 ## 2. Run it
 
 ```powershell
-helper\.venv\Scripts\python helper\songbook_helper.py
+wsl -d Ubuntu-24.04 -- bash helper/run-wsl.sh
 ```
 
-It prints `Songbook helper on http://127.0.0.1:8765`. Leave the window open
-while you use it. It only listens on this PC; Tailscale (next step) is what
-lets the phone in.
+(or, downloads only: `helper\.venv\Scripts\python helper\songbook_helper.py`).
+It prints `Songbook helper on http://127.0.0.1:8765` and, for analysis,
+`Analysis: ready (NVIDIA GeForce RTX 5090)`. Leave the window open while you
+use it. Run only one of the two: they share the port.
 
-**Quick check on the PC:** open <http://127.0.0.1:8765/ping> in a browser. You
-should see `{"ok": true, "yt_dlp": "…", "helper": "songbook"}`.
+WSL forwards Ubuntu's `127.0.0.1:8765` to Windows' `127.0.0.1:8765`, so
+everything below works the same for either.
+
+**Quick check on the PC:** open <http://127.0.0.1:8765/ping>. You should see
+`{"ok": true, ..., "analysis": {"available": true, "gpu": "NVIDIA GeForce RTX 5090"}}`.
 
 When the app runs locally (<http://localhost:8320>), it can use
 `http://127.0.0.1:8765` directly: enter that under Settings → PC helper.
@@ -50,6 +108,7 @@ When the app runs locally (<http://localhost:8320>), it can use
 usual reason downloads fail:
 
 ```powershell
+wsl -d Ubuntu-24.04 -- bash -c "~/.venvs/songbook/bin/pip install -U 'yt-dlp[default]'"
 helper\.venv\Scripts\python -m pip install -U "yt-dlp[default]"
 ```
 
@@ -82,32 +141,65 @@ open. The app needs HTTPS, because a page served over HTTPS can't call a plain
    see the same `{"ok": true, …}` as on the PC. If it doesn't load, check that
    Tailscale is switched on on the phone and the helper window is still running.
 6. **In the Songbook:** Settings → **PC helper**: paste the address and tap
-   **Test**. It should say "Connected".
+   **Test**. It should say "Connected" and "Analysis ready on NVIDIA GeForce RTX 5090".
 
 Nothing here opens a port on your router or Windows Firewall: the helper only
 listens on 127.0.0.1, and Tailscale hands requests to it.
 
 ## 4. Use it
 
-In a song's **Player**, paste a YouTube link (or use one the song already has,
-like Late July's tutorial) and tap **Download**. The PC fetches the audio and
-the phone keeps it as that song's recording. From then on it works like any
-file: speed, **pitch** and fine tune, the waveform, loops, and **Analyse** for
-chords.
+- **Analyse a recording:** in a song, Chords → **Chords from audio**. With a
+  recording on the phone, **Analyse on your PC** sends it to the PC (and, with
+  **Line up my lyrics** on, your sheet's lyric lines). Each step shows as it
+  runs, and you can leave the screen: the job carries on, and the results come
+  over when you're back. Then check the draft as usual: Play along, fix bars,
+  Mark as checked.
+- **Analyse a link:** in the Player, next to a YouTube link, **Analyse** has
+  the PC download it and analyse it. The recording comes back with the chords
+  and stems.
+- **Stems:** the Player's mixer gets a row per stem (vocals, guitar, bass,
+  drums, piano, other), with **Full mix / Stems** to switch. All of them go
+  through one time-stretcher, so speed, pitch and loops work as before. On the
+  phone each stem plays in mono to save memory; Settings → **Test stretch
+  speed** shows whether six stems keep up on your phone.
+- **If the results don't come over** (say the phone lost the connection): the
+  bundle is in `private/songs/<song>.zip` on the PC. Settings → **Import an
+  analysis bundle** takes that zip.
+- **Late July:** the tutorial is played in open D♭. To learn it in open D, open
+  the song's Player, tap **Download** next to the tutorial, then raise **Pitch**
+  by **+1**. Speed down to taste: the pitch stays where you put it.
 
-**Late July:** the tutorial is played in open D♭. To learn it in open D, open
-the song's Player, tap **Download** next to the tutorial, then raise **Pitch**
-by **+1**. Speed down to taste: the pitch stays where you put it.
+## The endpoints
+
+| | |
+|---|---|
+| `GET /ping` | `{"ok", "yt_dlp", "helper": "songbook", "version", "analysis": {"available", "gpu" or "reason"}}` |
+| `GET /audio?url=<link>` | the audio file (m4a when available) |
+| `POST /analyze[?url=<link>]` | queues an analysis; multipart form fields: `file` (unless `?url=`), `song`, `title`, `artist`, `lyrics` (JSON `[{index, text}]`), `lang`. Returns the job. |
+| `GET /jobs`, `GET /jobs/<id>` | `{"state": "queued/running/done/failed/cancelled", "step", "progress", "steps": [{key, label, p}], "error"}` |
+| `POST /jobs/<id>/cancel` | |
+| `GET /bundle/<id>.zip` | the result |
+
+A bundle is a stored (uncompressed) zip with `bundle.json` (the manifest),
+`chart.json` (a detected chart in the app's format, with per-beat chords so bar
+lines and tempo can still be changed on the phone), `stems/*.m4a` (AAC, 96 kbps),
+`timing.json` when you sent lyrics, and `audio.m4a` when the PC downloaded the
+recording itself. To try the analysis on one file without the server:
+
+```bash
+~/.venvs/songbook/bin/python helper/analysis.py song.mp3 --out /tmp/bundle
+```
 
 ## Notes
 
 - **Allowed callers.** Browsers may only call the helper from
   `https://linkel.github.io` (the deployed app, shared with speedy-pitcher) or
   `localhost`. Add another origin with `--allow-origin https://example.org`.
-- **One download at a time.** That's plenty for one person and keeps YouTube calm.
-- **Limits.** Files up to 200 MB.
+- **One job at a time** on the GPU, and one download at a time. That's plenty
+  for one person and keeps YouTube calm.
+- **Limits.** Files up to 200 MB and 20 minutes.
 - **Errors.** "Sign in to confirm you're not a bot" usually means yt-dlp needs
   updating (step 2), or YouTube is rate-limiting your IP for a while.
 - **Start with Windows (optional).** In Task Scheduler, create a task "At log
-  on" that runs `helper\.venv\Scripts\pythonw.exe helper\songbook_helper.py`
-  with the repo folder as "Start in".
+  on" that runs `wsl.exe` with the arguments
+  `-d Ubuntu-24.04 --cd C:\Users\ironc\git\the-songbook -- bash helper/run-wsl.sh`.

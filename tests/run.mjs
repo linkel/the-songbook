@@ -20,6 +20,7 @@ try {
   run("analysis.test.mjs");
   run("ui.test.mjs");
   run("player.test.mjs");
+  run("pc.test.mjs");
 } catch (e) {
   console.log(`\nFAIL browser checks skipped: nothing at ${BASE} (${e.message}). Serve the repo on 8320 first.`);
   failed++;

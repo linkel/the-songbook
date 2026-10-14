@@ -248,9 +248,31 @@ export function keyName(k) {
   return c ? c + (k.scale === "minor" ? "m" : "") : null;
 }
 
-// A chart from bars. meta: { bpm, bpb, keys, profile, version, duration, file }.
+// Sections from the PC helper's segments ([{ name, bars: [first, last] }],
+// found by sound as well as chords), named with the bars' chords now. A part
+// whose chords differ on a repeat gets its own numbered section, as on the PC.
+export function sectionsFromSegments(bars, segments) {
+  const sections = [], form = [];
+  for (const sg of segments) {
+    const chords = bars.slice(sg.bars[0], sg.bars[1] + 1).map((b) => b.chords.join(" ")).join(" | ");
+    const base = String(sg.name).replace(/ \(\d+\)$/, "");
+    const same = sections.filter((s) => s.name === base || s.name.startsWith(base + " ("));
+    let sec = same.find((s) => s.chords === chords);
+    if (!sec) {
+      sec = { name: same.length ? `${base} (${same.length + 1})` : base, chords };
+      sections.push(sec);
+    }
+    form.push(sec.name);
+  }
+  return { sections, form };
+}
+
+const segmentsFit = (segs, bars) => Array.isArray(segs) && segs.length && segs.every((s) => s.bars[0] <= s.bars[1] && s.bars[1] < bars.length);
+
+// A chart from bars. meta: { bpm, bpb, keys, profile, version, duration, file,
+// detector (when not this app's), segments (the PC helper's, when the bars are its own) }.
 export function detectedChart(bars, ticks, meta) {
-  const { sections, form } = findSections(bars);
+  const { sections, form } = segmentsFit(meta.segments, bars) ? sectionsFromSegments(bars, meta.segments) : findSections(bars);
   const names = bars.flatMap((b) => b.chords);
   const fromAnalyser = keyName(meta.keys && meta.keys[meta.profile || "edma"]);
   const sure = bars.filter((b) => b.sure).length / Math.max(1, bars.length);
@@ -263,10 +285,10 @@ export function detectedChart(bars, ticks, meta) {
     sections: sections.map(({ name, chords }) => ({ name, chords })),
     form,
     source: "detected",
-    detector: `${meta.oldDetector ? OLD_DETECTOR : DETECTOR} (essentia ${meta.version || "?"})`,
+    detector: meta.detector || `${meta.oldDetector ? OLD_DETECTOR : DETECTOR} (essentia ${meta.version || "?"})`,
     confidence: sure >= 0.85 ? "medium" : "low",
     sources: [],
-    notes: "Detected from your recording: a draft. Check it by ear with Play along.",
+    notes: meta.detector ? "Detected from your recording on the PC: a draft. Check it by ear with Play along." : "Detected from your recording: a draft. Check it by ear with Play along.",
     beats: ticks.map((t) => Math.round(t * 1000) / 1000),
     bars: bars.map((b) => ({ t: Math.round(b.t * 1000) / 1000, n: b.n, chords: b.chords, strength: b.strength, sure: b.sure, edited: !!b.edited })),
     analysis: { bpm: meta.bpm, bpmConfidence: meta.bpmConfidence, keys: meta.keys, profile: meta.profile || "edma",

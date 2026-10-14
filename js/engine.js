@@ -5,6 +5,9 @@
 // owner's app), with its output going through the Songbook's mixer
 // ("recording" and "click" tracks) and helpers for mapping song time to the
 // audio clock, which the app guitar and the highlights use.
+// Stems (from the PC helper) go through the same stretcher as one many-channel
+// input, split after it into a mixer track per stem, so they stay in sync at
+// any speed and pitch (plan §9.1, option 1).
 
 import SignalsmithStretch from "../vendor/signalsmith-stretch/SignalsmithStretch.mjs";
 import { audioContext, track } from "./audio.js";
@@ -19,7 +22,20 @@ export const STRETCH_CONFIG = { blockMs: 200, intervalMs: 40, splitComputation: 
 const HORIZON_VISIBLE = 1.5;  // seconds of future loop jumps to keep scheduled
 const HORIZON_HIDDEN = 12;    // longer while backgrounded (timers get throttled)
 
-let nodePromise = null;
+// One stretch node per channel count (2 for a recording, more for stems).
+const nodePromises = new Map();
+function stretchNode(channels) {
+  if (!nodePromises.has(channels)) {
+    const c = audioContext();
+    nodePromises.set(channels, (async () => {
+      const node = await SignalsmithStretch(c, channels === 2 ? undefined
+        : { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [channels] });
+      await node.configure(STRETCH_CONFIG);
+      return node;
+    })());
+  }
+  return nodePromises.get(channels);
+}
 
 export function makeClick(c, freq, len = 0.045) {
   const n = Math.floor(c.sampleRate * len);
@@ -55,34 +71,69 @@ export class FileEngine extends EventTarget {
   }
 
   async init() {
-    if (this.node) return;
-    if (!nodePromise) {
-      const c = audioContext();
-      nodePromise = (async () => {
-        const node = await SignalsmithStretch(c);
-        await node.configure(STRETCH_CONFIG);
-        return node;
-      })();
-    }
+    if (this.ready) return;
     const c = audioContext();
-    this.node = await nodePromise;
-    this.node.connect(track("recording").gain);
     this.clickGain = track("click").gain;
     this.clickHi = makeClick(c, 1760);
     this.clickLo = makeClick(c, 1175);
-    // Schedule user actions this far ahead: the node needs that long to
-    // compensate its own latency, and our position mirror then stays exact.
-    this.lead = Math.min(0.35, (await this.node.latency()) + 0.02);
+    await this.useNode(2, null);
     this.timer = setInterval(() => this.tick(), 50);
+    this.ready = true;
+  }
+
+  // Switch to the node for `count` channels and wire its output: to the
+  // "recording" track, or (layout: [{ track, channels: [indexes] }]) each
+  // stem's channels to its own track.
+  async useNode(count, layout) {
+    const node = await stretchNode(count);
+    if (this.node && this.node !== node) {
+      this.stopNow();
+      this.node.disconnect();
+      this.node.dropBuffers();
+    }
+    for (const w of this.wires || []) w.disconnect();
+    this.wires = [];
+    node.disconnect();
+    if (!layout) {
+      node.connect(track("recording").gain);
+    } else {
+      const c = audioContext();
+      const split = c.createChannelSplitter(count);
+      node.connect(split);
+      this.wires.push(split);
+      for (const st of layout) {
+        const dest = track(st.track).gain;
+        if (st.channels.length === 2) {
+          const merge = c.createChannelMerger(2);
+          split.connect(merge, st.channels[0], 0);
+          split.connect(merge, st.channels[1], 1);
+          merge.connect(dest);
+          this.wires.push(merge);
+        } else {
+          split.connect(dest, st.channels[0]);
+        }
+      }
+    }
+    if (this.node !== node) {
+      this.node = node;
+      // Schedule user actions this far ahead: the node needs that long to
+      // compensate its own latency, and our position mirror then stays exact.
+      this.lead = Math.min(0.35, (await node.latency()) + 0.02);
+    }
+    this.layout = layout;
   }
 
   // channels: Float32Array per channel at the context's sample rate. They are
   // transferred to the audio thread (the main thread no longer holds a copy).
-  async load(channels, duration) {
+  // layout: null for a recording (1 or 2 channels), or which channels are
+  // which stem: [{ track, channels: [i, ...] }].
+  async load(channels, duration, layout = null) {
     // A newer load may start while this one waits (e.g. for the first tap on
     // iOS); only the latest may touch the node, or the songs would get mixed.
     const seq = this.loadSeq = (this.loadSeq || 0) + 1;
     await this.init();
+    if (seq !== this.loadSeq) return;
+    await this.useNode(layout ? channels.length : 2, layout);
     if (seq !== this.loadSeq) return;
     this.stopNow();
     await this.node.dropBuffers();

@@ -43,3 +43,11 @@ export function shippableChart(c) {
 export function chartsFile(charts) {
   return { app: "songbook", kind: "charts", exported: new Date().toISOString(), charts: charts.map(shippableChart).filter(Boolean) };
 }
+
+// What a shipped chart knows besides chords (tuning, links, picking) carries
+// over to your own chart of the same song.
+export function keepShippedFacts(chart, shipped) {
+  if (!shipped) return chart;
+  for (const k of ["type", "style", "tuning", "links", "picking"]) if (shipped[k] && !chart[k]) chart[k] = shipped[k];
+  return chart;
+}

@@ -2,14 +2,19 @@
 // it on this device, then check the draft: tempo ×2/÷2, bar lines ("this is
 // beat 1"), a chord picker per bar, Play along with the recording, agreement
 // with a cited chart, Save chords (detected) and Mark as checked (mine).
+// Or analyse on the PC helper's GPU (js/pcjob.js): stems, chords, sections and
+// lyric timing come back as a bundle, and the draft is checked here the same way.
 
 import { esc, toast, showPopover, closePopover, ICONS } from "./ui.js";
 import { decodeToMono, analyseSignal } from "./analysis.js";
 import { beatChords, rescaleBeats, findDownbeat, findMeter, makeBars, findSections, keyName, detectedChart, compareWithChart } from "./detect.js";
 import { saveRecording, getRecording, recordingMeta, deleteRecording, fmtBytes } from "./recordings.js";
 import { saveChart } from "./library.js";
+import { keepShippedFacts } from "./chartfile.js";
 import { prettyChord, transposeChord, transposeKey, suggestCapo, diatonicChords, bestVoicing, parseChord, chordName, guessKey } from "./chords.js";
 import { PlayAlong } from "./playalong.js";
+import { helperUrl, helperInfo } from "./helper-client.js";
+import { pcJob, onPcJob, startPcJob, cancelPcJob, clearPcJob } from "./pcjob.js";
 
 const ROOTS = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
 const QUALS = [["", "maj"], ["m", "m"], ["7", "7"], ["m7", "m7"], ["maj7", "maj7"], ["sus4", "sus4"], ["sus2", "sus2"]];
@@ -43,7 +48,9 @@ export async function openReview(view, ctx) {
     if (c && c.analysis && (c.analysis.chroma || c.analysis.beatChords) && c.beats) {
       const a = c.analysis;
       rv.raw = { ticks: a.ticks || c.beats, chords: a.beatChords, strength: a.beatStrength || [], chroma: a.chroma || null,
-        keys: a.keys, bpm: a.bpm, bpmConfidence: a.bpmConfidence, version: a.version, duration: a.duration };
+        keys: a.keys, profile: a.profile, bpm: a.bpm, bpmConfidence: a.bpmConfidence, version: a.version, duration: a.duration, tuning: a.tuning };
+      // From the PC helper: its detector's name, and its sections while the bar lines stay its own.
+      if (a.helper) Object.assign(rv.raw, { detector: c.detector, helper: a.helper, downbeats: a.downbeats, segments: a.segments, barTimes: c.bars.map((b) => b.t), bundle: a.bundle });
       rv.factor = a.factor || 1;
       rv.bpb = a.bpb || 4;
       rv.phase = a.phase || 0;
@@ -55,17 +62,96 @@ export async function openReview(view, ctx) {
   rv.ctx = ctx;
   rv.view = view;
   rv.meta = await recordingMeta(ctx.id);
+  listenPc();
   render();
+  if (helperUrl()) helperInfo().then((x) => { if (rv && rv.view === view) { rv.helper = x; renderPc(); } });
+}
+
+// A new chart arrived (from the PC): start over from it.
+export function resetReview() { closeReview(); rv = null; }
+
+/* ---- Analysing on the PC ---- */
+
+const PC_ACTIVE = new Set(["running", "fetching", "importing"]);
+
+function listenPc() {
+  if (rv.unlisten) rv.unlisten();
+  rv.unlisten = onPcJob(rv.id, (st) => {
+    if (!rv || rv.id !== st.songId) return;
+    if (st.phase === "done" && !rv.imported) {
+      rv.imported = true;
+      const r = st.result;
+      const what = [`${r.chart.bars.length} bars of chords`, r.stems ? `${r.stems} stems` : "", r.timing ? `timing for ${r.timing} lyric lines` : ""].filter(Boolean);
+      toast(`From your PC: ${what.join(", ")}. Check the chords by ear.`, 4500);
+      clearPcJob(rv.id);
+      if (rv.ctx.onImported) rv.ctx.onImported();
+      return;
+    }
+    renderPc();
+  });
+}
+
+async function startPc() {
+  const file = await getRecording(rv.id);
+  if (!file) { toast("Choose the recording first: the PC analyses the same file."); return; }
+  rv.imported = false;
+  const lyr = rv.ctx.lyrics && rv.pcLyrics !== false ? rv.ctx.lyrics : null;
+  await startPcJob(rv.id, { file, title: rv.ctx.title, artist: rv.ctx.artist, lyrics: lyr, lyricCount: rv.ctx.lyricCount });
+  listenPc();
+  renderPc();
+}
+
+function pcHtml() {
+  if (!helperUrl()) return "";
+  const st = pcJob(rv.id);
+  const h = rv.helper;
+  const head = "<div class='set-label'>Analyse on your PC</div>";
+  if (st && PC_ACTIVE.has(st.phase)) {
+    const steps = (st.job && st.job.steps) || [];
+    const rows = steps.map((s) => `<div class='step'><div class='step-row'><span>${s.p >= 1 ? "<span class='ok' aria-hidden='true'>✓</span>" : "<span class='ok pending' aria-hidden='true'>•</span>"}${esc(s.label)}</span>
+      <span class='v'>${s.p > 0 && s.p < 1 ? Math.round(s.p * 100) + "%" : ""}</span></div></div>`).join("");
+    const where = !st.id ? "Sending the recording to your PC…" : st.phase === "fetching" ? `Bringing the results over… ${Math.round(st.fetched * 100)}%`
+      : st.phase === "importing" ? "Keeping them on this device…" : st.offline ? "Can't reach the PC right now; still trying." : st.job && st.job.queue ? `Waiting for ${st.job.queue} other job${st.job.queue === 1 ? "" : "s"}.` : "Working on it. You can leave this screen; it carries on.";
+    const p = st.phase === "fetching" ? 1 : (st.job && st.job.progress) || 0;
+    return `<div class='card steps pc-card'><div class='set-row'><div>${head}<div class='meta' aria-live='polite'>${esc(where)}</div></div>
+        <button class='btn outline small' data-pc='cancel' ${st.id ? "" : "disabled"}>Cancel</button></div>
+      <div class='prog' aria-label='PC analysis progress'><i style='width:${Math.round(p * 100)}%'></i></div>${rows}</div>`;
+  }
+  const failed = st && (st.phase === "failed" || st.phase === "cancelled") ? `<p class='note' role='alert'>${esc(st.error || "That didn't work.")}</p>` : "";
+  const ready = h && h.ok && h.analysis && h.analysis.available;
+  const meta = !h ? "Checking your PC helper…"
+    : !h.ok ? esc(h.error || "Can't reach the helper.")
+    : !ready ? esc((h.analysis && h.analysis.reason) || "This helper only downloads; analysis needs the GPU setup in helper/README.md.")
+    : `Stems, chords, bar lines and sections on ${esc(h.analysis.gpu || "the PC")}, usually under a minute. The recording goes to your PC over Tailscale and nowhere else.`;
+  const lyr = rv.ctx.lyrics && rv.ctx.lyrics.length;
+  return `<div class='card set-group pc-card'>
+    <div class='set-row'><div>${head}<div class='meta'>${meta}</div></div>
+      <button class='btn ${rv.raw ? "outline" : "primary"} small' data-pc='start' ${ready && rv.meta && !rv.running ? "" : "disabled"}>${rv.raw && rv.raw.helper ? "Again" : "Analyse"}</button></div>
+    ${lyr && ready ? `<div class='set-row'><div><div class='set-label'>Line up my lyrics</div><div class='meta'>Sends your sheet's ${lyr} lyric lines too, to time them against the singing.</div></div>
+      <button class='switch ${rv.pcLyrics !== false ? "on" : ""}' role='switch' aria-checked='${rv.pcLyrics !== false}' data-pc='lyrics' aria-label='Line up my lyrics'></button></div>` : ""}
+    ${failed}</div>`;
+}
+
+function renderPc() {
+  const el = rv && rv.view && rv.view.querySelector("#pc");
+  if (!el) return;
+  el.innerHTML = pcHtml();
+  el.querySelectorAll("[data-pc]").forEach((b) => b.addEventListener("click", () => {
+    const a = b.dataset.pc;
+    if (a === "start") startPc();
+    else if (a === "cancel") cancelPcJob(rv.id);
+    else if (a === "lyrics") { rv.pcLyrics = rv.pcLyrics === false; renderPc(); }
+  }));
 }
 
 /* ---- Derived ---- */
 
 const capo = () => rv.ctx.prefs.capo || 0;
 // The recording's tuning (cents from A440), so the strum-along matches it.
-const tuningCents = () => (rv.raw && rv.raw.chroma && rv.raw.chroma.tuning) || 0;
+const tuningCents = () => (rv.raw && (rv.raw.chroma ? rv.raw.chroma.tuning : rv.raw.tuning)) || 0;
 
 function soundingKey() {
-  const k = rv.raw && keyName(rv.raw.keys && rv.raw.keys.edma);
+  const k = rv.raw && keyName(rv.raw.keys && rv.raw.keys[rv.raw.profile || "edma"]);
   return k || (guessKey(rv.bars.flatMap((b) => b.chords)) || {}).key || null;
 }
 
@@ -118,11 +204,15 @@ export function chartFromRaw(raw, { id, title, artist, file, bpb = null, factor 
   const ph = phase === null ? findDownbeat(beats, bpb) : phase;
   const bs = bars || makeBars(beats, { bpb, phase: ph });
   const tk = beats.length ? beats.map((b) => b.t0).concat(beats[beats.length - 1].t1) : [];
-  const chart = detectedChart(bs, tk, { bpm: raw.bpm * factor, bpmConfidence: raw.bpmConfidence, keys: raw.keys, profile: "edma",
+  // The helper's sections fit only its own bar lines.
+  const sameBars = raw.barTimes && factor === 1 && bs.length === raw.barTimes.length && bs.every((b, i) => Math.abs(b.t - raw.barTimes[i]) < 0.02);
+  const chart = detectedChart(bs, tk, { bpm: raw.bpm * factor, bpmConfidence: raw.bpmConfidence, keys: raw.keys, profile: raw.profile || "edma",
     version: raw.version, duration: raw.duration, file, bpb, phase: ph, at: new Date().toISOString(),
-    tuning: raw.chroma ? raw.chroma.tuning : null, oldDetector: !raw.chroma });
+    tuning: raw.chroma ? raw.chroma.tuning : raw.tuning ?? null, oldDetector: !raw.chroma && !raw.detector, detector: raw.detector || null,
+    segments: sameBars ? raw.segments : null });
   const r2 = (v) => v.map((x) => Math.round(x * 100) / 100);
   Object.assign(chart.analysis, { ticks: raw.ticks.map((t) => Math.round(t * 1000) / 1000), factor, version: raw.version });
+  if (raw.helper) Object.assign(chart.analysis, { helper: raw.helper, downbeats: raw.downbeats, bundle: raw.bundle, ...(sameBars ? { segments: raw.segments } : {}) });
   // What the bars were named from, so bar lines and tempo can change later without the audio.
   if (raw.chroma) {
     chart.analysis.chroma = { tuning: raw.chroma.tuning, treble: raw.chroma.treble.map(r2), bass: raw.chroma.bass.map(r2), energy: r2(raw.chroma.energy) };
@@ -134,13 +224,7 @@ export function chartFromRaw(raw, { id, title, artist, file, bpb = null, factor 
   return chart;
 }
 
-// What a shipped chart knows besides chords (tuning, links, picking) carries
-// over to your own chart of the same song.
-export function keepShippedFacts(chart, shipped) {
-  if (!shipped) return chart;
-  for (const k of ["type", "style", "tuning", "links", "picking"]) if (shipped[k] && !chart[k]) chart[k] = shipped[k];
-  return chart;
-}
+export { keepShippedFacts };
 
 function markChecked(chart) {
   chart.source = "mine";
@@ -194,6 +278,7 @@ function render() {
     </div>
     <div class='song-body'><div class='song-scroll' id='song-scroll'><div class='song-main-col'>
       ${dropCard()}
+      <div id='pc'>${pcHtml()}</div>
       ${rv.error ? `<div class='card empty' role='alert'><b>That didn't work.</b><br>${esc(rv.error)}</div>` : ""}
       <div id='steps'>${stepsHtml()}</div>
       ${rv.raw && !rv.running ? resultHtml() : ""}
@@ -204,6 +289,7 @@ function render() {
     </div>`;
   view.querySelector("#song-scroll").scrollTop = keep;
   wire();
+  renderPc();
   updateTransport();
 }
 
@@ -216,9 +302,9 @@ function dropCard() {
       <span><b>Choose a recording</b><span class='meta' style='display:block'>mp3, m4a, wav or flac. Analysed on this device; nothing is uploaded.</span></span>${input}</label>`;
   }
   return `<div class='drop'><span class='icon'>${icon}</span>
-      <span style='flex:1;min-width:0'><b class='ellipsis'>${esc(m.name)}</b><span class='meta' style='display:block'>${fmtBytes(m.size)} · kept on this device · nothing uploaded</span></span></div>
+      <span style='flex:1;min-width:0'><b class='ellipsis'>${esc(m.name)}</b><span class='meta' style='display:block'>${fmtBytes(m.size)} · kept on this device${helperUrl() ? "" : " · nothing uploaded"}</span></span></div>
     <div class='toolbar'>
-      <button class='tool' data-act='reanalyse' ${rv.running ? "disabled" : ""}>${rv.raw ? "Analyse again" : "Analyse"}</button>
+      <button class='tool' data-act='reanalyse' ${rv.running ? "disabled" : ""}>${helperUrl() ? (rv.raw ? "Again here" : "Analyse here") : rv.raw ? "Analyse again" : "Analyse"}</button>
       <label class='tool' for='rec-file'>Another file${input}</label>
       <button class='tool' data-act='delete-rec' ${rv.running ? "disabled" : ""}>Delete recording</button>
     </div>`;
@@ -251,7 +337,8 @@ function stepsHtml() {
       <button class='btn outline small' data-act='half' aria-pressed='${rv.factor === 0.5}'>÷2</button>
       <button class='btn outline small' data-act='double' aria-pressed='${rv.factor === 2}'>×2</button></div>` : "";
   const keyNote = !rv.running && r && r.keys ? `<div class='note' style='padding:0 0 10px'>Key profiles: ${Object.entries(r.keys).map(([p, k]) => `${p} ${esc(prettyChord(k.key))} ${esc(k.scale)}`).join(" · ")}. The relative major or minor is easy to confuse.</div>` : "";
-  return `<div class='card steps'>${rows}${tempoTools}${keyNote}</div>`;
+  const pcNote = !rv.running && r && r.helper ? `<div class='note' style='padding:0 0 10px'>Analysed on your PC: ${esc(r.detector || "the helper")}.</div>` : "";
+  return `<div class='card steps'>${rows}${tempoTools}${keyNote}${pcNote}</div>`;
 }
 
 function renderSteps() {

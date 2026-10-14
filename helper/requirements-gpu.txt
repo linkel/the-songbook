@@ -1,0 +1,29 @@
+# The Songbook's PC helper with analysis on the GPU (Phase 5a), in WSL2 Ubuntu
+# 24.04, Python 3.12. setup-wsl.sh installs these; PyTorch comes first, from
+# its CUDA 12.8 index (the RTX 5090 needs sm_120: CUDA 12.8 or newer):
+#   pip install torch==2.9.1 torchaudio==2.9.1 --index-url https://download.pytorch.org/whl/cu128
+# These are the versions tested on 2026-10-14.
+
+# Download (as in requirements.txt)
+yt-dlp[default]==2026.8.19
+deno==2.9.7
+
+# Stems: Demucs htdemucs_6s (MIT)
+demucs==4.1.0
+# Beats and downbeats: beat_this (CPJKU, MIT)
+beat_this @ https://github.com/CPJKU/beat_this/archive/b95c8ab0c58c2d9fcfd40508ae8dffbc05ac4f5c.zip
+# Lyric alignment: stable-ts on Whisper (MIT)
+stable-ts==2.19.1
+
+# Audio and the ChordMini model code (github.com/ptnghia-j/ChordMini, MIT, cloned by setup-wsl.sh)
+numpy==2.2.6
+scipy==1.18.1
+librosa==0.11.0
+soundfile==0.14.0
+soxr==1.1.0
+PyYAML==6.0.3
+tqdm==4.70.1
+mir_eval==0.8.2
+matplotlib==3.11.2
+seaborn==0.13.2
+scikit-learn==1.9.1
