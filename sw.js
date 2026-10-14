@@ -1,5 +1,5 @@
 // Bump the version on every change, so installed copies pick up the update.
-const CACHE = "songbook-v7";
+const CACHE = "songbook-v8";
 
 // The app shell and shipped data. Large optional assets (vendor/essentia's
 // WASM, later models) are not listed: they're cached the first time they're fetched.
