@@ -195,11 +195,12 @@ async function autoLoad() {
   const want = S.set.source;
   const meta = S.ctx.rec || await recordingMeta(S.id);
   if (!S) return;
-  if (want !== "youtube" && meta) return loadFile();
+  const bundled = S.ctx.chart && S.ctx.chart.audio;
+  if (meta && (want !== "youtube" || bundled)) return loadFile();
+  // A song with its own recording in the app (songs/audio/) opens that, not a YouTube link.
+  if (bundled) return loadShipped();
   if (want === "youtube" && S.set.youtube) return loadYouTube(S.set.youtube.id);
   if (meta) return loadFile();
-  // A recording that comes with the app (songs/audio/): fetched once, then kept on this device.
-  if (S.ctx.chart && S.ctx.chart.audio) return loadShipped();
 }
 
 async function loadShipped() {
@@ -211,26 +212,29 @@ async function loadShipped() {
     if (!r.ok) throw new Error(r.status);
     const blob = await r.blob();
     if (S !== s) return;
-    s.meta = await saveRecording(s.id, new File([blob], a.file.split("/").pop(), { type: blob.type || "audio/mpeg" }), { source: "app" });
+    // Played straight from the app: the offline cache keeps a copy, so it
+    // isn't stored again with your recordings.
     s.loading = null;
-    await loadFile();
+    await loadFile(blob, { name: a.file.split("/").pop(), size: blob.size, source: "app" });
   } catch (e) {
-    // Not there (offline, or not deployed): the usual choices instead.
     if (S !== s) return;
     s.loading = null;
+    s.error = "Couldn't get the recording that comes with the app" + (navigator.onLine ? "." : ": you're offline, and it isn't saved yet.");
     if (s.view) render();
   }
 }
 
-async function loadFile() {
+// blob/meta: play this file directly (one that came with the app, or one the
+// browser wouldn't store); otherwise the recording kept on this device.
+async function loadFile(direct = null, directMeta = null) {
   const s = S;
-  s.loading = "Reading your recording…";
+  s.loading = "Reading the recording…";
   s.error = null;
   if (s.view) render();
   try {
-    const blob = await getRecording(s.id);
+    const blob = direct || await getRecording(s.id);
     if (!blob) throw new Error("The recording isn't on this device any more.");
-    s.meta = await recordingMeta(s.id);
+    s.meta = direct ? directMeta : await recordingMeta(s.id);
     if (ytEngine && s.kind === "youtube") ytEngine.unload();
     const engine = getFileEngine();
     const dec = await decodeSong(blob, audioContext());
@@ -773,6 +777,8 @@ function sourceBadge() {
 function youTubeLinks() {
   const out = [];
   const add = (url, label) => { const id = parseYouTubeId(url); if (id && !out.some((x) => x.id === id)) out.push({ id, url, label }); };
+  // A song with its own recording keeps its links (a tutorial, say) in Chords mode, not here.
+  if (S.ctx.chart && S.ctx.chart.audio) return out;
   if (S.set.youtube) add("https://www.youtube.com/watch?v=" + S.set.youtube.id, S.set.youtube.title || "Your YouTube link");
   for (const l of (S.ctx.chart && S.ctx.chart.links) || []) add(l.url, l.label);
   return out;
@@ -854,7 +860,7 @@ function sourceDetails() {
     const timedFrom = S.timed && S.timed.file;
     return `<div class='card set-group'>
       <div class='set-row'><div style='min-width:0'><div class='set-label'>Recording</div>
-        <div class='meta ellipsis'>${m ? esc(m.name) + " · " + fmtBytes(m.size) : ""} · on this device</div></div>
+        <div class='meta ellipsis'>${m ? esc(m.name) + " · " + fmtBytes(m.size) : ""} · ${m && m.source === "app" ? "comes with the app" : m && m.source === "unsaved" ? "not kept on this device" : "on this device"}</div></div>
         <label class='btn outline small file-btn'>Change${FILE_INPUT}</label></div>
       ${S.timed ? (timedFrom && m && timedFrom !== m.name ? `<p class='note'>The chords' bar times come from ${esc(timedFrom)}; analyse this file to line them up.</p>` : "")
         : `<div class='set-row'><div><div class='set-label'>Chords</div><div class='meta'>Analyse the recording for chord and section lanes, loops by bar and the app guitar.</div></div>
@@ -1028,7 +1034,9 @@ function wire() {
     try {
       S.meta = await saveRecording(S.id, f);
     } catch (e) {
-      toast(e.message || "Couldn't keep the file on this device.", 4000);
+      // Still play it; it just won't be here next time.
+      await loadFile(f, { name: f.name, size: f.size, source: "unsaved" });
+      toast("Playing it, but this browser wouldn't keep it (private browsing?), so you'll need to choose it again next time.", 5000);
       return;
     }
     await loadFile();

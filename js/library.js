@@ -32,7 +32,7 @@ function tx(stores, mode, fn) {
     let result;
     Promise.resolve(fn(t)).then((r) => { result = r; });
     t.oncomplete = () => resolve(result);
-    t.onerror = () => reject(t.error);
+    t.onerror = () => reject(t.error || new Error("This browser wouldn't store that here (private browsing?)."));
     t.onabort = () => reject(t.error || new Error("Storage transaction aborted"));
   }));
 }

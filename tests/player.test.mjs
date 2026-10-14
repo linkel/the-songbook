@@ -101,6 +101,18 @@ async function seedSong(page, { title = "Player Song", bars = ["G", "D", "Em", "
   }, { title, bars, bpm, repeat });
 }
 
+// A song with no recording and a YouTube link (a tutorial, say). Returns its id.
+async function youTubeSong(page) {
+  return page.evaluate(async () => {
+    const L = await import("/js/library.js");
+    const id = await L.addManualSong("Tutorial Song", "Nobody");
+    const p = await L.loadPrefs(id, null);
+    p.player = { youtube: { id: "H_p4siY3Zc4", title: "A tutorial (stand-in)" } };
+    await L.savePrefs(id, p);
+    return id;
+  });
+}
+
 async function openPlayer(page, id) {
   await show(page, `#/song/${encodeURIComponent(id)}/player`);
   await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind && s.engine && s.duration > 0 && document.querySelector(".wave-main"); }, null, { timeout: 30000 });
@@ -367,8 +379,8 @@ for (const [w, h] of [[375, 752], [375, 630], [1440, 900]]) {
       await page.waitForTimeout(150);
       await page.screenshot({ path: `${out}/${w}x${h}-${theme}-player-mixer.png` });
       await layout(page, `${tag} player, mixer`);
-      // Late July: no recording, a YouTube link (the stand-in), then its player.
-      await show(page, "#/song/late-july/player");
+      // No recording, a YouTube link (the stand-in), then its player.
+      await show(page, `#/song/${await youTubeSong(page)}/player`);
       await page.waitForSelector("[data-yt]");
       await page.screenshot({ path: `${out}/${w}x${h}-${theme}-player-source.png` });
       await layout(page, `${tag} player, no recording`);
@@ -393,9 +405,10 @@ for (const [w, h] of [[375, 752], [375, 630], [1440, 900]]) {
 /* ---- YouTube without the helper ---- */
 await section("youtube", async () => {
   const { context, page, errors } = await newPage();
-  await show(page, "#/song/late-july/player");
+  const yid = await youTubeSong(page);
+  await show(page, `#/song/${yid}/player`);
   await page.waitForSelector("[data-yt]");
-  check("youtube: Late July offers its tutorial", (await page.textContent(".song-scroll")).includes("Late July (tutorial)") || (await page.$$("[data-yt]")).length > 0);
+  check("youtube: offers the song's link", (await page.textContent(".song-scroll")).includes("A tutorial (stand-in)"));
   await page.click("[data-yt]");
   await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "youtube" && s.duration > 0; });
   await page.click("[data-hold='speed-']");
@@ -417,7 +430,7 @@ await section("youtube", async () => {
   await page.click(".transport.mobile .p-play");
   await page.reload();
   await page.waitForSelector("html[data-ready]");
-  await show(page, "#/song/late-july/player");
+  await show(page, `#/song/${yid}/player`);
   await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "youtube"; }, null, { timeout: 8000 });
   check("youtube: reopens on YouTube after a reload", true);
   check("youtube: no page errors", errors.length === 0, errors.join("; "));
@@ -438,8 +451,20 @@ await section("bundled audio", async () => {
   await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "file" && s.duration > 0; }, null, { timeout: 20000 });
   check("bundled: loads Late July's clip by itself", asked && asked.includes("/songs/audio/Late%20July"), asked);
   eq("bundled: with the chords' bar times", (await P(page)).timed, true);
-  eq("bundled: kept on the device", (await page.evaluate(() => import("/js/recordings.js").then((m) => m.recordingMeta("late-july")))).source, "app");
+  eq("bundled: played straight from the app, not stored again", await page.evaluate(() => import("/js/recordings.js").then((m) => m.recordingMeta("late-july"))), null);
   check("bundled: labelled", (await page.textContent(".topbar .badge")).includes("With the app"));
+  check("bundled: the tutorial isn't offered as a source", (await page.$$("[data-yt]")).length === 0);
+  await page.click(".transport.mobile .p-play");
+  await page.waitForTimeout(1200);
+  check("bundled: plays", (await P(page)).playing && (await P(page)).pos > 0.3);
+  await page.click(".transport.mobile .p-play");
+  // Chosen YouTube before (as on the phone): the song's own recording still opens.
+  await page.evaluate(async () => { const L = await import("/js/library.js"); const p = await L.loadPrefs("late-july", null); p.player = { ...p.player, source: "youtube", youtube: { id: "H_p4siY3Zc4", title: "tutorial" } }; await L.savePrefs("late-july", p); });
+  await page.reload();
+  await page.waitForSelector("html[data-ready]");
+  await show(page, "#/song/late-july/player");
+  await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind && s.duration > 0; }, null, { timeout: 20000 });
+  eq("bundled: wins over an earlier YouTube choice", (await P(page)).kind, "file");
   check("bundled: no page errors", errors.length === 0, errors.join("; "));
   await context.close();
 });
@@ -463,15 +488,16 @@ await section("helper", async () => {
   await page.click("#helper-form button");
   await page.waitForTimeout(500);
   check("helper: Test connects", (await page.textContent("#helper-status")).includes("Connected"), await page.textContent("#helper-status"));
-  await show(page, "#/song/late-july/player");
+  const hid = await youTubeSong(page);
+  await show(page, `#/song/${hid}/player`);
   await page.waitForSelector("[data-dl]");
   await page.click("[data-dl]");
   await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "file" && s.duration > 0; }, null, { timeout: 20000 });
   check("helper: asked for the tutorial's audio", asked && asked.includes("/audio?url=") && asked.includes("H_p4siY3Zc4"), asked);
-  const meta = await page.evaluate(() => import("/js/recordings.js").then((m) => m.recordingMeta("late-july")));
-  eq("helper: kept as Late July's recording", [meta.source, meta.name], ["helper", "Late July (tutorial).wav"]);
+  const meta = await page.evaluate((id) => import("/js/recordings.js").then((m) => m.recordingMeta(id)), hid);
+  eq("helper: kept as the song's recording", [meta.source, meta.name], ["helper", "Late July (tutorial).wav"]);
   await page.click("[data-hold='pitch+']");
-  eq("helper: then pitch works (+1 for open D)", (await P(page)).set.semis, 1);
+  eq("helper: then pitch works", (await P(page)).set.semis, 1);
   check("helper: no page errors", errors.length === 0, errors.join("; "));
   await context.close();
 });
