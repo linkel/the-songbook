@@ -1,0 +1,4 @@
+# The Songbook's PC helper (download part). Python 3.10+; 3.12 recommended.
+yt-dlp[default]
+deno
+imageio-ffmpeg

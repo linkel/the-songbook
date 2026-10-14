@@ -1,7 +1,9 @@
 // The song view (#/song/<id>/<mode>): Sheet (chords over lyrics), Chords
-// (sections as bars), and the sheet editor (#/song/<id>/edit). Transpose,
-// Simple, Aa and Capo, chord popovers, auto-scroll, and Play (the app guitar
-// strums or picks the chart, with the sheet or bars lit as it goes).
+// (sections as bars), Player (js/player.js) and the sheet editor
+// (#/song/<id>/edit). Transpose, Simple, Aa and Capo, chord popovers,
+// auto-scroll, and Play (the app guitar strums or picks the chart, with the
+// sheet or bars lit as it goes; with a recording, the sheet plays that and
+// follows its lyric timing). Tap-to-sync and LRCLIB lookups set the timing.
 
 import { loadPrefs, savePrefs, getEntry, getSheet, saveSheet, deleteSheet, deleteManualSong, get, shippedChart, deleteChart } from "./library.js";
 import { recordingMeta, fmtBytes } from "./recordings.js";
@@ -18,9 +20,12 @@ import { StringVoices, strum, resumeAudio, warmNotes, plainStrum, audioContext }
 import { PATTERN_BY_ID, OPEN_MIDI } from "./patterns.js";
 import { esc, sourceBadge, sourceSentence, pickingLabel, patternName, ICONS, toast, showPopover, closePopover } from "./ui.js";
 import { invalidateSongs } from "./songs.js";
+import { openPlayer, leavePlayerView, closePlayer, pitchShift, playerNow, onPlayerFrame, togglePlayer as toggleRecording, playRecording } from "./player.js";
+import { lyricLines, getTiming, saveTiming, lineAt, findSyncedLyrics, alignToSheet, sheetFromTiming } from "./lyrics.js";
+import { lrclibOn } from "./prefs.js";
 
 const MODES = [["sheet", "Sheet"], ["chords", "Chords"], ["picking", "Picking"], ["player", "Player"]];
-const READY = new Set(["sheet", "chords", "edit", "analyse"]);
+const READY = new Set(["sheet", "chords", "edit", "analyse", "player"]);
 const MIN_BPM = 30, MAX_BPM = 220, DEFAULT_BPM = 80;
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 const SCROLL_PX = 24;   // px per second at 1x and the default font size
@@ -59,8 +64,11 @@ function capoNow() {
 
 const hasChords = (b) => !!b && (b.sections || []).some((s) => s.chords && s.chords.trim());
 
+// Your transpose plus the recording's pitch shift: chords follow pitch.
+const tr = () => cur.prefs.transpose + pitchShift(cur.id);
+
 function soundingNames(b) {
-  const shift = (b.capo || 0) + cur.prefs.transpose;
+  const shift = (b.capo || 0) + tr();
   const names = [];
   for (const s of b.sections || []) for (const bar of splitBars(s.chords)) for (const n of bar) names.push(transposeChord(n, shift));
   return names;
@@ -68,7 +76,7 @@ function soundingNames(b) {
 
 function soundingKey(b) {
   if (!b) return null;
-  if (b.key) return { key: transposeKey(b.key, cur.prefs.transpose), estimated: false };
+  if (b.key) return { key: transposeKey(b.key, tr()), estimated: false };
   const g = guessKey(soundingNames(b));
   return g ? { key: g.key, estimated: true } : null;
 }
@@ -76,13 +84,13 @@ function soundingKey(b) {
 function makeDisp(b) {
   const k = soundingKey(b);
   const shapeKey = k ? transposeKey(k.key, -capoNow()) : null;
-  const view = { transpose: cur.prefs.transpose, capo: capoNow(), simple: cur.prefs.simple, shapeKey };
+  const view = { transpose: tr(), capo: capoNow(), simple: cur.prefs.simple, shapeKey };
   return (name) => displayChord(name, b, view);
 }
 
 // The source's own voicings apply when the shapes are its own.
 function voicingMap(b) {
-  const shift = (b.capo || 0) + cur.prefs.transpose - capoNow();
+  const shift = (b.capo || 0) + tr() - capoNow();
   const own = shift === 0 && !cur.prefs.simple ? b.voicings || {} : {};
   return { ...own, ...(cur.prefs.voicings || {}) };
 }
@@ -144,11 +152,11 @@ const tempo = () => cur.prefs.tempo || (cur.chart && cur.chart.tempo) || (cur.sC
 
 /* ---- Opening ---- */
 
-export async function openSong(view, id, mode) {
+export async function openSong(view, id, mode, arg = null) {
   if (!cur || cur.id !== id) {
     stopAll();
-    const [entry, device, shipped, sheet, rec] = await Promise.all([
-      getEntry(id), get("charts", id).catch(() => null), shippedChart(id).catch(() => null), getSheet(id), recordingMeta(id)]);
+    const [entry, device, shipped, sheet, rec, timing] = await Promise.all([
+      getEntry(id), get("charts", id).catch(() => null), shippedChart(id).catch(() => null), getSheet(id), recordingMeta(id), getTiming(id)]);
     const chart = device || shipped;
     if (!entry && !chart && !sheet) {
       view.innerHTML = `<div class='topbar'><a class='back' href='#/songs' aria-label='Back'>${ICONS.back}</a>
@@ -159,13 +167,16 @@ export async function openSong(view, id, mode) {
     }
     const doc = sheet ? parseChordPro(sheet.chordpro) : null;
     const sChart = doc ? sheetChart(doc, sheet) : null;
-    cur = { id, entry, chart, device, shipped, rec, sheet, doc, sChart, prefs: null, mode: null, view, showCited: false };
+    cur = { id, entry, chart, device, shipped, rec, sheet, doc, sChart, timing, prefs: null, mode: null, view, showCited: false, sync: null };
     cur.prefs = await loadPrefs(id, chart || sChart);
   }
   cur.view = view;
+  cur.startLoop = mode === "player" ? arg : null;
   const prevMode = cur.mode;
   cur.mode = READY.has(mode) ? mode : cur.doc ? "sheet" : "chords";
   if (prevMode === "analyse" && cur.mode !== "analyse") cur.rec = await recordingMeta(id);
+  if (prevMode === "player" && cur.mode !== "player") { cur.rec = await recordingMeta(id); leavePlayerView(); }
+  if (cur.mode !== "sheet") cur.sync = null;
   render();
 }
 
@@ -176,7 +187,7 @@ async function reload() {
   return id;
 }
 
-export function closeSong() { stopAll(); closeReview(); closePopover(); }
+export function closeSong() { stopAll(); closeReview(); closePopover(); closePlayer(); }
 
 function stopAll() {
   if (player && player.playing) player.stop();
@@ -206,6 +217,12 @@ function render() {
     });
     return;
   }
+  if (cur.mode === "player") {
+    if (player && player.playing) player.stop();
+    stopScroll();
+    openPlayer(cur.view, playerCtx());
+    return;
+  }
   closeReview();
   const { view, mode } = cur;
   const b = base();
@@ -225,10 +242,8 @@ function render() {
     <div class='song-body'>
       <div class='song-scroll' id='song-scroll'><div class='song-main-col'>
         ${mode === "chords" ? headCard(b) : ""}
-        <div class='seg' role='tablist' aria-label='Mode'>${MODES.map(([m, label]) =>
-          `<button role='tab' data-mode='${m}' class='${m === mode ? "on" : ""}' aria-selected='${m === mode}'
-            ${READY.has(m) ? "" : "disabled title='Coming in a later update'"}>${label}</button>`).join("")}</div>
-        ${chords ? toolbar(mode) : ""}
+        ${modesSeg(mode)}
+        ${chords || (mode === "sheet" && cur.doc) ? toolbar(mode, chords) : ""}
         ${mode === "sheet" ? sheetBody(b, disp) : chordsBody(b, disp)}
       </div></div>
       <aside class='song-side' aria-label='Chords and transport'>
@@ -244,10 +259,218 @@ function render() {
       <span class='speed'>${SPEEDS[scroll.idx]}×</span>
       <button class='btn outline round small-round' data-act='speed+' aria-label='Faster scroll'>+</button>
     </div>
+    ${cur.sync ? syncBarHtml() : ""}
     <div class='transport mobile'>${transportInner(chords)}</div>`;
   view.querySelector("#song-scroll").scrollTop = keepScroll;
   wire(view);
   updateTransport();
+  litLine = null;
+}
+
+function modesSeg(mode) {
+  return `<div class='seg' role='tablist' aria-label='Mode'>${MODES.map(([m, label]) =>
+    `<button role='tab' data-mode='${m}' class='${m === mode ? "on" : ""}' aria-selected='${m === mode}'
+      ${READY.has(m) ? "" : "disabled title='Coming in a later update'"}>${label}</button>`).join("")}</div>`;
+}
+
+/* ---- Player mode ---- */
+
+// The chart with bar times (from an analysed recording), else the chart.
+function timedChart() {
+  const d = cur.device;
+  if (d && Array.isArray(d.bars) && d.bars.length && typeof d.bars[0].t === "number") return d;
+  return cur.chart;
+}
+
+function playerCtx() {
+  const c = timedChart();
+  const links = (cur.chart && cur.chart.links) || (cur.shipped && cur.shipped.links) || [];
+  let cache = { key: null, fn: null };
+  const disp = (name) => {
+    if (!c) return name;
+    const key = tr() + ":" + capoNow() + ":" + cur.prefs.simple;
+    if (cache.key !== key) cache = { key, fn: makeDisp(c) };
+    return cache.fn(name);
+  };
+  return {
+    id: cur.id, title: songTitle(), artist: songArtist(), prefs: cur.prefs, rec: cur.rec,
+    chart: c ? { ...c, links } : { links }, disp,
+    modesHtml: modesSeg("player"),
+    sideHtml: c && hasChords(c) ? `<div class='h2'>Chords</div><div class='boxes'>${boxesHtml(c, disp)}</div>` : "",
+    wireSide: (v) => v.querySelectorAll(".box[data-chord]").forEach((b) => b.addEventListener("click", () => openChord([b.dataset.chord]))),
+    lyrics: cur.doc ? { lines: lyricLines(cur.doc).map((x) => x.text), timing: cur.timing ? cur.timing.lines : [] } : null,
+    onPitch: () => {},
+    startLoop: cur.startLoop,
+  };
+}
+
+/* ---- The sheet following the recording ---- */
+
+let litLine = null;
+onPlayerFrame((f) => {
+  if (!cur || f.id !== cur.id || cur.mode !== "sheet" || !cur.view) return;
+  if (f.playing !== cur.recPlaying) { cur.recPlaying = f.playing; updateTransport(); }
+  const lines = cur.doc ? lyricLines(cur.doc) : [];
+  const idx = lineAt(cur.timing ? cur.timing.lines : [], f.pos);
+  const ln = idx >= 0 ? lines[idx] : null;
+  const el = ln ? cur.view.querySelector(`.sheet .line[data-s='${ln.s}'][data-l='${ln.l}']`) : null;
+  if (el !== litLine) {
+    if (litLine) litLine.classList.remove("now");
+    litLine = el;
+    if (el) { el.classList.add("now"); if (f.playing && !cur.sync) follow(el); }
+  }
+  if (cur.sync) updateSyncBar(f.pos);
+});
+
+/* ---- Tap-to-sync ---- */
+
+function syncBarHtml() {
+  return `<div class='sync-bar' role='region' aria-label='Sync lyrics'>
+    <div class='sync-info meta'></div>
+    <div class='sync-btns'>
+      <button class='btn outline round' data-sync='play' aria-label='Play or pause the recording'>▶</button>
+      <button class='btn outline' data-sync='earlier' aria-label='Line starts earlier'>−0.1 s</button>
+      <button class='btn primary' data-sync='tap' style='flex:1'>Next line</button>
+      <button class='btn outline' data-sync='later' aria-label='Line starts later'>+0.1 s</button>
+    </div>
+    <div class='sync-btns'>
+      ${lrclibOn() ? "<button class='btn outline small' data-sync='lrclib'>Find on LRCLIB</button>" : ""}
+      <button class='btn outline small' data-sync='clear'>Clear timing</button>
+      <span class='spacer'></span>
+      <button class='btn outline small' data-sync='done'>Done</button>
+    </div>
+  </div>`;
+}
+
+function startSync() {
+  if (!cur.doc) return;
+  if (!cur.rec) { toast("Add a recording first (Player), then tap along to it."); return; }
+  const lines = lyricLines(cur.doc);
+  const have = new Map((cur.timing ? cur.timing.lines : []).map((x) => [x.index, x.t]));
+  let next = lines.findIndex((_, i) => !have.has(i));
+  if (next < 0) next = 0;
+  cur.sync = { have, next, last: null };
+  stopScroll();
+  render();
+  updateSyncBar(0);
+}
+
+function updateSyncBar(pos) {
+  const bar = cur.view.querySelector(".sync-bar");
+  if (!bar) return;
+  const lines = lyricLines(cur.doc);
+  const { next, have } = cur.sync;
+  const ln = lines[next];
+  const p = playerNow();
+  const playBtn = bar.querySelector("[data-sync=play]");
+  if (playBtn) playBtn.textContent = p && p.playing ? "❚❚" : "▶";
+  const info = bar.querySelector(".sync-info");
+  const text = ln ? (ln.text || "(chords)") : "All lines timed";
+  const t = p ? " · " + Math.floor(p.pos / 60) + ":" + String(Math.floor(p.pos % 60)).padStart(2, "0") : "";
+  info.textContent = `${have.size} of ${lines.length} lines timed${t}. Next: ${text.length > 48 ? text.slice(0, 47) + "…" : text}`;
+  cur.view.querySelectorAll(".sheet .line.next").forEach((e) => e.classList.remove("next"));
+  if (ln) { const el = cur.view.querySelector(`.sheet .line[data-s='${ln.s}'][data-l='${ln.l}']`); if (el) el.classList.add("next"); }
+}
+
+async function syncAct(what) {
+  const lines = lyricLines(cur.doc);
+  const sy = cur.sync;
+  const p = playerNow();
+  if (what === "play") {
+    if (p && p.id === cur.id) await toggleRecording(); else await playRecording(playerCtx());
+  } else if (what === "tap") {
+    if (!p || !p.playing) { toast("Play the recording, then tap as each line starts."); return; }
+    if (sy.next >= lines.length) return;
+    sy.have.set(sy.next, Math.max(0, p.pos - 0.08));
+    sy.last = sy.next;
+    sy.next = Math.min(lines.length, sy.next + 1);
+    await storeSync("tap");
+    // Follow the line being timed.
+    const ln = lines[Math.min(sy.next, lines.length - 1)];
+    const el = ln && cur.view.querySelector(`.sheet .line[data-s='${ln.s}'][data-l='${ln.l}']`);
+    if (el) follow(el);
+  } else if (what === "earlier" || what === "later") {
+    const i = sy.last ?? (sy.next > 0 ? sy.next - 1 : null);
+    if (i === null || !sy.have.has(i)) { toast("Tap a line first."); return; }
+    sy.have.set(i, Math.max(0, sy.have.get(i) + (what === "later" ? 0.1 : -0.1)));
+    await storeSync("tap");
+    toast(`Line ${i + 1} starts at ${sy.have.get(i).toFixed(1)} s.`, 1200);
+  } else if (what === "clear") {
+    sy.have.clear();
+    sy.next = 0;
+    sy.last = null;
+    await storeSync("tap");
+  } else if (what === "lrclib") {
+    await lrclibForSheet();
+  } else if (what === "done") {
+    cur.sync = null;
+    render();
+    return;
+  }
+  updateSyncBar(p ? p.pos : 0);
+}
+
+async function storeSync(source) {
+  const lines = [...cur.sync.have].map(([index, t]) => ({ index, t }));
+  const saved = await saveTiming(cur.id, lines, source);
+  cur.timing = { id: cur.id, lines: saved, source };
+}
+
+/* ---- LRCLIB ---- */
+
+async function recordingDuration() {
+  const p = playerNow();
+  if (p && p.id === cur.id) { const d = (await import("./player.js")).playerState(); if (d && d.duration) return d.duration; }
+  return (cur.device && cur.device.analysis && cur.device.analysis.duration) || null;
+}
+
+// With a sheet: take LRCLIB's line times for the lines that match.
+async function lrclibForSheet() {
+  toast("Looking on LRCLIB…", 0);
+  try {
+    const found = await findSyncedLyrics({ title: songTitle(), artist: songArtist(), duration: await recordingDuration() });
+    if (!found) { toast("LRCLIB has no synced lyrics for this song.", 3500); return; }
+    const lines = lyricLines(cur.doc);
+    const timing = alignToSheet(found.synced, lines);
+    if (!timing.length) { toast("LRCLIB found the song, but its lines don't match your sheet.", 4000); return; }
+    for (const x of timing) cur.sync.have.set(x.index, x.t);
+    cur.sync.next = lines.findIndex((_, i) => !cur.sync.have.has(i));
+    if (cur.sync.next < 0) cur.sync.next = lines.length;
+    await storeSync("lrclib");
+    toast(`Timed ${timing.length} of ${lines.length} lines from LRCLIB. Check them as it plays.`, 4000);
+  } catch (e) {
+    toast(e.message, 4000);
+  }
+}
+
+// Without a sheet: LRCLIB's lyrics become one, with your detected chords placed by time.
+async function lrclibNewSheet(btn) {
+  btn.disabled = true;
+  toast("Looking on LRCLIB…", 0);
+  try {
+    const found = await findSyncedLyrics({ title: songTitle(), artist: songArtist(), duration: await recordingDuration() });
+    if (!found) { toast("LRCLIB has no synced lyrics for this song.", 3500); btn.disabled = false; return; }
+    const tc = timedChart();
+    const timed = tc && Array.isArray(tc.bars) && tc.bars.length && typeof tc.bars[0].t === "number";
+    const bars = timed ? tc.bars.map((b, i) => ({ t: b.t, t1: tc.bars[i + 1] ? tc.bars[i + 1].t : b.t + 2, chords: b.chords })) : [];
+    const chordpro = sheetFromTiming(found.synced, bars, { title: songTitle(), artist: songArtist() });
+    const rec = { id: cur.id, chordpro, source: "lrclib", sources: [found.source], chordsFrom: timed ? (tc.source === "mine" ? "mine" : "detected") : null };
+    await saveSheet(rec);
+    // The sheet's lyric lines are LRCLIB's lines in order: they keep its times.
+    const withText = found.synced.filter((x) => x.text);
+    const tl = [];
+    let j = 0;
+    lyricLines(parseChordPro(chordpro)).forEach((ln, i) => { if (ln.text && j < withText.length) { tl.push({ index: i, t: withText[j].t }); j++; } });
+    await saveTiming(cur.id, tl, "lrclib");
+    toast(timed ? "Sheet made from LRCLIB's lyrics with your chords placed by time. Check it as it plays." : "Sheet made from LRCLIB's lyrics. Analyse a recording to add chords.", 4500);
+    const id = cur.id;
+    cur = null;
+    invalidateSongs();
+    await openSong(document.getElementById("view-song"), id, "sheet");
+  } catch (e) {
+    toast(e.message, 4000);
+    btn.disabled = false;
+  }
 }
 
 function keyText(b) {
@@ -280,14 +503,16 @@ function headCard(b) {
     ${chips.length ? `<div class='chips'>${chips.join("")}</div>` : ""}</div>`;
 }
 
-function toolbar(mode) {
+function toolbar(mode, chords = true) {
   const p = cur.prefs;
   const t = p.transpose > 0 ? "+" + p.transpose : String(p.transpose).replace("-", "−");
+  const shift = pitchShift(cur.id);
   return `<div class='toolbar' role='toolbar' aria-label='Chord tools'>
-    <button class='tool' data-act='transpose'>Transpose <b>${t}</b></button>
-    <button class='tool ${p.simple ? "on" : ""}' data-act='simple' aria-pressed='${p.simple}'>Simple</button>
+    ${chords ? `<button class='tool' data-act='transpose'>Transpose <b>${t}</b>${shift ? ` <span class='meta'>${shift > 0 ? "+" : "−"}${Math.abs(shift)} pitch</span>` : ""}</button>
+    <button class='tool ${p.simple ? "on" : ""}' data-act='simple' aria-pressed='${p.simple}'>Simple</button>` : ""}
     ${mode === "sheet" ? "<button class='tool' data-act='font' aria-label='Text size'>Aa</button>" : ""}
-    <button class='tool' data-act='capo'>Capo ${capoNow()}</button>
+    ${chords ? `<button class='tool' data-act='capo'>Capo ${capoNow()}</button>` : ""}
+    ${mode === "sheet" && cur.doc ? `<button class='tool ${cur.sync ? "on" : ""}' data-act='sync' aria-pressed='${!!cur.sync}'>Sync${cur.timing && cur.timing.lines.length ? " ✓" : ""}</button>` : ""}
   </div>`;
 }
 
@@ -299,7 +524,9 @@ function provenance(record, sources) {
 function sheetBody(b, disp) {
   if (!cur.doc) {
     return `<div class='card empty'><b>No sheet yet.</b><br>Paste chords over lyrics (the way Ultimate Guitar shows them) or ChordPro. It stays on this device.
-      <div style='margin-top:12px'><a class='btn primary' href='#/song/${encodeURIComponent(cur.id)}/edit'>Paste a sheet</a></div></div>`;
+      ${lrclibOn() ? `<br><br>Or get synced lyrics from LRCLIB${timedChart() && timedChart().bars ? " and place your detected chords on them by time" : ""}. It sends the title, artist and length to lrclib.net.` : ""}
+      <div style='margin-top:12px;display:flex;gap:8px;flex-wrap:wrap'><a class='btn primary' href='#/song/${encodeURIComponent(cur.id)}/edit'>Paste a sheet</a>
+      ${lrclibOn() ? "<button class='btn outline' data-act='lrclib-new'>Find on LRCLIB</button>" : ""}</div></div>`;
   }
   const info = [];
   const k = hasChords(b) ? keyText(b) : "";
@@ -309,11 +536,15 @@ function sheetBody(b, disp) {
   if (t) info.push(`<b>${t}</b> bpm`);
   if (b.time) info.push(esc(b.time));
   const strumText = cur.chart && cur.chart.strum ? `<br>Strum <b>${esc(cur.chart.strum)}</b>` : "";
-  const src = cur.sheet.source === "web" ? "From the web, cited below" : "Your sheet";
+  const src = cur.sheet.source === "web" ? "From the web, cited below"
+    : cur.sheet.source === "lrclib" ? `Lyrics and line times from LRCLIB${cur.sheet.chordsFrom ? `; chords from your ${cur.sheet.chordsFrom === "mine" ? "checked" : "detected"} chart, placed by time (check them)` : ""}`
+    : "Your sheet";
+  const timed = cur.timing && cur.timing.lines.length
+    ? `<div class='note' style='margin-top:6px'>${cur.timing.lines.length} lines timed (${cur.timing.source === "lrclib" ? "LRCLIB" : "tapped"}): the sheet follows the recording.</div>` : "";
   return `<div class='sheet-info'>${info.join(" · ")}${strumText}</div>
     <div class='sheet' style='--scale:${(1 + 0.12 * (cur.prefs.font || 0)).toFixed(2)}'>${sheetHtml(cur.doc, disp)}</div>
     <div class='card sources'>
-      <div><b>Sheet:</b> ${src}, stored on this device only.</div>${provenance(cur.sheet, cur.sheet.sources)}
+      <div><b>Sheet:</b> ${src}, stored on this device only.</div>${timed}${provenance(cur.sheet, cur.sheet.sources)}
       <div style='margin-top:10px'><a class='btn outline small' href='#/song/${encodeURIComponent(cur.id)}/edit'>Edit sheet</a></div>
     </div>`;
 }
@@ -404,7 +635,7 @@ function transportInner(chords) {
   if (cur.mode === "sheet") {
     return `<button class='btn outline scroll-btn' data-act='scroll' aria-pressed='${scroll.on}' ${cur.doc ? "" : "disabled"}>Scroll ${SPEEDS[scroll.idx]}×</button>
       <button class='btn outline tempo-btn' data-act='tempo' aria-label='Tempo'><span class='bpm'>${tempo()}</span><small>BPM</small></button>
-      <button class='btn primary play' data-act='play' style='flex:1' ${chords ? "" : "disabled"}>▶ Play song</button>`;
+      <button class='btn primary play' data-act='play' style='flex:1' ${chords || cur.rec ? "" : "disabled"}>▶ ${cur.rec ? "Recording" : "Play song"}</button>`;
   }
   return `<button class='btn outline round' data-act='bpm-' aria-label='Slower'>−</button>
     <div class='tempo' aria-live='polite'><span class='bpm'>${tempo()}</span><small>BPM</small></div>
@@ -414,10 +645,12 @@ function transportInner(chords) {
 
 function updateTransport() {
   if (!cur || !cur.view) return;
-  const playing = player && player.playing;
-  const label = cur.mode === "sheet" ? "Play song" : "Play";
+  const rec = cur.mode === "sheet" && cur.rec;
+  const pn = playerNow();
+  const playing = rec ? !!(pn && pn.id === cur.id && pn.playing) : player && player.playing;
+  const label = cur.mode === "sheet" ? (rec ? "Recording" : "Play song") : "Play";
   cur.view.querySelectorAll(".play").forEach((b) => {
-    b.textContent = playing ? "■ Stop" : "▶ " + label;
+    b.textContent = playing ? (rec ? "❚❚ Pause" : "■ Stop") : "▶ " + label;
     b.classList.toggle("stop", !!playing);
   });
   cur.view.querySelectorAll(".bpm").forEach((el) => { el.textContent = tempo(); });
@@ -542,7 +775,16 @@ export function setTempo(bpm) {
 export function tempoBy(n) { if (cur) setTempo(tempo() + n); }
 
 export async function togglePlay() {
-  if (!cur || cur.mode === "edit" || !hasChords(base())) return;
+  if (!cur || cur.mode === "edit") return;
+  if (cur.mode === "player") { await toggleRecording(); return; }
+  if (cur.mode === "sheet" && cur.rec) {
+    const pn = playerNow();
+    if (player && player.playing) player.stop();
+    if (pn && pn.id === cur.id) await toggleRecording(); else await playRecording(playerCtx());
+    updateTransport();
+    return;
+  }
+  if (!hasChords(base())) return;
   const p = getPlayer();
   if (p.playing) { p.stop(); return; }
   const plan = playPlan();
@@ -571,8 +813,11 @@ function wire(view) {
       else if (act === "tempo") openTempo();
       else if (act === "remove-song") removeSong(b);
       else if (act === "delete-chart") deleteMyChart(b);
+      else if (act === "sync") { if (cur.sync) { cur.sync = null; render(); } else startSync(); }
+      else if (act === "lrclib-new") lrclibNewSheet(b);
     });
   });
+  view.querySelectorAll("[data-sync]").forEach((b) => b.addEventListener("click", () => syncAct(b.dataset.sync)));
   view.querySelectorAll("[data-which]").forEach((b) => b.addEventListener("click", () => {
     cur.showCited = b.dataset.which === "cited";
     render();
@@ -588,6 +833,20 @@ function wire(view) {
   }));
   const sheet = view.querySelector(".sheet");
   if (sheet) sheet.addEventListener("click", (e) => {
+    // While syncing, a tap on a line makes it the next one to time (and jumps there if it's timed).
+    if (cur.sync) {
+      const line = e.target.closest(".line");
+      if (!line) return;
+      const lines = lyricLines(cur.doc);
+      const i = lines.findIndex((x) => String(x.s) === line.dataset.s && String(x.l) === line.dataset.l);
+      if (i < 0) return;
+      cur.sync.next = i;
+      cur.sync.last = cur.sync.have.has(i) ? i : null;
+      const t = cur.sync.have.get(i);
+      if (t !== undefined) import("./player.js").then((m) => { const st = m.playerState(); if (st && st.engine) st.engine.seek(t); });
+      updateSyncBar(0);
+      return;
+    }
     const c = e.target.closest(".c[data-chord]");
     if (c) openChord([c.dataset.chord]);
   });
@@ -782,6 +1041,7 @@ async function saveEditor(source) {
 
 // For tests and the desktop shortcuts.
 export const songState = () => cur && {
+  timing: cur.timing, sync: cur.sync && { next: cur.sync.next, have: [...cur.sync.have] },
   id: cur.id, mode: cur.mode, prefs: { ...cur.prefs },
   displayed: base() ? uniqueDisplayed(base(), makeDisp(base())) : [],
   bars: base() ? playBars() : [], scrolling: scroll.on, speed: SPEEDS[scroll.idx],

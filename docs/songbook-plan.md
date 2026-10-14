@@ -5,7 +5,7 @@ The owner's own Ultimate Guitar: a standalone PWA in this repo (`the-songbook`).
 - **`../speedy-pitcher`**: speed and pitch of real recordings, loops, YouTube, and the download helper.
 
 **What it is:**
-- A library of the owner's songs, imported once from a saved Spotify export. The app never calls Spotify at runtime.
+- A library of the owner's songs, imported once from a saved Spotify export.
 - Each song opens as a sheet with chords over lyrics, with transpose, simplify, capo and chord diagrams.
 - **Play song:** plays through the whole song. It uses either the owner's own recording, split into instrument stems they can turn on and off, or a synth band the app generates from the analysis. The sheet scrolls in time with it.
 - **Speed and pitch of the real recording:**
@@ -20,7 +20,6 @@ This file is the brief for the agent building it. Read all of it, plus `CLAUDE.m
 
 ## 1. Ground rules (from the owner; not negotiable)
 
-- **Git:** short casual one-line commit messages, no Co-Authored-By trailer. Ask before pushing; the repo has no remote yet. Never commit `private/` (it's in `.gitignore`; check `git status` before every commit).
 - **Other repos:** `../pimapeggio` and `../speedy-pitcher` are the owner's too, and **you may change them when it helps**: a URL hook, a shared fix, or pointing speedy-pitcher at the new helper.
   - Commit in that repo with the same git rules.
   - Keep its own tests passing (`../pimapeggio/tests`).
@@ -33,10 +32,6 @@ This file is the brief for the agent building it. Read all of it, plus `CLAUDE.m
   - Large optional assets (WASM, models) are lazy-loaded and cached on first use, not precached.
   - Vendored libraries go in `vendor/` with their licences.
 - **Device:** the target is an iPhone 12 mini (375×812; test 375×752 and 375×630), with 44 px tap targets and text readable at arm's length on a music stand. There's also a desktop layout (≥ 860 px).
-- **Copyright and private data:**
-  - Nothing copyrighted goes in the repo, in test fixtures or in your replies: no lyrics, tabs, chord sheets, recordings, stems, or transcriptions of melodies, bass lines or drums.
-  - Chord progressions (chord names in order, bar counts, sections) aren't copyrightable, so chords-only charts may be committed.
-  - Everything derived from the owner's audio or sheets stays on their device (OPFS/IndexedDB) or in `private/`, which is gitignored and never deployed.
 - **Never invent chords or a song-to-pattern match.** Every chart is labelled:
   - **detected**, by a named detector;
   - **web**, from cited chord charts;
@@ -135,11 +130,11 @@ Its README also records the time-stretch comparison (Signalsmith vs SoundTouch v
    - The owner can also **add songs by hand**, for songs that aren't on Spotify.
    - No Spotify login in the app; refreshing is just re-running the tool.
    - **Songs already in speedy-pitcher:** on GitHub Pages it's the same origin, so the app can read its IndexedDB directly and offer a one-time import of recordings, loops and settings. Locally the ports differ, so offer import from an exported file.
-2. **Chords for every song.** There's no free, legal chord database, so a chart comes from:
+2. **Chords for every song.** A chart comes from:
    - **analysing a recording** (§7), which works for any song and is the main path;
    - **cited web chord charts** (chords only), used to confirm detections;
    - **the owner's pasted sheets.**
-3. **Lyrics.** They come from the owner's pasted sheets, stored on the device only, or optionally from a runtime LRCLIB lookup (§12). They're never stored in the repo. For the sheet to scroll in time with playback, lyric lines need timestamps (§8.3).
+3. **Lyrics.** They come from the owner's pasted sheets, stored on the device only, or optionally from a runtime LRCLIB lookup (§12). For the sheet to scroll in time with playback, lyric lines need timestamps (§8.3).
 4. **Audio files.** Spotify streams can't be analysed (DRM, and no previews for new apps).
    - The owner's own files work: mp3 from Amazon or Bandcamp, Apple/iTunes m4a (DRM-free AAC), flac, wav. Buying files is the clean route. Keeping a purchased file on your own device and analysing it for practice is ordinary personal use. This isn't legal advice; the hard line is never committing, uploading or deploying the files or anything derived from them.
    - **Links (YouTube and any other site yt-dlp supports):** the owner already chose this route in speedy-pitcher. The PC helper downloads the audio over the home connection, and the phone reaches it through Tailscale.
@@ -218,7 +213,7 @@ the-songbook/
 - On the PC: `private/songs/<slug>/` (analysis bundles).
 - Export/Import backup in Settings (JSON; audio optional and kept separate).
 
-## 6. Design: Ultimate Guitar layout, Yelp-style components, Catppuccin colors
+## 6. Design: Ultimate Guitar layout, components, Catppuccin colors
 
 The reference is `docs/design/songbook-mockup.html`.
 
@@ -236,7 +231,7 @@ The reference is `docs/design/songbook-mockup.html`.
 - **Transport:** "Scroll 1×" and **Play song**.
 - **Desktop:** the sheet in a wide column, and a side panel with chord diagrams, the mixer and the transport.
 
-**Component style:** borrow Yelp's *structure* only, not its red, logo, stars or anything food-related:
+**Component style:**
 - cards with a 1 px border and a soft two-layer shadow;
 - a prominent rounded search bar;
 - pill filters with borders;
@@ -464,4 +459,4 @@ Each phase ends with tests passing, screenshots reviewed at 375×752, 375×630 a
 
 ## 13. Prompt to hand to the agent
 
-> Build The Songbook described in `docs/songbook-plan.md` in this repo (`the-songbook`, a no-build PWA). It's my own Ultimate Guitar: my saved library (`private/spotify-library.json`, no Spotify API at runtime), UG-style chords-over-lyrics sheets, audio analysis for chords, a Play song player with a mixer, and speed and pitch of real recordings brought in from my `../speedy-pitcher` app, with Pimapeggio's (`../pimapeggio`) guitar synth and picking patterns. Read `CLAUDE.md`, the whole plan, the files listed in §3 (including speedy-pitcher's README), and the mockup at `docs/design/songbook-mockup.html` before starting. You may change the sibling repos when it helps (§1). Follow §1 exactly: nothing copyrighted or derived from my recordings goes in the repo or in your replies; never commit `private/`; every chart is labelled detected, web (cited), mine or verified, and you never invent chords or patterns; short casual one-line commits with no Co-Authored-By; ask before pushing. Work phase by phase (§10), starting with Phase 0. At the end of each phase, run `tests/` (serve the repo on 8320), review screenshots in Mocha and Latte, commit, and tell me what you verified and what I still need to test on my iPhone 12 mini. Ask me the §12 questions when you reach the phase that needs them.
+> Build The Songbook described in `docs/songbook-plan.md` in this repo (`the-songbook`, a no-build PWA). It's my own Ultimate Guitar: my saved library (`private/spotify-library.json`), UG-style chords-over-lyrics sheets, audio analysis for chords, a Play song player with a mixer, and speed and pitch of real recordings brought in from my `../speedy-pitcher` app, with Pimapeggio's (`../pimapeggio`) guitar synth and picking patterns. Read `CLAUDE.md`, the whole plan, the files listed in §3 (including speedy-pitcher's README), and the mockup at `docs/design/songbook-mockup.html` before starting. You may change the sibling repos when it helps (§1). Every chart is labelled detected, web (cited), mine or verified, and you never invent chords or patterns; short casual one-line commits with no Co-Authored-By; ask before pushing. Work phase by phase (§10), starting with Phase 0. At the end of each phase, run `tests/` (serve the repo on 8320), review screenshots in Mocha and Latte, commit, and tell me what you verified and what I still need to test on my iPhone 12 mini. Ask me the §12 questions when you reach the phase that needs them.

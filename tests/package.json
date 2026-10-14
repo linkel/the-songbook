@@ -5,8 +5,9 @@
   "description": "Checks for The Songbook. Serve the repo on port 8320 first (python -m http.server 8320 --bind 127.0.0.1 from the repo root), then npm install && npm test.",
   "scripts": {
     "test": "node run.mjs",
-    "unit": "node unit.test.mjs && node data.test.mjs && node sheet.test.mjs && node detect.test.mjs",
-    "ui": "node ui.test.mjs"
+    "unit": "node unit.test.mjs && node data.test.mjs && node sheet.test.mjs && node detect.test.mjs && node lyrics.test.mjs",
+    "ui": "node ui.test.mjs",
+    "player": "node player.test.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.64.0"
