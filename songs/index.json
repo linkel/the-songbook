@@ -1,0 +1,218 @@
+{
+ "about": "Shipped chords-only charts. Built by tools/build-song-index.mjs; edit the song files, not this.",
+ "songs": [
+  {
+   "id": "babe-im-gonna-leave-you",
+   "type": "song",
+   "title": "Babe I'm Gonna Leave You",
+   "artist": "Led Zeppelin",
+   "style": "fingerpicked",
+   "source": null,
+   "confidence": null,
+   "hasChords": false,
+   "capo": 0,
+   "key": null,
+   "patterns": [
+    "pima"
+   ],
+   "pickingSource": "web"
+  },
+  {
+   "id": "candy-man",
+   "type": "song",
+   "title": "Candy Man",
+   "artist": "Mississippi John Hurt",
+   "style": "fingerpicked",
+   "source": null,
+   "confidence": null,
+   "hasChords": false,
+   "capo": 0,
+   "key": null,
+   "patterns": [
+    "alt-thumb",
+    "travis"
+   ],
+   "pickingSource": "web"
+  },
+  {
+   "id": "dear-prudence",
+   "type": "song",
+   "title": "Dear Prudence",
+   "artist": "The Beatles",
+   "style": "fingerpicked",
+   "source": null,
+   "confidence": null,
+   "hasChords": false,
+   "capo": 0,
+   "key": null,
+   "patterns": [
+    "travis",
+    "alt-thumb"
+   ],
+   "pickingSource": "suggested"
+  },
+  {
+   "id": "dont-think-twice-its-all-right",
+   "type": "song",
+   "title": "Don't Think Twice, It's All Right",
+   "artist": "Bob Dylan",
+   "style": "fingerpicked",
+   "source": null,
+   "confidence": null,
+   "hasChords": false,
+   "capo": 0,
+   "key": null,
+   "patterns": [
+    "travis",
+    "alt-thumb"
+   ],
+   "pickingSource": "web"
+  },
+  {
+   "id": "dust-in-the-wind",
+   "type": "song",
+   "title": "Dust in the Wind",
+   "artist": "Kansas",
+   "style": "fingerpicked",
+   "source": "web",
+   "confidence": "medium",
+   "hasChords": true,
+   "capo": 0,
+   "key": null,
+   "patterns": [
+    "travis"
+   ],
+   "pickingSource": "suggested"
+  },
+  {
+   "id": "freight-train",
+   "type": "song",
+   "title": "Freight Train",
+   "artist": "Elizabeth Cotten",
+   "style": "fingerpicked",
+   "source": null,
+   "confidence": null,
+   "hasChords": false,
+   "capo": 0,
+   "key": null,
+   "patterns": [
+    "alt-thumb",
+    "travis"
+   ],
+   "pickingSource": "suggested"
+  },
+  {
+   "id": "julia",
+   "type": "song",
+   "title": "Julia",
+   "artist": "The Beatles",
+   "style": "fingerpicked",
+   "source": null,
+   "confidence": null,
+   "hasChords": false,
+   "capo": 0,
+   "key": null,
+   "patterns": [
+    "travis"
+   ],
+   "pickingSource": "suggested"
+  },
+  {
+   "id": "landslide",
+   "type": "song",
+   "title": "Landslide",
+   "artist": "Fleetwood Mac",
+   "style": "fingerpicked",
+   "source": "web",
+   "confidence": "medium",
+   "hasChords": true,
+   "capo": 3,
+   "key": null,
+   "patterns": [
+    "travis"
+   ],
+   "pickingSource": "mine"
+  },
+  {
+   "id": "nothing-else-matters",
+   "type": "song",
+   "title": "Nothing Else Matters",
+   "artist": "Metallica",
+   "style": "fingerpicked",
+   "source": null,
+   "confidence": null,
+   "hasChords": false,
+   "capo": 0,
+   "key": null,
+   "patterns": [
+    "pimami"
+   ],
+   "pickingSource": "suggested"
+  },
+  {
+   "id": "romance",
+   "type": "piece",
+   "title": "Romance (Spanish Romance)",
+   "artist": "Traditional",
+   "style": "fingerpicked",
+   "source": null,
+   "confidence": null,
+   "hasChords": false,
+   "capo": 0,
+   "key": null,
+   "patterns": [
+    "pa-m-i"
+   ],
+   "pickingSource": "suggested"
+  },
+  {
+   "id": "the-boxer",
+   "type": "song",
+   "title": "The Boxer",
+   "artist": "Simon & Garfunkel",
+   "style": "fingerpicked",
+   "source": null,
+   "confidence": null,
+   "hasChords": false,
+   "capo": 0,
+   "key": null,
+   "patterns": [
+    "travis",
+    "alt-thumb"
+   ],
+   "pickingSource": "suggested"
+  },
+  {
+   "id": "the-house-of-the-rising-sun",
+   "type": "song",
+   "title": "The House of the Rising Sun",
+   "artist": "The Animals",
+   "style": "arpeggiated",
+   "source": "web",
+   "confidence": "medium",
+   "hasChords": true,
+   "capo": 0,
+   "key": null,
+   "patterns": [
+    "pimami"
+   ],
+   "pickingSource": "suggested"
+  },
+  {
+   "id": "the-sound-of-silence",
+   "type": "song",
+   "title": "The Sound of Silence",
+   "artist": "Simon & Garfunkel",
+   "style": "fingerpicked",
+   "source": null,
+   "confidence": null,
+   "hasChords": false,
+   "capo": 0,
+   "key": null,
+   "patterns": [
+    "travis"
+   ],
+   "pickingSource": "web"
+  }
+ ]
+}

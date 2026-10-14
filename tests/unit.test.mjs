@@ -1,0 +1,111 @@
+// Unit checks: chord engine, patterns, strum parsing. node unit.test.mjs
+import fs from "fs";
+import { check, eq, report } from "./lib.mjs";
+import * as C from "../js/chords.js";
+import * as P from "../js/patterns.js";
+import { parseStrum, plainStrum, strumNotes } from "../js/audio.js";
+import { meter } from "../js/chartplay.js";
+
+C.setChordDb(JSON.parse(fs.readFileSync(new URL("../vendor/chords-db/guitar.json", import.meta.url), "utf8")));
+
+/* ---- parsing ---- */
+const parsed = (n) => { const c = C.parseChord(n); return c && (c.nc ? "NC" : [c.root, c.q, c.bass]); };
+eq("parse C", parsed("C"), [0, "", null]);
+eq("parse F#m7/C#", parsed("F#m7/C#"), [6, "m7", 1]);
+eq("parse Bbmaj7", parsed("Bbmaj7"), [10, "maj7", null]);
+eq("parse unicode B♭m", parsed("B♭m"), [10, "m", null]);
+eq("parse aliases: CM7, Cmin, Csus, C°, C+, Cø", ["CM7", "Cmin", "Csus", "C°", "C+", "Cø"].map((n) => C.parseChord(n).q), ["maj7", "m", "sus4", "dim", "aug", "m7b5"]);
+eq("parse C6/9 is a 69 chord, not a slash", parsed("C6/9"), [0, "69", null]);
+eq("parse N.C.", parsed("N.C."), "NC");
+check("reject non-chords", ["H7", "Cxyz", "hello", "", "C/X"].every((n) => C.parseChord(n) === null));
+eq("slash to its own root is dropped", parsed("C/C"), [0, "", null]);
+
+/* ---- transpose and spelling ---- */
+eq("transpose G +3 in Bb", C.transposeChord("G", 3, "Bb"), "Bb");
+eq("transpose A/C# -2 in G", C.transposeChord("A/C#", -2, "G"), "G/B");
+eq("transpose C#m +1 in D", C.transposeChord("C#m", 1, "D"), "Dm");
+eq("transpose sharps in E", C.transposeChord("D", 2, "E"), "E");
+eq("transpose to F# in sharp key", C.transposeChord("E", 2, "A"), "F#");
+eq("transpose to Gb in flat key", C.transposeChord("E", 2, "Db"), "Gb");
+eq("common spelling with no key", ["C", "C#", "D", "D#", "E"].map((n) => C.transposeChord(n, 1)), ["C#", "D", "Eb", "E", "F"]);
+eq("transpose round trip", ["Am7", "F#m7b5", "Bb/D", "Esus4"].map((n) => C.transposeChord(C.transposeChord(n, 5), -5)), ["Am7", "F#m7b5", "Bb/D", "Esus4"]);
+eq("transposeKey", [C.transposeKey("C", 3), C.transposeKey("Am", 2), C.transposeKey("Eb", -3), C.transposeKey("Em", 4)], ["Eb", "Bm", "C", "G#m"]);
+eq("pretty", C.prettyChord("Bbmaj7/F#"), "B♭maj7/F♯");
+
+/* ---- simplify ---- */
+eq("simplify", ["Cmaj7/B", "F#m7b5", "Asus4", "G7", "Am7", "Cadd9", "Bdim7", "E5"].map((n) => C.simplifyChord(n)), ["C", "F#dim", "A", "G", "Am", "C", "Bdim", "E"]);
+
+/* ---- key estimate ---- */
+eq("key of the Rising Sun verse", C.guessKey("Am C D F Am C E E".split(" ")).key, "Am");
+eq("key of C G/B Am7 G/B", C.guessKey("C G/B Am7 G/B".split(" ")).key, "C");
+eq("key of G D Em C", C.guessKey("G D Em C".split(" ")).key, "G");
+
+/* ---- voicings ---- */
+const best = (n, v) => (C.bestVoicing(n, v) || {}).spec;
+eq("open shapes first", ["C", "G", "Am", "Em", "D", "E", "A", "Dm"].map((n) => best(n)), ["x32010", "320003", "x02210", "022000", "xx0232", "022100", "x02220", "xx0231"]);
+eq("Pimapeggio extra voicings", ["G/B", "Am7", "Cmaj7", "Asus2", "F"].map((n) => best(n)), ["x20033", "x02010", "x32000", "x02200", "133211"]);
+eq("a chart's own voicing wins", best("G/B", { "G/B": "x20003" }), "x20003");
+eq("Bm is the A-shape barre", best("Bm"), "x24432");
+for (const n of ["Bb", "F#m", "C#", "Eb", "Ab", "Gm", "Cm7", "D/F#", "Am7/G", "G#dim7", "E5", "Dbmaj7", "C9", "Fmaj7", "Bm7"]) {
+  const v = C.bestVoicing(n);
+  check(`a shape for ${n}`, v && v.difficulty < 30, v ? v.spec : "none");
+  if (v) {
+    // Every note of the shape is a chord tone and the bass is right.
+    const pcs = C.chordPcs(n);
+    const midis = C.voicingMidi(v.frets);
+    const c = C.parseChord(n);
+    check(`${n} ${v.spec}: chord tones only`, midis.every((m) => pcs.includes(m % 12)));
+    if (!["dim7", "aug"].includes(c.q)) check(`${n} ${v.spec}: bass note`, midis[0] % 12 === (c.bass ?? c.root));
+  }
+}
+check("easy shapes score lower than barres", C.difficulty([null, 3, 2, 0, 1, 0]) < C.difficulty([1, 3, 3, 2, 1, 1]));
+check("impossible stretches score high", C.difficulty([1, 7, null, null, null, null]) >= 30);
+eq("voicing midi", C.voicingMidi([null, 3, 2, 0, 1, 0]), [48, 52, 55, 60, 64]);
+eq("voicing midi with capo", C.voicingMidi([null, 3, 2, 0, 1, 0], 3), [51, 55, 58, 63, 67]);
+eq("fret spec round trip", C.fretsSpec(C.specFrets("x-10-12-12-12-10")), "x-10-12-12-12-10");
+
+/* ---- Pimapeggio-compatible chords ---- */
+const pc = C.pimaChord("C");
+eq("pimaChord C is Pimapeggio's C", [pc.frets, pc.bass, pc.alt], [[3, 3, 2, 0, 1, 0], 5, 4]);
+const fm = C.pimaChord("F#m");
+check("pimaChord for any chord works with chordMidi", [1, 2, 3, 4, 5, 6].every((s) => Number.isFinite(P.chordMidi(fm, s))));
+const travis = P.PATTERN_BY_ID.get("travis");
+check("patterns play over a generated chord", travis.steps.every((st) => st.every((n) => {
+  const s = P.noteString(n, fm, { i: 3, m: 2, a: 1 });
+  return s >= 1 && s <= 6 && C.chordPcs("F#m").includes(P.chordMidi(fm, s) % 12);
+})));
+
+/* ---- capo ---- */
+eq("capo for Bb Eb F Gm is 3 (G C D Em)", C.suggestCapo("Bb Eb F Bb Gm Eb F Bb".split(" ")).capo, 3);
+eq("capo for Landslide's sounding chords is 3", C.suggestCapo("Eb Bb/D Cm7 Bb/D".split(" "), { key: "Eb" }).shapes, { "Eb": "C", "Bb/D": "G/B", "Cm7": "Am7" });
+eq("no capo for open chords", C.suggestCapo("G C D Em".split(" ")).capo, 0);
+
+/* ---- chart display ---- */
+const chart = { capo: 3, key: null, sections: [{ name: "A", chords: "C | G/B | Am7 G/B" }] };
+eq("splitBars", C.splitBars(chart.sections[0].chords), [["C"], ["G/B"], ["Am7", "G/B"]]);
+const show = (view) => C.chartChordNames(chart).map((n) => C.displayChord(n, chart, view));
+eq("display as written", show({ transpose: 0, capo: 3 }), ["C", "G/B", "Am7", "G/B"]);
+eq("capo 0 shows sounding chords", show({ transpose: 0, capo: 0, shapeKey: "Eb" }), ["Eb", "Bb/D", "Cm7", "Bb/D"]);
+eq("transpose +2 at capo 3", show({ transpose: 2, capo: 3, shapeKey: "D" }), ["D", "A/C#", "Bm7", "A/C#"]);
+eq("simple", show({ transpose: 0, capo: 3, simple: true }), ["C", "G", "Am", "G"]);
+eq("-2 renames the chords", show({ transpose: -2, capo: 3, shapeKey: "Bb" }), ["Bb", "F/A", "Gm7", "F/A"]);
+
+/* ---- patterns (copied from Pimapeggio) ---- */
+eq("58 patterns", P.PATTERNS.length, 58);
+check("pattern ids unique", new Set(P.PATTERNS.map((p) => p.id)).size === P.PATTERNS.length);
+eq("parseProgression", P.parseProgression("C | G/B | Am7 G/B").map((b) => b.map((c) => c.id)), [["C"], ["G/B"], ["Am7", "G/B"]]);
+
+/* ---- strums ---- */
+eq("parseStrum", parseStrum("D - D U - U d x").map((s) => [s.dir, !!s.accent, !!s.mute]),
+  [["D", true, false], [null, false, false], ["D", true, false], ["U", true, false], [null, false, false], ["U", true, false], ["D", false, false], ["D", false, true]]);
+let threw = false; try { parseStrum("D Q"); } catch (e) { threw = true; }
+check("parseStrum rejects junk", threw);
+eq("plain strums", [plainStrum("4/4"), plainStrum("3/4"), plainStrum("6/8")], ["D D D D", "D D D", "D - - D - -"]);
+const down = strumNotes([null, 3, 2, 0, 1, 0], { dir: "D" });
+const up = strumNotes([null, 3, 2, 0, 1, 0], { dir: "U" });
+eq("downstroke low to high", down.map((n) => n.string), [5, 4, 3, 2, 1]);
+eq("upstroke high to low, top strings", up.map((n) => n.string), [1, 2, 3, 4]);
+check("strum is staggered", down.every((n, i) => i === 0 || n.at > down[i - 1].at));
+eq("meter", [meter("4/4"), meter("3/4"), meter("6/8"), meter("12/8")].map((m) => m.beats), [4, 3, 2, 4]);
+
+report("unit");

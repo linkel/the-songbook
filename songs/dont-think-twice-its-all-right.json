@@ -1,0 +1,40 @@
+{
+  "id": "dont-think-twice-its-all-right",
+  "type": "song",
+  "title": "Don't Think Twice, It's All Right",
+  "artist": "Bob Dylan",
+  "spotify": null,
+  "key": null,
+  "capo": 0,
+  "time": null,
+  "tempo": null,
+  "style": "fingerpicked",
+  "strum": null,
+  "voicings": {},
+  "sections": [],
+  "form": [],
+  "source": null,
+  "detector": null,
+  "confidence": null,
+  "sources": [],
+  "notes": "",
+  "picking": {
+    "patterns": [
+      "travis",
+      "alt-thumb"
+    ],
+    "also": [],
+    "match": "family",
+    "source": "web",
+    "confidence": "high",
+    "part": null,
+    "sources": [
+      {
+        "label": "The fingerstyle folk guitar of Bob Dylan",
+        "url": "https://contrafactal.substack.com/p/the-fingerstyle-folk-guitar-of-bob"
+      }
+    ],
+    "description": "Travis picking: the thumb plays a bass note on every beat while the fingers add syncopated off-beats on the top strings. Capo 4 with C-position shapes, so it sounds in E. Verify the bass strings and the fills by ear.",
+    "from": "Pimapeggio suggestions.json"
+  }
+}

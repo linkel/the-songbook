@@ -1,0 +1,53 @@
+{
+  "id": "dust-in-the-wind",
+  "type": "song",
+  "title": "Dust in the Wind",
+  "artist": "Kansas",
+  "spotify": null,
+  "key": null,
+  "capo": 0,
+  "time": "4/4",
+  "tempo": null,
+  "style": "fingerpicked",
+  "strum": null,
+  "voicings": {
+    "C": "x32010",
+    "Cmaj7": "x32000",
+    "Cadd9": "x32030",
+    "Asus2": "x02200",
+    "Asus4": "x02230",
+    "Am": "x02210"
+  },
+  "sections": [
+    {
+      "name": "Intro",
+      "chords": "C | Cmaj7 | Cadd9 | C | Asus2 | Asus4 | Am | Asus2 | Cadd9 | C | Cmaj7 | Cadd9 | Am | Asus2 | Asus4 | Am"
+    }
+  ],
+  "form": [
+    "Intro"
+  ],
+  "source": "web",
+  "detector": null,
+  "confidence": "medium",
+  "sources": [
+    {
+      "label": "Heartwood Guitar, Kansas – Dust in the Wind (intro, one chord per four-beat bar, with shapes)",
+      "url": "https://www.heartwoodguitar.com/chords/kansas-dust-in-the-wind/"
+    }
+  ],
+  "notes": "Intro only. The first eight bars also match Pimapeggio's progression.",
+  "picking": {
+    "patterns": [
+      "travis"
+    ],
+    "also": [],
+    "match": "family",
+    "source": "suggested",
+    "confidence": "medium",
+    "part": null,
+    "sources": [],
+    "description": "A Travis-style picking pattern with the thumb on the bass and fingers on the off-beats, over C- and Am-shape chords. Verify by ear which strings the thumb alternates between.",
+    "from": "Pimapeggio suggestions.json"
+  }
+}

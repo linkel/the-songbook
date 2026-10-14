@@ -1,0 +1,40 @@
+{
+  "id": "candy-man",
+  "type": "song",
+  "title": "Candy Man",
+  "artist": "Mississippi John Hurt",
+  "spotify": null,
+  "key": null,
+  "capo": 0,
+  "time": null,
+  "tempo": null,
+  "style": "fingerpicked",
+  "strum": null,
+  "voicings": {},
+  "sections": [],
+  "form": [],
+  "source": null,
+  "detector": null,
+  "confidence": null,
+  "sources": [],
+  "notes": "",
+  "picking": {
+    "patterns": [
+      "alt-thumb",
+      "travis"
+    ],
+    "also": [],
+    "match": "family",
+    "source": "web",
+    "confidence": "medium",
+    "part": null,
+    "sources": [
+      {
+        "label": "Totally Guitars lesson",
+        "url": "https://totallyguitars.com/lessons/1461-candy-man-blues-guitar-lesson-mississippi-john-hurt"
+      }
+    ],
+    "description": "Alternating-thumb blues in A over a I-V (A, E) progression, with the melody on top. Hurt doesn't always alternate the bass in the textbook order and adds passing bass notes. Verify by ear.",
+    "from": "Pimapeggio suggestions.json"
+  }
+}

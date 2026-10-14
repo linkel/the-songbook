@@ -1,0 +1,34 @@
+{
+  "id": "julia",
+  "type": "song",
+  "title": "Julia",
+  "artist": "The Beatles",
+  "spotify": null,
+  "key": null,
+  "capo": 0,
+  "time": null,
+  "tempo": null,
+  "style": "fingerpicked",
+  "strum": null,
+  "voicings": {},
+  "sections": [],
+  "form": [],
+  "source": null,
+  "detector": null,
+  "confidence": null,
+  "sources": [],
+  "notes": "",
+  "picking": {
+    "patterns": [
+      "travis"
+    ],
+    "also": [],
+    "match": "family",
+    "source": "suggested",
+    "confidence": "medium",
+    "part": null,
+    "sources": [],
+    "description": "Fingerpicked in the same Donovan-taught style as Dear Prudence. Verify by ear.",
+    "from": "Pimapeggio suggestions.json"
+  }
+}

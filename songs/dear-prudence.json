@@ -1,0 +1,35 @@
+{
+  "id": "dear-prudence",
+  "type": "song",
+  "title": "Dear Prudence",
+  "artist": "The Beatles",
+  "spotify": null,
+  "key": null,
+  "capo": 0,
+  "time": null,
+  "tempo": null,
+  "style": "fingerpicked",
+  "strum": null,
+  "voicings": {},
+  "sections": [],
+  "form": [],
+  "source": null,
+  "detector": null,
+  "confidence": null,
+  "sources": [],
+  "notes": "",
+  "picking": {
+    "patterns": [
+      "travis",
+      "alt-thumb"
+    ],
+    "also": [],
+    "match": "family",
+    "source": "suggested",
+    "confidence": "high",
+    "part": null,
+    "sources": [],
+    "description": "Fingerpicked with an alternating thumb, the style Lennon learned from Donovan. In D, with drop D tuning. Verify by ear.",
+    "from": "Pimapeggio suggestions.json"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "id": "the-house-of-the-rising-sun",
+  "type": "song",
+  "title": "The House of the Rising Sun",
+  "artist": "The Animals",
+  "spotify": null,
+  "key": null,
+  "capo": 0,
+  "time": "6/8",
+  "tempo": null,
+  "style": "arpeggiated",
+  "strum": null,
+  "voicings": {
+    "F": "133211"
+  },
+  "sections": [
+    {
+      "name": "Verse",
+      "chords": "Am | C | D | F | Am | C | E | E | Am | C | D | F | Am | E | Am"
+    }
+  ],
+  "form": [
+    "Verse"
+  ],
+  "source": "web",
+  "detector": null,
+  "confidence": "medium",
+  "sources": [
+    {
+      "label": "Richter Guitar, House of the Rising Sun – The Animals (verse in four lines, 6/8, F as a barre, optional E7)",
+      "url": "https://richterguitar.com/house-of-the-rising-sun-the-animals/"
+    }
+  ],
+  "notes": "Richter Guitar writes the verse as Am C D F / Am C E E / Am C D F / Am E Am. One chord per bar here; bar lengths aren't given, especially in the last line, so check by ear. E7 can stand in for E.",
+  "picking": {
+    "patterns": [
+      "pimami"
+    ],
+    "also": [],
+    "match": "family",
+    "source": "suggested",
+    "confidence": "medium",
+    "part": null,
+    "sources": [],
+    "description": "Arpeggiated chords in 6/8, in A minor. The recording is played with a pick; fingerstyle versions usually use a p-i-m-a-m-i style roll. Verify by ear.",
+    "from": "Pimapeggio suggestions.json"
+  }
+}

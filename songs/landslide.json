@@ -1,0 +1,54 @@
+{
+  "id": "landslide",
+  "type": "song",
+  "title": "Landslide",
+  "artist": "Fleetwood Mac",
+  "spotify": null,
+  "key": null,
+  "capo": 3,
+  "time": "4/4",
+  "tempo": null,
+  "style": "fingerpicked",
+  "strum": null,
+  "voicings": {
+    "C": "x32010",
+    "G/B": "x20033",
+    "Am7": "x02010"
+  },
+  "sections": [
+    {
+      "name": "Intro / Verse",
+      "chords": "C | G/B | Am7 | G/B"
+    }
+  ],
+  "form": [
+    "Intro / Verse"
+  ],
+  "source": "web",
+  "detector": null,
+  "confidence": "medium",
+  "sources": [
+    {
+      "label": "Lauren Bateman, Landslide chords & guitar lesson (intro and verse: C, G/B, Am, G/B)",
+      "url": "https://www.laurenbateman.com/?p=4063"
+    },
+    {
+      "label": "Capo 3 chord chart by P_Trik (Ultimate Guitar, via the Penultimate Guitar mirror): C x32010, G/B x20033, Am7 x02010",
+      "url": "https://pg.zachmanson.com/tab/fleetwood-mac/landslide-chords-1793910"
+    }
+  ],
+  "notes": "Lauren Bateman writes the third chord as Am; the capo 3 chart's shape is Am7 (x02010), one finger different. Neither gives bar lengths, so it's one chord per bar here: check the timing by ear. Only the intro and verse figure is charted.",
+  "picking": {
+    "patterns": [
+      "travis"
+    ],
+    "also": [],
+    "match": "family",
+    "source": "mine",
+    "confidence": "user",
+    "part": null,
+    "sources": [],
+    "description": "Travis style, as you play it: the thumb alternates between two bass strings on every beat, and i and m pluck treble strings on the off-beats. Usually played with a capo, using C-shape chords; verify the exact strings, order and capo by ear.",
+    "from": "Pimapeggio suggestions.json"
+  }
+}
