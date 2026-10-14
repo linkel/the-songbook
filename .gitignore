@@ -1,0 +1,8 @@
+# Your listening data, recordings, stems and analysis results. Never commit.
+private/
+
+node_modules/
+tests/shots/
+__pycache__/
+*.pyc
+.venv/

@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Songbook mockup</title>
+<style>
+/* Catppuccin palette (MIT, catppuccin.com). Mocha is the default; Latte is the light flavor. */
+.mocha {
+  --crust: #11111b; --mantle: #181825; --base: #1e1e2e;
+  --surface0: #313244; --surface1: #45475a; --surface2: #585b70;
+  --overlay0: #6c7086; --overlay1: #7f849c; --subtext0: #a6adc8; --subtext1: #bac2de; --text: #cdd6f4;
+  --mauve: #cba6f7; --peach: #fab387; --blue: #89b4fa; --green: #a6e3a1; --pink: #f5c2e7;
+  --yellow: #f9e2af; --red: #f38ba8; --teal: #94e2d5; --lavender: #b4befe; --sky: #89dceb;
+  --on-accent: #11111b;
+  --shadow: 0 1px 0 rgba(0,0,0,.35), 0 4px 14px rgba(0,0,0,.28);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+}
+.latte {
+  --crust: #dce0e8; --mantle: #e6e9ef; --base: #eff1f5;
+  --surface0: #ccd0da; --surface1: #bcc0cc; --surface2: #acb0be;
+  --overlay0: #9ca0b0; --overlay1: #8c8fa1; --subtext0: #6c6f85; --subtext1: #5c5f77; --text: #4c4f69;
+  --mauve: #8839ef; --peach: #fe640b; --blue: #1e66f5; --green: #40a02b; --pink: #ea76cb;
+  --yellow: #df8e1d; --red: #d20f39; --teal: #179299; --lavender: #7287fd; --sky: #04a5e5;
+  --on-accent: #eff1f5;
+  --shadow: 0 1px 0 rgba(76,79,105,.10), 0 4px 14px rgba(76,79,105,.12);
+  --shadow-sm: 0 1px 2px rgba(76,79,105,.16);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0b0b12; color: #cdd6f4; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 28px 20px 40px; }
+h1 { font-size: 20px; margin-bottom: 4px; }
+.intro { color: #a6adc8; font-size: 14px; max-width: 900px; line-height: 1.5; margin-bottom: 24px; }
+.screens { display: flex; flex-wrap: wrap; gap: 28px; }
+.label { color: #a6adc8; font-size: 13px; margin: 0 0 8px 4px; }
+
+/* ---------- phone frame ---------- */
+.phone {
+  width: 375px; height: 752px; border-radius: 34px; overflow: hidden; position: relative;
+  background: var(--mantle); color: var(--text);
+  border: 1px solid #2a2a3a; box-shadow: 0 20px 50px rgba(0,0,0,.5);
+  display: flex; flex-direction: column;
+}
+.scroll { flex: 1; overflow: hidden; padding: 14px 16px 0; display: flex; flex-direction: column; gap: 12px; }
+
+/* ---------- Yelp-style building blocks: bordered cards, soft shadows, outlined buttons, pills ---------- */
+.card {
+  background: var(--base); border: 1px solid var(--surface0); border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.search {
+  display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px;
+  background: var(--base); border: 1px solid var(--surface1); border-radius: 12px; box-shadow: var(--shadow-sm);
+  color: var(--overlay1); font-size: 15px;
+}
+.pills { display: flex; gap: 8px; overflow: hidden; }
+.pill {
+  flex-shrink: 0; height: 36px; padding: 0 14px; display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 999px; border: 1px solid var(--surface1); background: var(--base);
+  color: var(--subtext1); font-size: 14px; font-weight: 600; box-shadow: var(--shadow-sm);
+}
+.pill.on { background: var(--mauve); border-color: var(--mauve); color: var(--on-accent); }
+.btn {
+  height: 48px; border-radius: 10px; font-size: 16px; font-weight: 700; display: inline-flex;
+  align-items: center; justify-content: center; gap: 8px; padding: 0 16px; border: 1px solid transparent;
+}
+.btn.primary { background: var(--mauve); color: var(--on-accent); box-shadow: var(--shadow-sm); }
+.btn.outline { background: var(--base); color: var(--text); border-color: var(--surface2); box-shadow: var(--shadow-sm); }
+.btn.round { width: 48px; padding: 0; font-size: 22px; }
+.badge { font-size: 11.5px; font-weight: 700; border-radius: 6px; padding: 3px 7px; border: 1px solid; white-space: nowrap; }
+.badge.verified { color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, transparent); background: color-mix(in srgb, var(--green) 12%, transparent); }
+.badge.detected { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 45%, transparent); background: color-mix(in srgb, var(--yellow) 12%, transparent); }
+.badge.need { color: var(--overlay1); border-color: var(--surface1); }
+.badge.pick { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 45%, transparent); background: color-mix(in srgb, var(--blue) 12%, transparent); }
+.meta { color: var(--subtext0); font-size: 13px; }
+.h2 { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--subtext0); margin: 4px 2px -4px; }
+
+/* ---------- library rows ---------- */
+.list { padding: 0; overflow: hidden; }
+.row { display: flex; gap: 12px; padding: 12px; border-top: 1px solid var(--surface0); align-items: center; }
+.row:first-child { border-top: none; }
+.art { width: 52px; height: 52px; border-radius: 8px; flex-shrink: 0; display: grid; place-items: center; font-weight: 800; font-size: 18px; color: var(--on-accent); border: 1px solid rgba(255,255,255,.08); }
+.row-main { flex: 1; min-width: 0; }
+.title { font-weight: 700; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.facts { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.fact { font-size: 12px; color: var(--subtext1); background: var(--mantle); border: 1px solid var(--surface0); border-radius: 6px; padding: 2px 6px; font-variant-numeric: tabular-nums; }
+
+/* ---------- tab bar ---------- */
+.tabbar { display: flex; border-top: 1px solid var(--surface0); background: var(--base); padding: 8px 8px 22px; }
+.tabbar div { flex: 1; text-align: center; font-size: 11.5px; font-weight: 600; color: var(--overlay1); display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.tabbar svg { width: 24px; height: 24px; }
+.tabbar .on { color: var(--mauve); }
+
+/* ---------- song view ---------- */
+.topbar { display: flex; align-items: center; gap: 10px; padding: 12px 16px 0; }
+.back { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--surface1); background: var(--base); display: grid; place-items: center; box-shadow: var(--shadow-sm); color: var(--text); }
+.head { padding: 14px; }
+.song-title { font-size: 22px; font-weight: 800; }
+.chips { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.chip { height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--surface1); background: var(--mantle); display: inline-flex; align-items: center; gap: 5px; font-size: 13.5px; font-weight: 600; }
+.chip b { color: var(--peach); }
+.seg { display: flex; padding: 4px; gap: 4px; background: var(--mantle); border: 1px solid var(--surface0); border-radius: 12px; }
+.seg div { flex: 1; height: 38px; border-radius: 9px; display: grid; place-items: center; font-weight: 700; font-size: 14.5px; color: var(--subtext0); }
+.seg .on { background: var(--base); color: var(--text); border: 1px solid var(--surface1); box-shadow: var(--shadow-sm); }
+.section { padding: 12px; }
+.sec-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.sec-name { font-weight: 800; font-size: 15px; }
+.bars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.bar { height: 46px; border-radius: 8px; border: 1px solid var(--surface0); background: var(--mantle); display: grid; place-items: center; font-weight: 800; font-size: 17px; }
+.bar.on { background: var(--peach); border-color: var(--peach); color: var(--on-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--peach) 25%, transparent); }
+.boxes { display: flex; gap: 10px; padding: 12px; justify-content: space-between; }
+.box { text-align: center; font-weight: 800; font-size: 14px; }
+.box svg { display: block; margin-top: 4px; }
+.transport { display: flex; gap: 8px; padding: 12px 16px 26px; border-top: 1px solid var(--surface0); background: var(--base); align-items: center; }
+.tempo { min-width: 76px; text-align: center; font-weight: 800; font-size: 22px; font-variant-numeric: tabular-nums; }
+.tempo small { display: block; font-size: 11px; color: var(--subtext0); font-weight: 600; }
+
+/* ---------- analysis ---------- */
+.drop { border: 1.5px dashed var(--surface2); border-radius: 12px; padding: 16px; display: flex; gap: 12px; align-items: center; background: var(--base); }
+.drop .icon { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--mauve) 18%, transparent); color: var(--mauve); }
+.steps { padding: 4px 14px; }
+.step { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-top: 1px solid var(--surface0); font-size: 14.5px; }
+.step:first-child { border-top: none; }
+.step .v { font-weight: 800; font-variant-numeric: tabular-nums; }
+.ok { color: var(--green); margin-right: 8px; font-weight: 900; }
+.prog { height: 6px; border-radius: 3px; background: var(--surface0); overflow: hidden; margin-top: 6px; }
+.prog i { display: block; height: 100%; width: 64%; background: var(--mauve); }
+.note { font-size: 13px; color: var(--subtext0); line-height: 1.45; }
+.suggest { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; }
+.toggle { width: 46px; height: 28px; border-radius: 14px; background: var(--green); position: relative; flex-shrink: 0; }
+.toggle::after { content: ""; position: absolute; right: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--base); }
+.editbar { border-style: dashed; }
+
+/* ---------- sheet (Ultimate Guitar style: chords over lyrics) ---------- */
+.toolbar { display: flex; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--surface0); background: var(--base); }
+.tool { height: 36px; min-width: 36px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--surface1); background: var(--mantle); display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 700; color: var(--text); }
+.tool.on { border-color: var(--mauve); color: var(--mauve); }
+.sheet { flex: 1; overflow: hidden; padding: 12px 16px 0; }
+.sheet-info { font-size: 13px; color: var(--subtext0); line-height: 1.6; margin-bottom: 4px; }
+.sheet-info b { color: var(--text); }
+.tag { display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: .04em; color: var(--subtext1); background: var(--mantle); border: 1px solid var(--surface1); border-radius: 6px; padding: 2px 8px; margin: 10px 0 4px; }
+.line { display: flex; flex-wrap: wrap; align-items: flex-end; padding: 3px 8px; margin: 0 -8px; border-radius: 8px; border-left: 3px solid transparent; }
+.line.now { background: color-mix(in srgb, var(--peach) 10%, transparent); border-left-color: var(--peach); }
+.seg-w { display: inline-flex; flex-direction: column; white-space: pre; }
+.seg-w .c { font-weight: 800; font-size: 15px; color: var(--mauve); min-height: 19px; line-height: 19px; padding-right: 6px; }
+.seg-w .c.now { color: var(--on-accent); background: var(--peach); border-radius: 5px; padding: 0 5px; margin-right: 4px; align-self: flex-start; }
+.seg-w .w { font-size: 17px; line-height: 24px; }
+.chordstrip { display: flex; gap: 6px; padding: 8px 12px 0; border-top: 1px solid var(--surface0); background: var(--base); overflow: hidden; justify-content: space-between; }
+.chordstrip .box { font-size: 13px; }
+
+/* ---------- player and mixer ---------- */
+.timeline { display: flex; gap: 3px; padding: 12px; }
+.timeline div { height: 30px; border-radius: 6px; display: grid; place-items: center; font-size: 11.5px; font-weight: 800; color: var(--on-accent); position: relative; }
+.playhead { position: absolute; top: -4px; bottom: -4px; width: 3px; border-radius: 2px; background: var(--text); left: 40%; }
+.karaoke { padding: 16px 14px; }
+.karaoke .chordnow { display: flex; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+.karaoke .big { font-size: 34px; font-weight: 900; color: var(--peach); }
+.karaoke .next { font-size: 15px; color: var(--subtext0); font-weight: 700; }
+.karaoke .lyr { font-size: 20px; font-weight: 700; line-height: 1.35; }
+.karaoke .lyr span { color: var(--peach); }
+.karaoke .lyr2 { font-size: 15px; color: var(--overlay1); margin-top: 6px; }
+.mixer { padding: 4px 12px; }
+.track { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--surface0); }
+.track:first-child { border-top: none; }
+.track .tn { width: 78px; font-weight: 800; font-size: 14.5px; }
+.track .ts { font-size: 11px; color: var(--subtext0); font-weight: 600; display: block; }
+.slider { flex: 1; height: 6px; border-radius: 3px; background: var(--surface0); position: relative; }
+.slider i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--mauve); }
+.slider b { position: absolute; top: -6px; width: 18px; height: 18px; border-radius: 50%; background: var(--text); border: 2px solid var(--base); box-shadow: var(--shadow-sm); }
+.mute { height: 34px; min-width: 52px; border-radius: 999px; border: 1px solid var(--surface1); display: grid; place-items: center; font-size: 12.5px; font-weight: 800; color: var(--subtext0); background: var(--mantle); }
+.mute.on { background: var(--green); border-color: var(--green); color: var(--on-accent); }
+.track.off .tn, .track.off .slider { opacity: .45; }
+
+/* ---------- speed and pitch (from speedy-pitcher) ---------- */
+.wave { position: relative; height: 112px; padding: 0; overflow: hidden; }
+.lane { position: absolute; left: 0; right: 0; display: flex; gap: 2px; padding: 0 8px; }
+.lane.sec { top: 8px; }
+.lane.sec div { height: 16px; border-radius: 4px; font-size: 10px; font-weight: 800; color: var(--on-accent); display: grid; place-items: center; }
+.lane.ch { bottom: 8px; }
+.lane.ch div { flex: 1; font-size: 11.5px; font-weight: 800; color: var(--mauve); text-align: left; padding-left: 2px; border-left: 1px solid var(--surface1); }
+.lane.ch div.now { color: var(--peach); }
+.bars-wave { position: absolute; left: 8px; right: 8px; top: 30px; bottom: 26px; display: flex; align-items: center; gap: 1.5px; }
+.bars-wave i { flex: 1; background: var(--overlay0); border-radius: 1px; }
+.bars-wave i.in { background: var(--lavender); }
+.loopzone { position: absolute; top: 26px; bottom: 22px; left: 34%; width: 30%; background: color-mix(in srgb, var(--mauve) 16%, transparent); border-left: 2px solid var(--mauve); border-right: 2px solid var(--mauve); }
+.loopzone::before, .loopzone::after { position: absolute; top: -2px; font-size: 10px; font-weight: 900; color: var(--on-accent); background: var(--mauve); border-radius: 3px; padding: 0 3px; }
+.loopzone::before { content: "A"; left: -8px; }
+.loopzone::after { content: "B"; right: -8px; }
+.ph { position: absolute; top: 24px; bottom: 20px; width: 2px; background: var(--peach); left: 47%; }
+.ctl { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--surface0); }
+.ctl:first-child { border-top: none; }
+.ctl .k { width: 58px; font-weight: 800; font-size: 14.5px; }
+.ctl .val { flex: 1; text-align: center; font-weight: 900; font-size: 22px; font-variant-numeric: tabular-nums; }
+.ctl .val small { display: block; font-size: 11px; font-weight: 600; color: var(--subtext0); }
+.ctl .btn.round { width: 44px; height: 44px; font-size: 20px; }
+.src { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--subtext0); }
+</style>
+</head>
+<body>
+<h1>Songbook: design mockup</h1>
+<p class="intro">Look and feel only. The songs are from your library and the chord names are the confirmed ones from the app's data, but the tempos, the key on the analysis screen and its progress are placeholders, not real results. Screens 5–7 use an invented example song with made-up lyrics and chords. Screen 7 brings in speedy-pitcher: speed and pitch of the real recording, loops and the speed trainer; with the pitch at −2 the chord lane is shown transposed. Yelp-inspired structure (bordered cards with soft shadows, outlined secondary buttons, pill filters, a strong primary button, list rows with art on the left) in Catppuccin colors: Mocha (dark, default) and Latte (light). Mauve is the brand and primary action, peach marks "now playing", and the finger colors map to peach p, blue i, green m, pink a.</p>
+
+<div class="screens">
+
+<!-- 1. Library (Mocha) -->
+<div>
+<div class="label">1 · Songs library (Mocha)</div>
+<div class="phone mocha">
+  <div class="scroll">
+    <div class="search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      Search 958 liked songs
+    </div>
+    <div class="pills">
+      <div class="pill on">All</div><div class="pill">Has chords</div><div class="pill">Fingerpicked</div><div class="pill">Needs audio</div>
+    </div>
+    <div class="h2">Guitar Selection</div>
+    <div class="card list">
+      <div class="row"><div class="art" style="background:var(--peach)">L</div><div class="row-main"><div class="title">Landslide</div><div class="meta">Fleetwood Mac</div><div class="facts"><span class="badge verified">Verified</span><span class="badge pick">Travis</span><span class="fact">Capo 3</span></div></div></div>
+      <div class="row"><div class="art" style="background:var(--blue)">H</div><div class="row-main"><div class="title">House Of The Rising Sun</div><div class="meta">The Animals</div><div class="facts"><span class="badge verified">Verified</span><span class="badge pick">p-i-m-a-m-i</span><span class="fact">Am</span></div></div></div>
+      <div class="row"><div class="art" style="background:var(--green)">S</div><div class="row-main"><div class="title">Say You Won't Let Go</div><div class="meta">James Arthur</div><div class="facts"><span class="badge detected">Detected · check</span><span class="fact">85 bpm</span><span class="fact">G</span></div></div></div>
+      <div class="row"><div class="art" style="background:var(--pink)">S</div><div class="row-main"><div class="title">Shape Of My Heart</div><div class="meta">Sting</div><div class="facts"><span class="badge need">Needs audio</span></div></div></div>
+    </div>
+    <div class="h2">Liked songs</div>
+    <div class="card list">
+      <div class="row"><div class="art" style="background:var(--lavender)">S</div><div class="row-main"><div class="title">Someone Like You</div><div class="meta">Adele</div><div class="facts"><span class="badge need">Needs audio</span></div></div></div>
+    </div>
+  </div>
+  <div class="tabbar">
+    <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>Practice</div>
+    <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/></svg>Patterns</div>
+    <div class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M4 10h16M4 15h10M4 20h7"/></svg>Songs</div>
+  </div>
+</div>
+</div>
+
+<!-- 2. Song view (Mocha) -->
+<div>
+<div class="label">2 · Song view, chords (Mocha)</div>
+<div class="phone mocha song-view">
+  <div class="topbar"><div class="back">‹</div><div class="meta" style="flex:1">Guitar Selection</div><span class="badge verified">Verified</span></div>
+  <div class="scroll">
+    <div class="card head">
+      <div class="song-title">Landslide</div>
+      <div class="meta">Fleetwood Mac · fingerpicked</div>
+      <div class="chips"><span class="chip">Capo <b>3</b></span><span class="chip">Key <b>E♭</b></span><span class="chip"><b>80</b> bpm</span><span class="chip">Transpose <b>0</b></span></div>
+    </div>
+    <div class="seg"><div class="on">Chords</div><div>Sheet</div><div>Picking</div></div>
+    <div class="card section">
+      <div class="sec-head"><span class="sec-name">Intro</span><span class="meta">×2</span></div>
+      <div class="bars"><div class="bar">C</div><div class="bar on">G/B</div><div class="bar">Am7</div><div class="bar">G/B</div></div>
+    </div>
+    <div class="card boxes" data-boxes="C:x32010 G/B:x20033 Am7:x02010"></div>
+    <div class="note" style="padding:0 2px">One chord per bar here; check the timing by ear.</div>
+  </div>
+  <div class="transport">
+    <div class="btn outline round">−</div><div class="tempo">80<small>BPM</small></div><div class="btn outline round">+</div>
+    <div class="btn primary" style="flex:1">▶ Play</div>
+  </div>
+</div>
+</div>
+
+<!-- 3. Analysis (Mocha) -->
+<div>
+<div class="label">3 · Figure out chords from audio (Mocha)</div>
+<div class="phone mocha">
+  <div class="topbar"><div class="back">‹</div><div class="meta" style="flex:1">Say You Won't Let Go</div></div>
+  <div class="scroll">
+    <div class="drop"><div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg></div><div><div style="font-weight:800">say-you-wont-let-go.mp3</div><div class="meta">Analyzed on this device · nothing uploaded</div></div></div>
+    <div class="card steps">
+      <div class="step"><span><span class="ok">✓</span>Tempo</span><span class="v">85 bpm</span></div>
+      <div class="step"><span><span class="ok">✓</span>Key</span><span class="v">B♭ major</span></div>
+      <div class="step" style="display:block"><div style="display:flex;justify-content:space-between"><span>Chords</span><span class="v">64%</span></div><div class="prog"><i></i></div></div>
+    </div>
+    <div class="card">
+      <div class="suggest"><div><div style="font-weight:800">Easier shapes: capo 3, play in G</div><div class="meta">Turns B♭ E♭ F into G C D</div></div><div class="toggle"></div></div>
+    </div>
+    <div class="card section">
+      <div class="sec-head"><span class="sec-name">Verse</span><span class="badge detected">Detected · check by ear</span></div>
+      <div class="bars"><div class="bar">G</div><div class="bar">Em7</div><div class="bar">C</div><div class="bar editbar">D ?</div></div>
+    </div>
+    <div class="note" style="padding:0 2px">Tap a bar to change it. Use Play along to hear the recording with the chords.</div>
+  </div>
+  <div class="transport">
+    <div class="btn outline" style="flex:1">Play along</div>
+    <div class="btn primary" style="flex:1">Save chords</div>
+  </div>
+</div>
+</div>
+
+<!-- 4. Song view (Latte) -->
+<div>
+<div class="label">4 · Song view, picking (Latte)</div>
+<div class="phone latte">
+  <div class="topbar"><div class="back">‹</div><div class="meta" style="flex:1">Guitar Selection</div><span class="badge verified">Verified</span></div>
+  <div class="scroll">
+    <div class="card head">
+      <div class="song-title">Landslide</div>
+      <div class="meta">Fleetwood Mac · fingerpicked</div>
+      <div class="chips"><span class="chip">Capo <b>3</b></span><span class="chip">Key <b>E♭</b></span><span class="chip"><b>80</b> bpm</span></div>
+    </div>
+    <div class="seg"><div>Chords</div><div>Sheet</div><div class="on">Picking</div></div>
+    <div class="card section">
+      <div class="sec-head"><span class="sec-name">Intro · Travis p-i-p-m</span><span class="badge pick">your description</span></div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);text-align:center;font-weight:900;font-size:44px;line-height:1.1">
+        <span style="color:var(--peach)">p</span><span style="color:var(--blue)">i</span><span style="color:var(--peach)">p</span><span style="color:var(--green)">m</span>
+      </div>
+      <div class="bars" style="margin-top:10px"><div class="bar on">C</div><div class="bar">G/B</div><div class="bar">Am7</div><div class="bar">G/B</div></div>
+    </div>
+    <div class="card suggest"><div><div style="font-weight:800">Practice this section</div><div class="meta">Opens Practice with the tempo ladder</div></div><div class="btn outline" style="height:40px">Open</div></div>
+  </div>
+  <div class="transport">
+    <div class="btn outline round">−</div><div class="tempo">72<small>BPM</small></div><div class="btn outline round">+</div>
+    <div class="btn primary" style="flex:1">▶ Play</div>
+  </div>
+</div>
+</div>
+
+
+<!-- 5. Sheet, Ultimate Guitar style (Mocha) -->
+<div>
+<div class="label">5 · Sheet: chords over lyrics, UG style (Mocha)</div>
+<div class="phone mocha">
+  <div class="topbar"><div class="back">‹</div><div style="flex:1;min-width:0"><div style="font-weight:800">Example song</div><div class="meta">made-up lyrics for the mockup</div></div><span class="badge verified">Mine</span></div>
+  <div class="toolbar" style="margin-top:10px">
+    <span class="tool">Transpose <b style="color:var(--peach)">0</b></span><span class="tool on">Simple</span><span class="tool">Aa</span><span class="tool">Capo 3</span>
+  </div>
+  <div class="sheet">
+    <div class="sheet-info">Key <b>G</b> (sounds B♭) · Capo <b>3</b> · <b>85</b> bpm<br>Strum <b>D - D U - U D U</b></div>
+    <span class='tag'>VERSE 1</span><div class='line'><span class='seg-w'><span class='c'>G</span><span class='w'>Morning light </span></span><span class='seg-w'><span class='c'>Em7</span><span class='w'>on the kitchen </span></span><span class='seg-w'><span class='c'>C</span><span class='w'>floor, </span></span><span class='seg-w'><span class='c'>D</span><span class='w'>&nbsp;</span></span></div><div class='line'><span class='seg-w'><span class='c'>G</span><span class='w'>coffee cooling </span></span><span class='seg-w'><span class='c'>Em7</span><span class='w'>by the open </span></span><span class='seg-w'><span class='c'>C</span><span class='w'>door </span></span><span class='seg-w'><span class='c'>D</span><span class='w'>&nbsp;</span></span></div><div class='line now'><span class='seg-w'><span class='c'>G</span><span class='w'>Every little </span></span><span class='seg-w'><span class='c'>Em7</span><span class='w'>thing I meant to </span></span><span class='seg-w'><span class='c now'>C</span><span class='w'>say</span></span><span class='seg-w'><span class='c'>D</span><span class='w'>&nbsp;</span></span></div><div class='line'><span class='seg-w'><span class='c'>G</span><span class='w'>drifting like a </span></span><span class='seg-w'><span class='c'>Em7</span><span class='w'>paper boat a</span></span><span class='seg-w'><span class='c'>C</span><span class='w'>way </span></span><span class='seg-w'><span class='c'>D</span><span class='w'>&nbsp;</span></span></div><span class='tag'>CHORUS</span><div class='line'><span class='seg-w'><span class='c'>C</span><span class='w'>Hold on, </span></span><span class='seg-w'><span class='c'>D</span><span class='w'>hold on, </span></span><span class='seg-w'><span class='c'>Em7</span><span class='w'>it&#39;s alright </span></span><span class='seg-w'><span class='c'>G</span><span class='w'>&nbsp;</span></span></div><div class='line'><span class='seg-w'><span class='c'>C</span><span class='w'>Hum it slow and </span></span><span class='seg-w'><span class='c'>D</span><span class='w'>sing it through the </span></span><span class='seg-w'><span class='c'>G</span><span class='w'>night</span></span></div>
+  </div>
+  <div class="chordstrip" data-boxes="G:320003 Em7:022030 C:x32010 D:xx0232"></div>
+  <div class="transport">
+    <div class="btn outline" style="padding:0 12px">Scroll 1×</div>
+    <div class="btn primary" style="flex:1">▶ Play song</div>
+  </div>
+</div>
+</div>
+
+<!-- 6. Play the song: recording or synth, with a mixer (Mocha) -->
+<div>
+<div class="label">6 · Play the song, with a mixer (Mocha)</div>
+<div class="phone mocha">
+  <div class="topbar"><div class="back">‹</div><div style="flex:1"><div style="font-weight:800">Example song</div><div class="meta">Playing your recording, split into stems</div></div></div>
+  <div class="scroll">
+    <div class="seg"><div class="on">Recording</div><div>Synth band</div></div>
+    <div class="card timeline">
+      <div style="flex:1;background:var(--lavender)">Intro</div>
+      <div style="flex:2;background:var(--blue)">Verse<span class="playhead"></span></div>
+      <div style="flex:2;background:var(--mauve)">Chorus</div>
+      <div style="flex:2;background:var(--blue)">Verse</div>
+      <div style="flex:1.4;background:var(--mauve)">Cho.</div>
+    </div>
+    <div class="card karaoke">
+      <div class="chordnow"><span class="big">C</span><span class="next">next D · bar 3 of 4</span></div>
+      <div class="lyr"><span>Every little thing I meant to</span> say</div>
+      <div class="lyr2">drifting like a paper boat away</div>
+    </div>
+    <div class="card mixer">
+      <div class="track off"><span class="tn">Vocals<span class="ts">stem</span></span><span class="slider"><i style="width:70%"></i><b style="left:64%"></b></span><span class="mute">Off</span></div>
+      <div class="track"><span class="tn">Guitar<span class="ts">app synth</span></span><span class="slider"><i style="width:80%"></i><b style="left:74%"></b></span><span class="mute on">On</span></div>
+      <div class="track"><span class="tn">Bass<span class="ts">stem</span></span><span class="slider"><i style="width:55%"></i><b style="left:49%"></b></span><span class="mute on">On</span></div>
+      <div class="track"><span class="tn">Drums<span class="ts">stem</span></span><span class="slider"><i style="width:60%"></i><b style="left:54%"></b></span><span class="mute on">On</span></div>
+      <div class="track off"><span class="tn">Other<span class="ts">stem</span></span><span class="slider"><i style="width:40%"></i><b style="left:34%"></b></span><span class="mute">Off</span></div>
+    </div>
+  </div>
+  <div class="transport">
+    <div class="btn outline" style="padding:0 12px">0.75×</div>
+    <div class="btn outline round">⟲</div>
+    <div class="btn primary" style="flex:1">❚❚ Pause</div>
+  </div>
+</div>
+</div>
+
+
+<!-- 7. Speed and pitch of the real recording (Mocha) -->
+<div>
+<div class="label">7 · Real recording: speed, pitch, loops (Mocha)</div>
+<div class="phone mocha">
+  <div class="topbar"><div class="back">‹</div><div style="flex:1"><div style="font-weight:800">Example song</div><div class="src"><span class="badge pick">YouTube · via helper</span>stems ready</div></div></div>
+  <div class="scroll">
+    <div class="card wave">
+      <div class="lane sec"><div style="flex:1;background:var(--lavender)">Intro</div><div style="flex:2;background:var(--blue)">Verse</div><div style="flex:2;background:var(--mauve)">Chorus</div><div style="flex:2;background:var(--blue)">Verse</div></div>
+      <div class="bars-wave"><i style='height:55%'></i><i style='height:63%'></i><i style='height:46%'></i><i style='height:61%'></i><i style='height:71%'></i><i style='height:62%'></i><i style='height:82%'></i><i style='height:39%'></i><i style='height:56%'></i><i style='height:42%'></i><i style='height:41%'></i><i style='height:51%'></i><i style='height:58%'></i><i style='height:62%'></i><i style='height:63%'></i><i style='height:94%'></i><i style='height:70%'></i><i style='height:27%'></i><i style='height:58%'></i><i style='height:44%'></i><i style='height:45%'></i><i style='height:77%'></i><i class='in' style='height:51%'></i><i class='in' style='height:20%'></i><i class='in' style='height:60%'></i><i class='in' style='height:49%'></i><i class='in' style='height:34%'></i><i class='in' style='height:38%'></i><i class='in' style='height:44%'></i><i class='in' style='height:54%'></i><i class='in' style='height:47%'></i><i class='in' style='height:56%'></i><i class='in' style='height:87%'></i><i class='in' style='height:40%'></i><i class='in' style='height:40%'></i><i class='in' style='height:50%'></i><i class='in' style='height:74%'></i><i class='in' style='height:42%'></i><i class='in' style='height:80%'></i><i class='in' style='height:32%'></i><i class='in' style='height:36%'></i><i style='height:54%'></i><i style='height:39%'></i><i style='height:44%'></i><i style='height:62%'></i><i style='height:67%'></i><i style='height:56%'></i><i style='height:50%'></i><i style='height:78%'></i><i style='height:62%'></i><i style='height:50%'></i><i style='height:76%'></i><i style='height:39%'></i><i style='height:57%'></i><i style='height:66%'></i><i style='height:54%'></i><i style='height:44%'></i><i style='height:61%'></i><i style='height:45%'></i><i style='height:44%'></i><i style='height:37%'></i><i style='height:77%'></i><i style='height:45%'></i><i style='height:75%'></i></div>
+      <div class="loopzone"></div><div class="ph"></div>
+      <div class="lane ch"><div>F</div><div>Dm7</div><div class="now">B♭</div><div>C</div><div>F</div><div>Dm7</div><div>B♭</div><div>C</div></div>
+    </div>
+    <div class="pills"><div class="pill on">Loop chorus</div><div class="pill">Bars 9–12</div><div class="pill">+ Save loop</div></div>
+    <div class="card" style="padding:0">
+      <div class="ctl"><span class="k">Speed</span><div class="btn outline round">−</div><div class="val">75%<small>pitch kept</small></div><div class="btn outline round">+</div></div>
+      <div class="ctl"><span class="k">Pitch</span><div class="btn outline round">−</div><div class="val">−2<small>semitones · chords follow</small></div><div class="btn outline round">+</div></div>
+      <div class="ctl"><span class="k">Tune</span><div class="val" style="font-size:17px">+12¢<small>matched to the recording</small></div><div class="btn outline" style="height:44px;padding:0 12px;font-size:14px">Match</div></div>
+    </div>
+    <div class="card suggest"><div><div style="font-weight:800">Speed trainer</div><div class="meta">70% → 100%, +5% every 2 loops · count-in 1 bar</div></div><div class="toggle"></div></div>
+  </div>
+  <div class="transport">
+    <div class="btn outline round">⏮</div>
+    <div class="btn outline" style="padding:0 12px">Mixer</div>
+    <div class="btn primary" style="flex:1">▶ Play</div>
+  </div>
+</div>
+</div>
+
+</div>
+
+<script>
+// Small fretting-hand chord boxes: "x32010" is low E to high E.
+function chordBox(frets) {
+  const f = [...frets].map((c) => (c === "x" ? null : +c));
+  const W = 76, H = 86, left = 10, top = 16, sg = 11, fg = 15;
+  let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+  s += `<rect x="${left}" y="${top - 2}" width="${sg * 5}" height="3" fill="var(--text)"/>`;
+  for (let i = 0; i < 6; i++) s += `<line x1="${left + i * sg}" y1="${top}" x2="${left + i * sg}" y2="${top + fg * 4}" stroke="var(--overlay0)" stroke-width="1"/>`;
+  for (let j = 1; j <= 4; j++) s += `<line x1="${left}" y1="${top + j * fg}" x2="${left + sg * 5}" y2="${top + j * fg}" stroke="var(--overlay0)" stroke-width="1"/>`;
+  f.forEach((v, i) => {
+    const x = left + i * sg;
+    if (v === null) s += `<text x="${x}" y="${top - 6}" font-size="9" text-anchor="middle" fill="var(--overlay1)">×</text>`;
+    else if (v === 0) s += `<circle cx="${x}" cy="${top - 8}" r="3" fill="none" stroke="var(--subtext0)" stroke-width="1.2"/>`;
+    else s += `<circle cx="${x}" cy="${top + (v - 0.5) * fg}" r="4.6" fill="var(--mauve)"/>`;
+  });
+  return s + "</svg>";
+}
+document.querySelectorAll("[data-boxes]").forEach((el) => {
+  el.innerHTML = el.dataset.boxes.split(" ").map((p) => {
+    const [name, frets] = p.split(":");
+    return `<div class="box">${name}${chordBox(frets)}</div>`;
+  }).join("");
+});
+</script>
+</body>
+</html>
