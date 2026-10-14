@@ -63,7 +63,7 @@ const swPath = path.join(root, "sw.js");
 let sw = fs.readFileSync(swPath, "utf8");
 for (const id of added) {
   const entry = `  "songs/${id}.json",`;
-  if (!sw.includes(entry)) sw = sw.replace(`  "songs/index.json",\n`, `  "songs/index.json",\n${entry}\n`);
+  if (!sw.includes(entry)) sw = sw.replace(/( {2}"songs\/index\.json",)(\r?\n)/, (_, line, nl) => `${line}${nl}${entry}${nl}`);
 }
 sw = sw.replace(/const CACHE = "songbook-v(\d+)";/, (_, n) => `const CACHE = "songbook-v${+n + 1}";`);
 fs.writeFileSync(swPath, sw);

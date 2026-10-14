@@ -220,7 +220,9 @@ async function loadFile() {
     s.set.source = "file";
     s.enginePromise = engine.load(dec.channels, dec.duration).then(() => {
       if (S !== s) return;
-      engine.pausedAt = clamp(s.set.position || 0, 0, dec.duration);
+      // First time: start where the analysed bars start (after a spoken intro, say).
+      const first = s.timed && s.timed.bars[0].t > 15 ? s.timed.bars[0].t : 0;
+      engine.pausedAt = clamp(s.set.position || first, 0, dec.duration);
       applyAll();
     });
     s.loading = null;

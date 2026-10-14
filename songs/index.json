@@ -147,11 +147,11 @@
    "title": "Late July",
    "artist": "Shakey Graves",
    "style": null,
-   "source": null,
-   "confidence": null,
-   "hasChords": false,
+   "source": "detected",
+   "confidence": "low",
+   "hasChords": true,
    "capo": 0,
-   "key": null,
+   "key": "D",
    "tuning": "Open D",
    "patterns": [],
    "pickingSource": null
@@ -189,6 +189,36 @@
     "pa-m-i"
    ],
    "pickingSource": "suggested"
+  },
+  {
+   "id": "smyko7t",
+   "type": "song",
+   "title": "Big Enough",
+   "artist": "Estella Dawn",
+   "style": null,
+   "source": "detected",
+   "confidence": "low",
+   "hasChords": true,
+   "capo": 0,
+   "key": "Ebm",
+   "tuning": null,
+   "patterns": [],
+   "pickingSource": null
+  },
+  {
+   "id": "ssrignr",
+   "type": "song",
+   "title": "Bandit - (stripped)",
+   "artist": "Daya",
+   "style": null,
+   "source": "detected",
+   "confidence": "low",
+   "hasChords": true,
+   "capo": 0,
+   "key": "Gm",
+   "tuning": null,
+   "patterns": [],
+   "pickingSource": null
   },
   {
    "id": "the-boxer",

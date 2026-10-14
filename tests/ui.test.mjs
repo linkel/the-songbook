@@ -8,6 +8,13 @@ import { BASE, check, eq, report, fixtureLibrary, EXAMPLE_SHEET } from "./lib.mj
 const out = process.argv[2] || fileURLToPath(new URL("shots/ui", import.meta.url));
 fs.mkdirSync(out, { recursive: true });
 
+// Shipped charts: the counts below follow songs/index.json, so adding charts
+// (tools/add-charts.mjs) doesn't break them.
+const SHIPPED = JSON.parse(fs.readFileSync(new URL("../songs/index.json", import.meta.url), "utf8")).songs;
+const WITH_CHORDS = SHIPPED.filter((x) => x.hasChords).map((x) => x.id).sort();
+// The fixture library: 1,727 test songs plus 3 that match shipped charts.
+const ALL_SONGS = `All songs (${1727 + SHIPPED.length})`;
+
 const browser = await chromium.launch({ channel: "chrome", args: ["--autoplay-policy=no-user-gesture-required"] });
 const SIZES = [[375, 752], [375, 630], [1440, 900]];
 const THEMES = [["mocha", "dark"], ["latte", "light"]];
@@ -251,13 +258,14 @@ for (const [w, h] of SIZES) {
 await section("library", async () => {
   const { context, page, errors } = await newPage(375, 752, "dark");
   await show(page, "#/songs");
-  // 1,727 test songs, 3 that match shipped charts, and 11 shipped charts not in the library.
-  eq("all songs counted once", await page.$eval("#song-list-pick option", (o) => o.textContent), "All songs (1741)");
+  // 1,727 test songs, 3 that match shipped charts, and the other shipped charts.
+  eq("all songs counted once", await page.$eval("#song-list-pick option", (o) => o.textContent), ALL_SONGS);
   eq("lists: liked, playlists, no empty ones", await page.$$eval("#song-list-pick option", (o) => o.slice(1, 4).map((x) => x.textContent)),
     ["Liked songs (958)", "Guitar Selection (4)", "Test Playlist 1 (138)"]);
   check("empty playlists left out", !(await page.$$eval("#song-list-pick option", (o) => o.map((x) => x.textContent))).some((t) => t.startsWith("Empty list")));
   eq("charted songs first", await page.$$eval("#song-groups .h2", (h) => h.map((x) => x.textContent)), ["Charts and sheets", "All songs"]);
-  eq("library songs match shipped charts", (await rows(page)).slice(0, 3).sort(), ["dust-in-the-wind", "landslide", "the-house-of-the-rising-sun"]);
+  const charted = (await rows(page)).slice(0, WITH_CHORDS.length);
+  check("library songs match shipped charts", ["dust-in-the-wind", "landslide", "the-house-of-the-rising-sun"].every((id) => charted.includes(id)), JSON.stringify(charted));
   const n0 = (await rows(page)).length;
   check("rows render in batches", n0 <= 63, String(n0));
   for (let i = 0; i < 4; i++) { await page.evaluate(() => { const v = document.getElementById("view-songs"); v.scrollTop = v.scrollHeight; }); await page.waitForTimeout(250); }
@@ -271,7 +279,7 @@ await section("library", async () => {
   eq("search finds the remastered title as the shipped chart", await rows(page), ["landslide"]);
   await page.fill("#song-search", "");
   await page.click(".pill[data-filter=chords]");
-  eq("Has chords filter", (await rows(page)).sort(), ["dust-in-the-wind", "landslide", "the-house-of-the-rising-sun"]);
+  eq("Has chords filter", (await rows(page)).sort(), WITH_CHORDS);
   await page.click(".pill[data-filter=all]");
   await page.selectOption("#song-list-pick", "Guitar Selection");
   await page.waitForTimeout(150);
@@ -577,7 +585,7 @@ await section("import", async () => {
   const { context, page, errors } = await newPage(375, 752, "light", { library: null });
   await show(page, "#/songs");
   check("without a library: says how to import it", (await page.textContent("#library-note")).includes("Import library file"));
-  eq("without a library: the shipped charts", (await rows(page)).length, 14);
+  eq("without a library: the shipped charts", (await rows(page)).length, SHIPPED.length);
   await page.screenshot({ path: `${out}/import-before.png` });
   await show(page, "#/settings");
   await page.setInputFiles("#lib-file", { name: "broken.json", mimeType: "application/json", buffer: Buffer.from("{nope") });
@@ -591,7 +599,7 @@ await section("import", async () => {
   await page.reload();
   await page.waitForSelector("html[data-ready]");
   await show(page, "#/songs");
-  eq("imported library survives a reload", await page.$eval("#song-list-pick option", (o) => o.textContent), "All songs (1741)");
+  eq("imported library survives a reload", await page.$eval("#song-list-pick option", (o) => o.textContent), ALL_SONGS);
   check("import: no page errors", errors.length === 0, errors.join("; "));
   await context.close();
 });
@@ -602,7 +610,8 @@ await section("analyse", async () => {
   await show(page, "#/song/late-july");
   check("Late July: tuning shown", (await page.textContent(".head .chips")).includes("Open D"));
   check("Late July: tutorial link", (await page.$$eval(".sources a", (a) => a.map((x) => x.href))).includes("https://www.youtube.com/watch?v=H_p4siY3Zc4"));
-  check("Late July: no chords, nothing invented", (await page.textContent(".song-scroll")).includes("Nothing here is invented"));
+  // Its shipped chords came from the owner's recording, and say so.
+  eq("Late July: shipped chords labelled detected", await page.textContent(".topbar .badge"), "Detected · check");
   await page.click("a.btn[href$='/analyse']");
   await page.waitForTimeout(300);
   eq("analyse screen opens", (await state(page)).mode, "analyse");
@@ -691,7 +700,7 @@ await section("analyse", async () => {
   await page.click("[data-act=delete-chart]");
   await page.click("[data-act=delete-chart]");
   await page.waitForTimeout(500);
-  check("your chart deleted", (await page.textContent(".song-scroll")).includes("No chord chart yet"));
+  check("your chart deleted: back to the shipped one", (await page.textContent(".song-scroll")).includes("spoken intro"));
   check("analyse: no page errors", errors.length === 0, errors.join("; "));
   await context.close();
 });
@@ -809,7 +818,7 @@ await section("offline", async () => {
   const offline = await page.evaluate(() => [document.querySelectorAll(".bars .bar").length, !!navigator.serviceWorker.controller]);
   check("works offline after the first load", offline[0] === 4 && offline[1], JSON.stringify(offline));
   await show(page, "#/songs");
-  eq("library offline", await page.$eval("#song-list-pick option", (o) => o.textContent), "All songs (1741)");
+  eq("library offline", await page.$eval("#song-list-pick option", (o) => o.textContent), ALL_SONGS);
   await context.close();
 });
 
