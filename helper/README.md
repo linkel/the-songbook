@@ -214,7 +214,7 @@ To try the analysis on one file without the server:
 ## Notes
 
 - **Allowed callers.** Browsers may only call the helper from
-  `https://linkel.github.io` (the deployed app, shared with speedy-pitcher) or
+  `https://linkel.github.io` or its custom domain `https://kellyhuntlin.com` (the deployed app, shared with speedy-pitcher) or
   `localhost`. Add another origin with `--allow-origin https://example.org`.
 - **One job at a time** on the GPU, and one download at a time. That's plenty
   for one person and keeps YouTube calm.

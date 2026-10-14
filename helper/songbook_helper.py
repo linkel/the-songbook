@@ -64,7 +64,7 @@ except Exception:
 HERE = os.path.dirname(os.path.abspath(__file__))
 BUNDLES = os.path.join(os.path.dirname(HERE), "private", "songs")
 MAX_BYTES = 200 * 1024 * 1024
-DEFAULT_ORIGINS = ["https://linkel.github.io"]
+DEFAULT_ORIGINS = ["https://linkel.github.io", "https://kellyhuntlin.com"]  # Pages, and its custom domain
 HELPER_VERSION = 2
 
 # One download at a time is plenty for one person, and keeps YouTube happy.
