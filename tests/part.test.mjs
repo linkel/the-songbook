@@ -119,6 +119,7 @@ async function newPage(w = 375, h = 752, scheme = "dark") {
   return { context, page, errors };
 }
 async function section(name, fn) {
+  if (process.env.DEBUG) console.log("section:", name, new Date().toISOString().slice(11, 19));
   try { await fn(); } catch (e) { check(`${name}: ran to the end`, false, e.message.split("\n").slice(0, 3).join(" | ")); }
 }
 async function show(page, hash) {
@@ -134,7 +135,7 @@ async function until(page, fn, arg, timeout = 20000) {
   }
 }
 // Layout once animations have settled (views and popovers fade and scale in).
-const settled = async (page, label) => { await page.waitForTimeout(450); await settled(page, label); };
+const settled = async (page, label) => { await page.waitForTimeout(450); await layout(page, label); };
 const playLog = (page) => page.evaluate(() => window.songbook.getPlayer().log.map((e) => ({ type: e.type, bar: e.bar, chord: e.chord, midis: e.midis, part: !!e.part })));
 
 // A made-up song with a chart of two sections, in standard tuning.
