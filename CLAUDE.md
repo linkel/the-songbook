@@ -3,9 +3,7 @@
 My own Ultimate Guitar: a no-build PWA. The full brief is `docs/songbook-plan.md`; read it before working. The visual direction is `docs/design/songbook-mockup.html`.
 
 ## Rules
-- Git: short casual one-line commit messages, no Co-Authored-By trailer. Ask before pushing.
-- Never commit `private/` (my library export, recordings, stems, analysis). Check `git status` before committing.
-- Nothing copyrighted in the repo or in replies: no lyrics, tabs, chord sheets, recordings, stems or note transcriptions. Chords-only charts are fine.
+- Git: short casual one-line commit messages, no Co-Authored-By trailer. 
 - Never invent chords or a song-to-pattern match. Every chart says where it came from: detected, web (cited), mine, or verified.
 - `../pimapeggio` and `../speedy-pitcher` are mine too; copy code from them with a credit comment, and change them when it helps (commit there with the same rules, keep their tests passing, bump their `sw.js` cache, and mention it in your report).
 - Plain HTML/CSS/JS with ES modules, no build step. Bump `CACHE` in `sw.js` on every change.
