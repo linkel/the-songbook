@@ -58,7 +58,8 @@ async function newPage(w = 375, h = 752, scheme = "dark") {
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource.*404/.test(m.text())) errors.push(m.text()); });
   await page.goto(BASE);
-  await page.waitForSelector("html[data-ready]");
+  // Generous: a busy machine (the whole suite at once) can be slow to start a page.
+  await page.waitForSelector("html[data-ready]", { timeout: 90000 });
   return { context, page, errors };
 }
 

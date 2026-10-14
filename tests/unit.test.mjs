@@ -5,6 +5,7 @@ import * as C from "../js/chords.js";
 import * as P from "../js/patterns.js";
 import { parseStrum, plainStrum, strumNotes } from "../js/audio.js";
 import { meter } from "../js/chartplay.js";
+import * as Pk from "../js/picking.js";
 
 C.setChordDb(JSON.parse(fs.readFileSync(new URL("../vendor/chords-db/guitar.json", import.meta.url), "utf8")));
 
@@ -123,5 +124,29 @@ check("non-Latin titles get ids", /^s[0-9a-z]+$/.test(L.songIdFor("노래", "가
 let bad = null; try { L.validateExport({ liked: [{ title: 1 }] }); } catch (e) { bad = e.message; }
 check("validateExport rejects broken files", !!bad, String(bad));
 check("validateExport accepts the import tool's format", L.validateExport({ fetched: "x", liked: [{ title: "a", artist: "b" }], playlists: [] }).liked.length === 1);
+
+
+/* ---- Picking mode ---- */
+{
+  const chart = { picking: { patterns: ["travis"], also: ["alt-thumb"], source: "mine", match: "family" },
+    sections: [{ name: "Intro", chords: "C | G/B | Am7 G/B" }, { name: "Bridge", chords: "F | G", picking: { patterns: ["pima"], source: "web", sources: [{ label: "x", url: "https://example.com" }] } }] };
+  eq("picking: the chart's pattern", Pk.patternFor(chart, chart.sections[0], {}).pattern.id, "travis");
+  eq("picking: a section's own pattern wins", Pk.patternFor(chart, chart.sections[1], {}).pattern.id, "pima");
+  const mine = Pk.patternFor(chart, chart.sections[0], { pickPattern: "pimami" });
+  eq("picking: your pick wins, and says so", [mine.pattern.id, mine.mine, mine.options], ["pimami", true, ["travis", "alt-thumb"]]);
+  check("picking: badges say where a pattern is from", /your description/.test(Pk.patternBadge(Pk.patternFor(chart, chart.sections[0], {}))) && /your pick/.test(Pk.patternBadge(mine)) && /sourced/.test(Pk.patternBadge(Pk.patternFor(chart, chart.sections[1], {}))));
+  eq("picking: nothing is guessed", Pk.patternFor({ sections: [] }, null, {}).pattern, null);
+  const bars = Pk.sectionBars(chart, 0, (n) => n, {});
+  eq("picking: a section's bars, with shapes for the stage", bars.map((b) => b.chords.map((c) => c.name + ":" + c.spec)), [["C:x32010"], ["G/B:x20033"], ["Am7:x02010", "G/B:x20033"]]);
+  check("picking: each chord has a Pimapeggio voicing", bars.every((b) => b.chords.every((c) => c.pima && c.pima.bass)));
+  const p = P.PATTERN_BY_ID.get("travis");
+  check("picking: finger letters, one cell per step", (Pk.fingersHtml(p).match(/class='fcell'/g) || []).length === 4);
+  check("picking: diagram has a column per step and a dot per note", (Pk.diagramSvg(p, bars[0].chords[0].pima).match(/dg-col/g) || []).length === 4 && (Pk.diagramSvg(p, bars[0].chords[0].pima).match(/<circle/g) || []).length === 4);
+  const link = new URL(Pk.pimapeggioLink({ pattern: p, bars, capo: 3, bpm: 80.4, name: "Song · Intro" }, "https://example.com/pimapeggio/"));
+  eq("picking: Pimapeggio link", [link.origin + link.pathname, link.searchParams.get("pattern"), link.searchParams.get("chords"), link.searchParams.get("voicings"), link.searchParams.get("capo"), link.searchParams.get("bpm"), link.searchParams.get("name")],
+    ["https://example.com/pimapeggio/", "travis", "C | G/B | Am7 G/B", "C:x32010,G/B:x20033,Am7:x02010", "3", "80", "Song · Intro"]);
+  eq("picking: Pimapeggio next to the deployed app", Pk.pimapeggioBase({ hostname: "kellyhuntlin.com", href: "https://kellyhuntlin.com/the-songbook/#/song/x/picking" }), "https://kellyhuntlin.com/pimapeggio/");
+  eq("picking: and its local copy", Pk.pimapeggioBase({ hostname: "localhost", href: "http://localhost:8320/" }), "http://localhost:8318/");
+}
 
 report("unit");

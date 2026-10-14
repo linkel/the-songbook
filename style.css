@@ -572,3 +572,57 @@ button.pick.on { border-color: var(--mauve); background: color-mix(in srgb, var(
   .wave-main { height: 190px; }
   .song-side .mixer { box-shadow: none; }
 }
+
+/* ---------- picking (mockup 4; Pimapeggio's stage) ---------- */
+
+/* Finger letters as text: Latte's pastel accents are darkened for contrast. */
+:root, :root[data-theme="mocha"] { --ft-p: var(--f-p); --ft-i: var(--f-i); --ft-m: var(--f-m); --ft-a: var(--f-a); }
+:root[data-theme="latte"] { --ft-p: var(--ink-peach); --ft-i: var(--ink-blue); --ft-m: var(--ink-green); --ft-a: #a8327f; }
+
+.pick-card { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.pick-card .sec-head { margin-bottom: 0; }
+.fingers { display: grid; grid-template-columns: repeat(var(--cols, 4), 1fr); gap: 4px; }
+.fcell {
+  height: calc(76px / var(--rows, 1) + 14px); border-radius: 10px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; line-height: .92; font-weight: 900;
+  font-size: min(calc(56px / var(--rows, 1) + 6px), calc(70vw / var(--cols, 4)));
+  transition: transform .06s;
+}
+.fcell .multi { font-size: .58em; line-height: .95; }
+.fcell.cur { background: var(--text); transform: scale(1.04); }
+.fcell.cur span { color: var(--base) !important; }
+.f-p { color: var(--ft-p); }
+.f-i { color: var(--ft-i); }
+.f-m { color: var(--ft-m); }
+.f-a { color: var(--ft-a); }
+.pick-stage svg { display: block; width: 100%; height: auto; }
+/* Letters and diagram share one width, so each letter sits over its column. */
+.pick-card .fingers, .pick-stage { width: 100%; max-width: 560px; margin: 0 auto; }
+.nowrap { white-space: nowrap; }
+.dg-string { stroke: var(--overlay1); }
+.dg-string.ext { stroke-dasharray: 3 4; opacity: .6; }
+.dg-label { fill: var(--meta); font-size: 11px; font-family: inherit; }
+.dg-label.note { fill: var(--text); font-weight: 600; }
+.dg-col { fill: transparent; }
+.dg-col.cur { fill: color-mix(in srgb, var(--text) 14%, transparent); }
+.dg-dot-text { fill: var(--crust); font-weight: 800; font-family: inherit; text-anchor: middle; dominant-baseline: central; }
+.pick-notation { overflow-x: auto; scrollbar-width: none; }
+.pick-notation svg { display: block; max-width: 100%; height: auto; }
+@media (min-width: 860px) { .pick-notation svg { min-width: 300px; } .fcell { font-size: min(calc(64px / var(--rows, 1) + 6px), calc(40vw / var(--cols, 4))); } }
+.nt-line { stroke: var(--overlay1); stroke-width: 1; }
+.nt-stem { stroke: var(--text); stroke-width: 1.2; }
+.nt-head, .nt-beam { fill: var(--text); }
+.nt-acc { fill: var(--text); font-size: 13px; font-family: inherit; }
+.nt-tuplet { fill: var(--meta); font-size: 10px; font-style: italic; text-anchor: middle; font-family: inherit; }
+.nt-finger { font-size: 11.5px; font-weight: 800; text-anchor: middle; font-family: inherit; }
+.nt-clef { fill: none; stroke: var(--text); stroke-width: 1.9; stroke-linecap: round; }
+.nt-eight { fill: var(--text); font-size: 7px; font-family: inherit; }
+.pattern-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; margin: 8px 0 4px; }
+.pattern-btn {
+  min-height: 48px; border-radius: 9px; border: 1px solid var(--surface1); background: var(--mantle); color: var(--text);
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 4px 10px; text-align: left;
+}
+.pattern-btn .pn { font-weight: 800; font-size: 14px; }
+.pattern-btn .meta { font-size: 12px; }
+.pattern-btn.on { border-color: var(--mauve); background: color-mix(in srgb, var(--mauve) 14%, var(--base)); }
+.btn.disabled { opacity: .55; pointer-events: none; }

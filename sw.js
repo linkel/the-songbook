@@ -1,5 +1,5 @@
 // Bump the version on every change, so installed copies pick up the update.
-const CACHE = "songbook-v10";
+const CACHE = "songbook-v11";
 
 // The app shell and shipped data. Large optional assets (vendor/essentia's
 // WASM, later models) are not listed: they're cached the first time they're fetched.
@@ -48,6 +48,7 @@ const ASSETS = [
   "js/zip.js",
   "js/spimport.js",
   "js/chartfile.js",
+  "js/picking.js",
   "vendor/signalsmith-stretch/SignalsmithStretch.mjs",
   "vendor/chords-db/guitar.json",
   "songs/index.json",

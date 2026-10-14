@@ -1,5 +1,5 @@
 // The song view (#/song/<id>/<mode>): Sheet (chords over lyrics), Chords
-// (sections as bars), Player (js/player.js) and the sheet editor
+// (sections as bars), Picking (js/picking.js), Player (js/player.js) and the sheet editor
 // (#/song/<id>/edit). Transpose, Simple, Aa and Capo, chord popovers,
 // auto-scroll, and Play (the app guitar strums or picks the chart, with the
 // sheet or bars lit as it goes; with a recording, the sheet plays that and
@@ -23,9 +23,10 @@ import { invalidateSongs } from "./songs.js";
 import { openPlayer, leavePlayerView, closePlayer, pitchShift, playerNow, onPlayerFrame, togglePlayer as toggleRecording, playRecording } from "./player.js";
 import { lyricLines, getTiming, saveTiming, lineAt, findSyncedLyrics, alignToSheet, sheetFromTiming } from "./lyrics.js";
 import { lrclibOn } from "./prefs.js";
+import { patternFor, patternBadge, sectionBars, fingersHtml, diagramSvg, notationHtml, patternListHtml, pimapeggioLink, pimapeggioAvailable } from "./picking.js";
 
 const MODES = [["sheet", "Sheet"], ["chords", "Chords"], ["picking", "Picking"], ["player", "Player"]];
-const READY = new Set(["sheet", "chords", "edit", "analyse", "player"]);
+const READY = new Set(["sheet", "chords", "picking", "edit", "analyse", "player"]);
 const MIN_BPM = 30, MAX_BPM = 220, DEFAULT_BPM = 80;
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 const SCROLL_PX = 24;   // px per second at 1x and the default font size
@@ -39,6 +40,8 @@ function getPlayer() {
   if (!player) {
     player = new ChartPlayer("guitar");
     player.addEventListener("bar", (e) => highlight(e.detail.bar));
+    player.addEventListener("step", (e) => pickStep(e.detail.step));
+    player.addEventListener("chord", (e) => pickChord(e.detail));
     player.addEventListener("state", () => { updateTransport(); if (!player.playing) highlight(-1); });
     player.addEventListener("end", () => player.stop(0.4));
   }
@@ -135,6 +138,10 @@ function playBars() {
 
 // What Play will play, said plainly.
 function playPlan() {
+  if (cur.mode === "picking") {
+    const { pf } = pickPlan();
+    return { text: pf.pattern ? `Picking ${pf.pattern.name} over this section, looped${pf.mine ? " (your pick)" : ""}` : "Choose a pattern to hear it" };
+  }
   const c = cur.chart;
   const b = base();
   const time = (b && b.time) || (c && c.time) || "4/4";
@@ -246,7 +253,7 @@ function render() {
         ${mode === "chords" ? headCard(b) : ""}
         ${modesSeg(mode)}
         ${chords || (mode === "sheet" && cur.doc) ? toolbar(mode, chords) : ""}
-        ${mode === "sheet" ? sheetBody(b, disp) : chordsBody(b, disp)}
+        ${mode === "sheet" ? sheetBody(b, disp) : mode === "picking" ? pickingBody(b, disp) : chordsBody(b, disp)}
       </div></div>
       <aside class='song-side' aria-label='Chords and transport'>
         ${chords ? `<div class='h2'>Chords</div><div class='boxes'>${boxesHtml(b, disp)}</div>` : ""}
@@ -267,12 +274,117 @@ function render() {
   wire(view);
   updateTransport();
   litLine = null;
+  if (mode === "picking") checkPimapeggio();
 }
 
 function modesSeg(mode) {
   return `<div class='seg' role='tablist' aria-label='Mode'>${MODES.map(([m, label]) =>
     `<button role='tab' data-mode='${m}' class='${m === mode ? "on" : ""}' aria-selected='${m === mode}'
       ${READY.has(m) ? "" : "disabled title='Coming in a later update'"}>${label}</button>`).join("")}</div>`;
+}
+
+/* ---- Picking mode ---- */
+
+function pickSection(b) {
+  const n = (b && b.sections ? b.sections.length : 0);
+  return Math.max(0, Math.min(cur.pickSec || 0, n - 1));
+}
+
+function pickPlan() {
+  const b = base();
+  const si = pickSection(b);
+  const sec = b && b.sections ? b.sections[si] : null;
+  const pf = patternFor(cur.chart || b, sec, cur.prefs);
+  const bars = hasChords(b) ? sectionBars(b, si, makeDisp(b), voicingMap(b)) : [];
+  return { b, si, sec, pf, bars };
+}
+
+function pickingBody(b, disp) {
+  const { si, sec, pf, bars } = pickPlan();
+  const secs = (b && b.sections) || [];
+  const pills = secs.length > 1 ? `<div class='pills' role='group' aria-label='Section'>${secs.map((x, i) =>
+    `<button class='pill ${i === si ? "on" : ""}' data-pick-sec='${i}' aria-pressed='${i === si}'>${esc(x.name)}</button>`).join("")}</div>` : "";
+  if (!pf.pattern) {
+    return `${pills}<div class='card empty'><b>No picking pattern for this song.</b><br>Nothing is guessed: choose a pattern to try over ${sec ? esc(sec.name) : "its chords"}, and it's labelled as your pick.
+      <div style='margin-top:12px'><button class='btn primary' data-act='pick-pattern'>Choose a pattern</button></div></div>`;
+  }
+  const p = pf.pattern;
+  const first = bars.find((x) => x.chords[0] && x.chords[0].pima);
+  const chord = (first && first.chords[0].pima) || pimaChord("C");
+  const noChords = !bars.length;
+  const pk = pf.picking;
+  const prov = pf.mine
+    ? `<div class='note'>Your pick${pf.options.length ? `; the song's ${pf.options.length > 1 ? "patterns are" : "pattern is"} ${pf.options.map((id) => esc(patternName(id))).join(", ")}` : ""}.</div>`
+    : pk ? `${pk.description ? `<div class='note'>${esc(pk.description)}</div>` : ""}
+      <div class='note' style='margin-top:6px'>Pattern: ${esc(pickingLabel(pk).text)}${pk.match ? `, ${esc(pk.match)} match to the song` : ""}${pk.part ? ` (${esc(pk.part)})` : ""}.</div>${provenance(pk, pk.sources)}` : "";
+  return `${pills}
+    <div class='card pick-card'>
+      <div class='sec-head'><span class='sec-name'>${sec ? esc(sec.name) + " · " : ""}<span class='nowrap'>${esc(p.name)}</span></span>${patternBadge(pf)}</div>
+      ${fingersHtml(p)}
+      <div class='pick-stage'>${diagramSvg(p, chord)}</div>
+      ${notationHtml(p, chord)}
+      ${noChords ? "<p class='note'>No chords yet for this song: shown over C.</p>"
+        : `<div class='bars'>${bars.map((x) => `<button class='bar' data-sec='${x.sec}' data-bar='${x.bar}' aria-label='Bar ${x.bar + 1}: ${esc(x.chords.map((c) => c.name).join(" "))}'>${x.chords.map((c) =>
+          `<span class='ch'>${esc(prettyChord(c.name))}</span>`).join("")}</button>`).join("")}</div>`}
+    </div>
+    <div class='card set-group'>
+      <div class='set-row'><div style='min-width:0'><div class='set-label'>Pattern</div><div class='meta ellipsis'>${esc(p.name)}${p.name !== p.letters ? " · " + esc(p.letters) : ""}</div></div>
+        <button class='btn outline small' data-act='pick-pattern'>Change</button></div>
+      ${pf.mine && pf.options.length ? `<div class='set-row'><div class='meta'>Back to the song's ${esc(patternName(pf.options[0]))}.</div><button class='btn outline small' data-act='pick-reset'>Use it</button></div>` : ""}
+      <div class='set-row'><div><div class='set-label'>Practise in Pimapeggio</div><div class='meta' id='pima-note'>The full trainer, with the tempo ladder, on this pattern over ${noChords ? "C" : esc(sec ? sec.name : "these chords")}.</div></div>
+        <a class='btn outline small' id='pima-link' href='${esc(pimapeggioLink({ pattern: p, bars: noChords ? [{ chords: [{ name: "C", spec: "x32010" }] }] : bars, capo: capoNow(), bpm: tempo(), name: `${songTitle()}${sec ? " · " + sec.name : ""}` }))}' target='_blank' rel='noopener'>Open</a></div>
+    </div>
+    ${prov ? `<div class='card sources'>${prov}</div>` : ""}`;
+}
+
+// Pimapeggio isn't online everywhere yet: say so instead of a dead link.
+async function checkPimapeggio() {
+  const ok = await pimapeggioAvailable();
+  if (ok || !cur || cur.mode !== "picking") return;
+  const a = cur.view.querySelector("#pima-link"), note = cur.view.querySelector("#pima-note");
+  if (a) { a.removeAttribute("href"); a.setAttribute("aria-disabled", "true"); a.classList.add("disabled"); a.textContent = "Not online yet"; }
+  if (note) note.textContent = "Pimapeggio isn't online here yet. Once it's deployed next to the Songbook, this opens it on this pattern and section.";
+}
+
+function openPatternChooser() {
+  const { pf } = pickPlan();
+  const pop = showPopover(`<div class='popover-head'><span class='popover-name'>Picking pattern</span></div>
+    <p class='note'>The song's own pattern says where it's from; anything you choose here is labelled as your pick.</p>
+    ${patternListHtml(pf.pattern ? pf.pattern.id : null, pf.options)}
+    <button class='btn outline' data-close>Done</button>`, "Choose a picking pattern");
+  pop.querySelectorAll("[data-pattern]").forEach((x) => x.addEventListener("click", () => {
+    const id = x.dataset.pattern;
+    // Choosing the song's own first pattern isn't "your pick".
+    setPrefs({ pickPattern: pf.options[0] === id ? null : id });
+    closePopover();
+    if (player && player.playing) togglePlay().then(() => togglePlay());
+  }));
+}
+
+// The lit finger letter and diagram column while it plays.
+let litStep = -1;
+function pickStep(i) {
+  if (!cur || cur.mode !== "picking") return;
+  const v = cur.view;
+  v.querySelectorAll(".fcell.cur, .dg-col.cur").forEach((e) => e.classList.remove("cur"));
+  litStep = i;
+  if (i < 0) return;
+  const a = v.querySelector(`.fcell[data-i='${i}']`), c = v.querySelector(`.dg-col[data-i='${i}']`);
+  if (a) a.classList.add("cur");
+  if (c) c.classList.add("cur");
+}
+
+// The diagram and notation follow the chord being played.
+function pickChord(d) {
+  if (!cur || cur.mode !== "picking" || !player || !player.session) return;
+  const bar = player.session.bars[d.bar];
+  const ch = bar && bar.chords[d.index];
+  if (!ch || !ch.pima || !player.session.pattern) return;
+  const p = player.session.pattern;
+  const stage = cur.view.querySelector(".pick-stage"), nota = cur.view.querySelector(".pick-notation");
+  if (stage) stage.innerHTML = diagramSvg(p, ch.pima);
+  if (nota) nota.outerHTML = notationHtml(p, ch.pima);
+  if (litStep >= 0) pickStep(litStep);
 }
 
 /* ---- Player mode ---- */
@@ -759,7 +871,10 @@ function setPrefs(patch) {
   Object.assign(cur.prefs, patch);
   savePrefs(cur.id, cur.prefs);
   render();
-  if (player && player.playing) player.setBars(playBars());
+  if (player && player.playing) {
+    if (cur.mode === "picking") { const bars = pickPlan().bars; if (bars.length) player.setBars(bars); }
+    else player.setBars(playBars());
+  }
 }
 
 export function transposeBy(n) {
@@ -786,6 +901,15 @@ export async function togglePlay() {
     if (player && player.playing) player.stop();
     if (pn && pn.id === cur.id) await toggleRecording(); else await playRecording(playerCtx());
     updateTransport();
+    return;
+  }
+  if (cur.mode === "picking") {
+    const p = getPlayer();
+    if (p.playing) { p.stop(); return; }
+    const { pf, bars, b } = pickPlan();
+    if (!pf.pattern) { openPatternChooser(); return; }
+    const playable = bars.length ? bars : [{ sec: 0, bar: 0, chords: [{ name: "C", frets: [null, 3, 2, 0, 1, 0], pima: pimaChord("C") }] }];
+    await p.start({ bars: playable, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), pattern: pf.pattern, countIn: false, loop: true });
     return;
   }
   if (!hasChords(base())) return;
@@ -819,9 +943,16 @@ function wire(view) {
       else if (act === "delete-chart") deleteMyChart(b);
       else if (act === "sync") { if (cur.sync) { cur.sync = null; render(); } else startSync(); }
       else if (act === "lrclib-new") lrclibNewSheet(b);
+      else if (act === "pick-pattern") openPatternChooser();
+      else if (act === "pick-reset") setPrefs({ pickPattern: null });
     });
   });
   view.querySelectorAll("[data-sync]").forEach((b) => b.addEventListener("click", () => syncAct(b.dataset.sync)));
+  view.querySelectorAll("[data-pick-sec]").forEach((b) => b.addEventListener("click", () => {
+    if (player && player.playing) player.stop();
+    cur.pickSec = +b.dataset.pickSec;
+    render();
+  }));
   view.querySelectorAll("[data-which]").forEach((b) => b.addEventListener("click", () => {
     cur.showCited = b.dataset.which === "cited";
     render();

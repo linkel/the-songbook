@@ -35,7 +35,8 @@ async function newPage(w, h, scheme, { library = fixtureLibrary(), ...opts } = {
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource.*404/.test(m.text())) errors.push(m.text()); });
   await page.goto(BASE);
-  await page.waitForSelector("html[data-ready]");
+  // Generous: a busy machine (the whole suite at once) can be slow to start a page.
+  await page.waitForSelector("html[data-ready]", { timeout: 90000 });
   return { context, page, errors };
 }
 
@@ -164,6 +165,8 @@ for (const [w, h] of SIZES) {
         ["landslide", "#/song/landslide", true],
         ["rising-sun", "#/song/the-house-of-the-rising-sun", true],
         ["boxer", "#/song/the-boxer", true],
+        ["picking", "#/song/landslide/picking", true],
+        ["picking-six", "#/song/the-house-of-the-rising-sun/picking", true],
         ["practice", "#/practice", false],
         ["settings", "#/settings", false],
       ];
@@ -800,6 +803,49 @@ await section("desktop", async () => {
   await page.waitForTimeout(300);
   check("desktop: Esc goes back", await page.evaluate(() => location.hash === "#/songs"));
   check("desktop: no page errors", errors.length === 0, errors.join("; "));
+  await context.close();
+});
+
+/* ---- Picking mode ---- */
+await section("picking", async () => {
+  const { context, page, errors } = await newPage(375, 752, "dark");
+  await show(page, "#/song/landslide/picking");
+  eq("picking: Travis for Landslide, labelled as your description", [await page.$$eval(".fcell", (c) => c.map((x) => x.textContent).join("")), await page.textContent(".pick-card .badge")], ["pipm", "your description"]);
+  check("picking: diagram and notation drawn", (await page.$$(".pick-stage svg circle")).length === 4 && (await page.$$(".pick-notation svg")).length === 1);
+  eq("picking: the section's bars", await page.$$eval(".pick-card .bar", (b) => b.map((x) => x.textContent.trim())), ["C", "G/B", "Am7", "G/B"]);
+  await page.click(".transport.mobile .play");
+  await page.waitForTimeout(1800);
+  const run = await page.evaluate(() => {
+    const p = window.songbook.getPlayer();
+    const steps = p.log.filter((e) => e.type === "step");
+    return { steps: steps.length, order: steps.slice(0, 4).map((e) => e.step), chord: steps[0] && steps[0].chord, lit: !!document.querySelector(".fcell.cur"), bar: document.querySelector(".pick-card .bar.on") && document.querySelector(".pick-card .bar.on").textContent.trim(), loop: p.session && p.session.loop };
+  });
+  check("picking: plays the pattern step by step, lit", run.steps >= 4 && run.order.join() === "0,1,2,3" && run.lit && run.bar === "C" && run.loop, JSON.stringify(run));
+  // Shapes under capo 3: the notes are C shapes up three frets.
+  const midis = await page.evaluate(() => window.songbook.getPlayer().log.find((e) => e.type === "step").midis);
+  eq("picking: thumb on the C shape's bass, capo 3", midis, [51]);
+  await page.click(".transport.mobile .play");
+  // Choose another pattern: labelled as your pick, kept after a reload.
+  await page.click("[data-act=pick-pattern]");
+  await page.click("[data-pattern='pima']");
+  await page.waitForTimeout(200);
+  eq("picking: your pick shown and labelled", [await page.$$eval(".fcell", (c) => c.map((x) => x.textContent).join("")), await page.textContent(".pick-card .badge")], ["pima", "your pick"]);
+  await page.reload();
+  await page.waitForSelector("html[data-ready]");
+  await show(page, "#/song/landslide/picking");
+  eq("picking: your pick kept", await page.textContent(".pick-card .badge"), "your pick");
+  await page.click("[data-act=pick-reset]");
+  eq("picking: back to the song's pattern", await page.textContent(".pick-card .badge"), "your description");
+  // A song with no picking pattern: nothing guessed.
+  await show(page, "#/song/ssrignr/picking");
+  check("picking: none for a strummed song, nothing guessed", (await page.textContent(".song-scroll")).includes("No picking pattern for this song"));
+  await page.screenshot({ path: `${out}/behaviour-picking-none.png` });
+  // Pimapeggio: a link when it's reachable, a note when it isn't.
+  await show(page, "#/song/landslide/picking");
+  await page.waitForTimeout(500);
+  const pl = await page.evaluate(() => { const a = document.querySelector("#pima-link"); return { href: a.getAttribute("href"), text: a.textContent }; });
+  check("picking: Pimapeggio link with the pattern and section, or a not-online note", (pl.href && /pattern=travis/.test(pl.href) && /chords=C\+%7C\+G%2FB/.test(pl.href) && /capo=3/.test(pl.href)) || pl.text === "Not online yet", JSON.stringify(pl));
+  check("picking: no page errors", errors.length === 0, errors.join("; "));
   await context.close();
 });
 

@@ -19,7 +19,7 @@ export async function renderPractice(view) {
     <h1 class='page-title'>Practice</h1>
     ${songs.length ? songs.map(([id, ls]) => songCard(id, ls)).join("") : `<div class='card empty'><b>Nothing saved yet.</b><br>
       In a song's Player, set a loop (a section, a few bars, or A and B) and tap <b>+ Save loop</b>. Saved loops collect here, with how far the speed trainer got.</div>`}
-    <p class='note' style='padding:0 2px'>Picking patterns to practise arrive with the Picking mode.</p>
+    <p class='note' style='padding:0 2px'>For a picking pattern, open a song's Picking mode: it plays the pattern over each section, and opens Pimapeggio's trainer with the tempo ladder.</p>
   </div>`;
   view.querySelectorAll("[data-del-loop]").forEach((b) => b.addEventListener("click", async () => {
     if (!b.classList.contains("armed")) { b.classList.add("armed"); b.textContent = "Tap again"; return; }

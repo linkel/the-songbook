@@ -16,7 +16,7 @@ import { helperUrl, setHelperUrl, pingHelper } from "./helper-client.js";
 import { lrclibOn, setLrclib } from "./prefs.js";
 import { speedyPitcherHere, loadFromHere, loadFromZip, startImport, renderImport, importState } from "./spimport.js";
 
-export const VERSION = "0.4.0";
+export const VERSION = "0.5.0";
 
 const views = {
   songs: document.getElementById("view-songs"),
