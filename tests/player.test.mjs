@@ -592,6 +592,22 @@ await section("speedy-pitcher", async () => {
   await context.close();
 });
 
+/* ---- Export your charts (for songs/ in the repo) ---- */
+await section("charts export", async () => {
+  const { context, page, errors } = await newPage(375, 752, "dark");
+  const s = await seedSong(page, { title: "Export Song", repeat: 2 });
+  await show(page, "#/settings");
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#charts-export")]);
+  const file = JSON.parse(fs.readFileSync(await dl.path(), "utf8"));
+  const c = file.charts.find((x) => x.id === s.id);
+  check("export: a charts file with this song", file.app === "songbook" && file.kind === "charts" && !!c, dl.suggestedFilename());
+  check("export: chords, bar times and beats", c && c.source === "detected" && c.detector && c.sections.length && c.bars.length && c.beats.length && typeof c.bars[0].t === "number");
+  check("export: no recording name or chroma", c && !JSON.stringify(c).includes("song.wav") && !(c.analysis && (c.analysis.chroma || c.analysis.file || c.analysis.ticks)), JSON.stringify(c && c.analysis));
+  check("export: says so", /chart/.test(await page.textContent("#charts-out")));
+  check("charts export: no page errors", errors.length === 0, errors.join("; "));
+  await context.close();
+});
+
 /* ---- Test stretch speed ---- */
 await section("bench", async () => {
   const { context, page } = await newPage(1440, 900);

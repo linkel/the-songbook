@@ -47,6 +47,7 @@ const ASSETS = [
   "js/practice.js",
   "js/zip.js",
   "js/spimport.js",
+  "js/chartfile.js",
   "vendor/signalsmith-stretch/SignalsmithStretch.mjs",
   "vendor/chords-db/guitar.json",
   "songs/index.json",

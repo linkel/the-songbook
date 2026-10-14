@@ -232,7 +232,9 @@ function render() {
   // Keep the scroll position only when re-rendering the same screen.
   const keepScroll = old && cur.renderedMode === mode ? old.scrollTop : 0;
   cur.renderedMode = mode;
-  const badgeOf = mode === "sheet" && cur.sheet ? { source: cur.sheet.source || "mine", hasChords: true } : (b || {});
+  // A sheet's badge says where its chords came from (LRCLIB gives only lyrics).
+  const sheetSource = !cur.sheet ? null : cur.sheet.source === "lrclib" ? cur.sheet.chordsFrom : cur.sheet.source || "mine";
+  const badgeOf = mode === "sheet" && cur.sheet ? { source: sheetSource, hasChords: chords } : (b || {});
   view.innerHTML = `
     <div class='topbar'>
       <a class='back' href='#/songs' aria-label='Back to songs'>${ICONS.back}</a>
@@ -252,7 +254,7 @@ function render() {
         <div class='transport'>${transportInner(chords)}</div>
       </aside>
     </div>
-    ${mode === "sheet" && chords ? `<div class='chordstrip' aria-label='Chords in this song'>${boxesHtml(b, disp, 58)}</div>` : ""}
+    ${mode === "sheet" && chords && !cur.sync ? `<div class='chordstrip' aria-label='Chords in this song'>${boxesHtml(b, disp, 58)}</div>` : ""}
     <div class='scroll-ctl hidden' role='group' aria-label='Scroll speed'>
       <span class='meta'>Scrolling</span>
       <button class='btn outline round small-round' data-act='speed-' aria-label='Slower scroll'>−</button>
@@ -277,8 +279,10 @@ function modesSeg(mode) {
 
 // The chart with bar times (from an analysed recording), else the chart.
 function timedChart() {
-  const d = cur.device;
-  if (d && Array.isArray(d.bars) && d.bars.length && typeof d.bars[0].t === "number") return d;
+  const timed = (c) => c && Array.isArray(c.bars) && c.bars.length && typeof c.bars[0].t === "number";
+  if (timed(cur.device)) return cur.device;
+  // A shipped chart from your own analysis (tools/add-charts.mjs) has bar times too.
+  if (timed(cur.shipped)) return cur.shipped;
   return cur.chart;
 }
 

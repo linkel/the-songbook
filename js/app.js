@@ -4,7 +4,8 @@
 import { setChordDb } from "./chords.js";
 import { renderSongs, invalidateSongs } from "./songs.js";
 import { openSong, closeSong, togglePlay, transposeBy, tempoBy, toggleScroll, songMode, songState, getPlayer } from "./song.js";
-import { loadLibrary, importLibraryText, get } from "./library.js";
+import { loadLibrary, importLibraryText, get, deviceCharts } from "./library.js";
+import { chartsFile } from "./chartfile.js";
 import { storageInfo, listRecordings, deleteRecording, fmtBytes } from "./recordings.js";
 import { renderBatch } from "./batch.js";
 import { onAudioState, resumeAudio, StringVoices, strum, warmNotes, audioContext } from "./audio.js";
@@ -99,6 +100,8 @@ async function renderSettings() {
       <div class='set-row'><div><div class='set-label'>Library</div><div class='meta' id='lib-status'>${libText}</div></div></div>
       <div class='set-row'><div><div class='set-label'>Import library file</div><div class='meta'>The JSON from the Spotify import tool. Stays on this device.</div></div>
         <label class='btn outline small file-btn'>Choose file<input type='file' id='lib-file' accept='.json,application/json' class='sr-only'></label></div>
+      <div class='set-row'><div><div class='set-label'>Export your charts</div><div class='meta' id='charts-out'>Chords you've detected or checked, as a file for the repo (node tools/add-charts.mjs), so the deployed app has them. Chords and timing only; recordings stay here.</div></div>
+        <button class='btn outline small' id='charts-export'>Export</button></div>
     </div>
     ${await storageCard(lib)}
     ${await playerCard()}
@@ -121,6 +124,21 @@ async function renderSettings() {
   }));
   views.settings.querySelector("#sound-check").addEventListener("click", soundCheck);
   wirePlayerCard();
+  views.settings.querySelector("#charts-export").addEventListener("click", async () => {
+    const out = views.settings.querySelector("#charts-out");
+    const file = chartsFile(await deviceCharts());
+    if (!file.charts.length) { out.textContent = "No charts with chords on this device yet."; return; }
+    const blob = new Blob([JSON.stringify(file, null, 1)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `songbook-charts-${file.exported.slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    out.textContent = `${file.charts.length} chart${file.charts.length === 1 ? "" : "s"}: ${file.charts.map((c) => c.title).join(", ")}. Then: node tools/add-charts.mjs <that file>.`;
+  });
   views.settings.querySelectorAll("[data-del-rec]").forEach((b) => b.addEventListener("click", async () => {
     if (!b.classList.contains("armed")) { b.classList.add("armed"); b.textContent = "Tap again"; return; }
     await deleteRecording(b.dataset.delRec);
