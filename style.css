@@ -431,6 +431,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .switch.on::after { transform: translateX(20px); }
 .small-seg { display: inline-flex; padding: 2px; }
 .small-seg button { padding: 0 12px; white-space: nowrap; }
+.toolbar .play-source { padding: 2px; }
+.toolbar .play-source button { flex: 0 0 auto; }
 .bar { position: relative; }
 .bar.editbar { border-style: dashed; border-color: var(--surface2); }
 .bar .q { color: var(--meta); font-weight: 800; font-size: 15px; }
@@ -669,6 +671,12 @@ button.pick.on { border-color: var(--mauve); background: color-mix(in srgb, var(
 .tab-sheet { display: flex; flex-wrap: wrap; gap: 6px; }
 .pick-card.whole .whole-sec { display: flex; align-items: baseline; justify-content: space-between; margin: 14px 0 6px; }
 .pick-card.whole .whole-sec .sec-name { font-size: 15px; }
+.pick-card.whole .views-row { display: flex; gap: 8px; align-items: stretch; margin: 4px 0 8px; }
+.pick-card.whole .views-row .part-views { flex: 1; margin: 0; }
+/* Words under the bar they're sung from: as wide as the bar, wrapping. */
+.tab-bar .tab-lyric { display: block; width: 0; min-width: 100%; padding: 2px 8px 6px; text-align: left; white-space: normal;
+  font-size: 15px; line-height: 1.3; color: var(--text); font-weight: 600; }
+.tab-bar.on .tab-lyric { color: var(--ink-peach); }
 .pbar.tab-bar { display: block; min-height: 44px; padding: 2px 0; flex: 0 0 auto; max-width: 100%; overflow-x: auto; }
 .pbar.tab-bar.empty { display: flex; min-width: 88px; padding: 0 10px; }
 .pbar.tab-bar.pv-notation { padding: 4px 6px; text-align: left; }

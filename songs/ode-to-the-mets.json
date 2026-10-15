@@ -1,0 +1,67 @@
+{
+  "id": "ode-to-the-mets",
+  "type": "song",
+  "title": "Ode To The Mets",
+  "artist": "The Strokes",
+  "spotify": null,
+  "key": "C#m",
+  "capo": 2,
+  "time": "4/4",
+  "tempo": 91,
+  "style": null,
+  "strum": null,
+  "voicings": {},
+  "sections": [
+    {
+      "name": "Intro",
+      "chords": "Em | A | F#m | Bm",
+      "repeat": 2
+    },
+    {
+      "name": "Verse",
+      "chords": "Em | A | F#m | Bm",
+      "repeat": 5
+    },
+    {
+      "name": "Break",
+      "chords": "Em | A | D | Bm",
+      "repeat": 2
+    },
+    {
+      "name": "Instrumental",
+      "chords": "Em | A | F#m | Bm"
+    },
+    {
+      "name": "Outro",
+      "chords": "D | Em | G | A",
+      "repeat": 4
+    }
+  ],
+  "form": [
+    "Intro",
+    "Verse",
+    "Break",
+    "Instrumental",
+    "Verse",
+    "Break",
+    "Outro"
+  ],
+  "source": "web",
+  "detector": null,
+  "confidence": "medium",
+  "sources": [
+    {
+      "label": "Chords by memosanz321, capo 2 (Ultimate Guitar 3081020): Em A F#m Bm, break Em A D Bm, ending D Em G A",
+      "url": "https://tabs.ultimate-guitar.com/tab/the-strokes/ode-to-the-mets-chords-3081020"
+    },
+    {
+      "label": "Chords, no capo (Ultimate Guitar 2948228): F#m7 B E C#m, verse F#m7 B7 G#m C#m, ending E F#m7 A B",
+      "url": "https://tabs.ultimate-guitar.com/tab/the-strokes/ode-to-the-mets-chords-2948228"
+    },
+    {
+      "label": "Hooktheory analysis: 91 BPM; verse in C#m VI VII7 v i, chorus in E I ii IV V, bridge iv VII III(add9) i",
+      "url": "https://www.hooktheory.com/theorytab/view/the-strokes/ode-to-the-mets"
+    }
+  ],
+  "notes": "Shapes with a capo on 2 (sounds F#m B G#m C#m). The no-capo chart has E (D here) where this has G#m (F#m here) in some verse lines, and Hooktheory starts the verse on A (G here) rather than F#m (Em); the break and the ending agree in all three. Repeat counts are from the capo-2 chart. Neither source gives bar lengths, so it's one chord per bar (two where a sheet line pairs them closely): check the timing by ear."
+}

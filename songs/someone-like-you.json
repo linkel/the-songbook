@@ -1,0 +1,64 @@
+{
+  "id": "someone-like-you",
+  "type": "song",
+  "title": "Someone Like You",
+  "artist": "Adele",
+  "spotify": null,
+  "key": "A",
+  "capo": 2,
+  "time": "4/4",
+  "tempo": null,
+  "style": null,
+  "strum": null,
+  "voicings": {},
+  "sections": [
+    {
+      "name": "Intro",
+      "chords": "G | Bm/F# | Em | C"
+    },
+    {
+      "name": "Verse",
+      "chords": "G | Bm/F# | Em | C",
+      "repeat": 3
+    },
+    {
+      "name": "Pre-Chorus",
+      "chords": "D9 | Em | C | D9 | Em | C Em"
+    },
+    {
+      "name": "Chorus",
+      "chords": "G | D | Em | C",
+      "repeat": 4
+    },
+    {
+      "name": "Bridge",
+      "chords": "D | Em | C | Am G | C D"
+    }
+  ],
+  "form": [
+    "Intro",
+    "Verse",
+    "Pre-Chorus",
+    "Chorus",
+    "Verse",
+    "Pre-Chorus",
+    "Chorus",
+    "Bridge",
+    "Chorus",
+    "Chorus"
+  ],
+  "source": "web",
+  "detector": null,
+  "confidence": "medium",
+  "sources": [
+    {
+      "label": "Chords, capo 2 (Ultimate Guitar 1006751, rated 4.86): G Bm/F# Em C; pre-chorus D9 Em C; chorus G D Em C",
+      "url": "https://tabs.ultimate-guitar.com/tab/adele/someone-like-you-chords-1006751"
+    },
+    {
+      "label": "Chords, no capo (Ultimate Guitar 1006040): A A/G# F#m D; E9 F#m D; chorus A E F#m D",
+      "url": "https://tabs.ultimate-guitar.com/tab/adele/someone-like-you-chords-1006040"
+    }
+  ],
+  "notes": "Shapes with a capo on 2. The two charts agree once transposed, except the second chord: Bm/F# here (C#m/G# sounding) where the no-capo chart has A/G#; both keep G# in the bass. The original is piano. Neither source gives bar lengths, so it's one chord per bar (two where a sheet line pairs them closely): check the timing by ear."
+}

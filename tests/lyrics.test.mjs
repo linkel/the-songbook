@@ -70,4 +70,15 @@ let bad = null;
 try { await readZip(new Blob([new Uint8Array(100)])); } catch (e) { bad = e.message; }
 check("zip: not a zip is a readable error", /isn't a zip/.test(bad || ""), bad);
 
+/* ---- LRCLIB's lines retimed to your recording (times only, keyed by line) ---- */
+{
+  const synced = [{ t: 10, text: "First made-up line" }, { t: 14, text: "" }, { t: 15, text: "Second made-up line" }, { t: 20, text: "Third made-up line" }, { t: 30, text: "Fourth made-up line" }];
+  const r = Ly.retime(synced, [{ j: 0, t: 70 }, { j: 2, t: 90 }]);
+  eq("retime: aligned lines take their times", [r[0].t, r[3].t], [70, 90]);
+  eq("retime: a line between two aligned ones sits between them, spaced as LRCLIB had it", r[2].t, 70 + 20 * (5 / 10));
+  eq("retime: after the last, LRCLIB's spacing from there", r[4].t, 100);
+  eq("retime: nothing aligned leaves it as it was", Ly.retime(synced, []), synced);
+  check("retime: never goes backwards", r.every((x, k) => !k || x.t >= r[k - 1].t));
+}
+
 report("lyrics");

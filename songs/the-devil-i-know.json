@@ -1,0 +1,60 @@
+{
+  "id": "the-devil-i-know",
+  "type": "song",
+  "title": "The Devil I Know",
+  "artist": "Mae Hill",
+  "spotify": null,
+  "key": "Bm",
+  "capo": 0,
+  "time": "4/4",
+  "tempo": null,
+  "style": null,
+  "strum": null,
+  "voicings": {},
+  "sections": [
+    {
+      "name": "Intro",
+      "chords": "Bm"
+    },
+    {
+      "name": "Verse",
+      "chords": "Bm | F#m | Bm | F#m | Bm | Bm | F#m | Bm | F#m | Bm A"
+    },
+    {
+      "name": "Pre-Chorus",
+      "chords": "G | A | Bm | A | G | A | Bm | A"
+    },
+    {
+      "name": "Chorus",
+      "chords": "Bm | G | Bm | A | Bm | G | Bm | A | Bm | G | Bm | A | Bm | G | Bm | A G"
+    },
+    {
+      "name": "Verse 2",
+      "chords": "Bm | F#m | Bm | A | G | A"
+    },
+    {
+      "name": "Post-Chorus",
+      "chords": "Bm | F#m | A | Bm | G | Bm | A | Bm | G | Bm | A | Bm"
+    }
+  ],
+  "form": [
+    "Intro",
+    "Verse",
+    "Pre-Chorus",
+    "Chorus",
+    "Verse 2",
+    "Pre-Chorus",
+    "Chorus",
+    "Post-Chorus"
+  ],
+  "source": "web",
+  "detector": null,
+  "confidence": "low",
+  "sources": [
+    {
+      "label": "Chords (Ultimate Guitar 6042962): verse Bm F#m, pre-chorus G A Bm A, chorus Bm G Bm A",
+      "url": "https://tabs.ultimate-guitar.com/tab/mae-hill/the-devil-i-know-chords-6042962"
+    }
+  ],
+  "notes": "Only one chart could be found for this song, so it's unconfirmed. Neither source gives bar lengths, so it's one chord per bar (two where a sheet line pairs them closely): check the timing by ear."
+}

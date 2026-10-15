@@ -75,6 +75,26 @@ export async function startAnalysis({ file = null, link = null, song, title, art
   return r.json();
 }
 
+// Your lyric lines lined up with the vocals of the song's newest analysis on
+// the PC (its vocal stem): lyrics [{ index, text }] -> [{ index, t }].
+// onProgress(text) while it works.
+export async function alignOnPc({ song, lyrics, lang = "en", from = null }, onProgress = () => {}) {
+  const fd = new FormData();
+  fd.append("align", "lyrics");
+  fd.append("song", song);
+  fd.append("lyrics", JSON.stringify(lyrics));
+  if (lang) fd.append("lang", lang);
+  if (from) fd.append("from", from);
+  let job = await (await call("/analyze", { method: "POST", body: fd })).json();
+  for (;;) {
+    if (job.state === "done") return (job.timing && job.timing.lines) || [];
+    if (job.state === "failed" || job.state === "cancelled") throw new Error(job.error || "The PC stopped lining them up.");
+    onProgress(job.queue ? `Waiting behind ${job.queue} other job${job.queue === 1 ? "" : "s"} on your PC…` : "Lining the lyrics up with the vocals on your PC…");
+    await new Promise((r) => setTimeout(r, 1500));
+    job = await getJob(job.id);
+  }
+}
+
 export async function getJob(id) { return (await call("/jobs/" + encodeURIComponent(id), { cache: "no-store" })).json(); }
 export async function cancelJob(id) { return (await call("/jobs/" + encodeURIComponent(id) + "/cancel", { method: "POST" })).json(); }
 

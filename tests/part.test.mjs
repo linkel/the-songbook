@@ -183,6 +183,9 @@ await section("late july", async () => {
   const d = shapes.find((x) => x[0] === "D");
   check("late july: D is drawn as the open-D shape (000000)", d && d[2].includes("000000"), JSON.stringify(d));
   check("late july: every box uses its open-D shape", shapes.every(([name, spec, label]) => !spec || (label || "").includes(spec)), JSON.stringify(shapes.slice(0, 5)));
+  // It has a recording: Play plays that unless you choose the synth.
+  eq("late july: Play plays the recording, until you choose", await page.$eval(".play-source button.on", (b) => b.dataset.playSource), "recording");
+  await page.click("[data-play-source='synth']");
   await page.locator("[data-act=play]:visible").first().click();
   // The song starts with two bars of no chord (N.C.): wait for the first strum.
   await until(page, () => window.songbook.getPlayer().log.some((e) => e.type === "strum"), null, 15000);
@@ -207,7 +210,17 @@ await section("late july", async () => {
 for (const [w, h, scheme] of [[375, 752, "dark"], [1440, 900, "light"]]) {
   await section(`whole song ${w}`, async () => {
     const { context, page, errors } = await newPage(w, h, scheme);
-    await context.route("**/songs/audio/**", (r) => r.fulfill({ status: 404, body: "" }));
+    // Stand-ins: the recording and stems (a made-up song), and LRCLIB (invented words, 66 lines).
+    const wav = Buffer.from(await page.evaluate(async () => {
+      const g = await import("/tests/gen-song.js");
+      const { signal } = await g.renderSong({ bpm: 120, bars: ["D", "G", "D", "A"], repeat: 2 });
+      return Array.from(g.wavBytes(signal));
+    }));
+    await context.route("**/songs/audio/**", (r) => r.fulfill({ status: 200, contentType: "audio/wav", body: wav }));
+    await context.route("**/songs/stems/**", (r) => r.fulfill({ status: 200, contentType: "audio/wav", body: wav }));
+    const lrc = Array.from({ length: 66 }, (_, k) => `[${String(Math.floor(k * 4 / 60)).padStart(2, "0")}:${String((k * 4) % 60).padStart(2, "0")}.00]Invented line ${k + 1} for the tests`).join("\n");
+    await context.route("https://lrclib.net/api/**", (r) => r.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" },
+      body: JSON.stringify({ id: 34374191, trackName: "Late July", artistName: "Shakey Graves", duration: 368, syncedLyrics: lrc, plainLyrics: "" }) }));
     await show(page, "#/song/late-july/picking");
     await page.waitForSelector("[data-pick-sec='all']");
     await page.click("[data-pick-sec='all']");
@@ -227,7 +240,8 @@ for (const [w, h, scheme] of [[375, 752, "dark"], [1440, 900, "light"]]) {
       check("whole: notation too", (await page.$$(".pick-card.whole svg.notation")).length > 100);
       await page.click("[data-pview=tab]");
       await page.waitForSelector(".pick-card.whole svg.tab-svg");
-      // Play goes through the song, lighting the bar that plays.
+      // Play (the synth) goes through the song, lighting the bar that plays.
+      await page.click("[data-play-source='synth']");
       await page.locator("[data-act=play]:visible").first().click();
       await page.waitForFunction(() => document.querySelector(".pick-card.whole .tab-bar.on"), null, { timeout: 8000 });
       const lit = await page.evaluate(() => { const e = document.querySelector(".pick-card.whole .tab-bar.on"); return [e.dataset.form, e.dataset.pbar]; });
@@ -239,6 +253,36 @@ for (const [w, h, scheme] of [[375, 752, "dark"], [1440, 900, "light"]]) {
       await page.click(".pick-card.whole .tab-bar[data-form='2'][data-pbar='1']");
       await page.waitForSelector(".popover .step-grid, .popover");
       check("whole: tapping a bar edits it", (await page.textContent(".popover")).includes("Bar 2"));
+      await page.keyboard.press("Escape");
+      // The recording instead: Play plays it here, and pauses it here, the tab following.
+      await page.click("[data-play-source='recording']");
+      await page.locator("[data-act=play]:visible").first().click();
+      await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "file" && s.engine.playing; }, null, { timeout: 20000 });
+      await page.waitForFunction(() => /Pause/.test(document.querySelector(".transport.mobile .play").textContent), null, { timeout: 5000 });
+      check("whole: Play plays the recording, and says Pause", true);
+      await page.locator("[data-act=play]:visible").first().click();
+      await page.waitForFunction(() => !window.songbook.playerState().engine.playing, null, { timeout: 5000 });
+      const paused = await page.evaluate(() => ({ text: document.querySelector(".transport.mobile .play").textContent, synth: window.songbook.getPlayer().playing, pos: window.songbook.playerState().engine.position }));
+      check("whole: and pauses it from here, without starting the synth", /Recording/.test(paused.text) && !paused.synth && paused.pos > 0, JSON.stringify(paused));
+      // Lyrics under the bars: LRCLIB's words (a stand-in), at this song's own times.
+      await page.click("[data-act=tab-lyrics]");
+      await page.waitForSelector("[data-act=lrclib-here]");
+      await page.click("[data-act=lrclib-here]");
+      await page.waitForSelector(".pick-card.whole .tab-lyric", { timeout: 10000 });
+      const ly = await page.evaluate(async () => {
+        const c = await fetch("songs/late-july.json").then((r) => r.json());
+        const first = c.lyricTiming.times.find((x) => x.j === 0).t;
+        let bi = 0;
+        for (let i = 0; i < c.bars.length && c.bars[i].t <= first + 0.25; i++) bi = i;
+        const sung = [...document.querySelectorAll(".pick-card.whole .tab-bar.sung")];
+        const el = sung.find((b) => b.querySelector(".tab-lyric").textContent.includes("Invented line 1 "));
+        const num = el && +el.querySelector(".tnum").textContent;
+        return { sung: sung.length, num, want: bi + 1, mode: location.hash };
+      });
+      eq("whole: the first line under the bar it's sung in, still on the tab", [ly.num, ly.mode], [ly.want, "#/song/late-july/picking"]);
+      check("whole: lines under many bars", ly.sung > 20, String(ly.sung));
+      await settled(page, "whole song with lyrics");
+      await page.screenshot({ path: `${out}/whole-lyrics-375.png` });
     }
     check(`whole ${w}: no page errors`, errors.length === 0, errors.join("; "));
     await context.close();

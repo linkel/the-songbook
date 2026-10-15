@@ -85,6 +85,18 @@ for (const dir of dirs) {
     chart.arrangement = { file: `songs/arrangements/${id}.json`, detector: arr.detector, tracks: Object.keys(tracks) };
   }
 
+  // Lyric times lined up with the recording (helper/songbook_helper.py align=lyrics,
+  // on LRCLIB's lines): the times only, keyed to LRCLIB's lines; the words come
+  // from LRCLIB on the phone.
+  const tf = path.join(dir, "timing.json");
+  const td = fs.existsSync(tf) ? readJson(tf) : null;
+  let from = null;
+  try { from = td && td.from ? JSON.parse(td.from) : null; } catch (e) { from = null; }
+  if (td && from && from.lrclib && Array.isArray(td.lines) && td.lines.length) {
+    chart.lyricTiming = { source: "aligned", aligner: td.aligner || null, lrclib: from.lrclib,
+      times: td.lines.filter((x) => Number.isInteger(x.index) && isFinite(x.t)).map((x) => ({ j: x.index, t: Math.round(x.t * 100) / 100 })) };
+  } else if (old && old.lyricTiming) chart.lyricTiming = old.lyricTiming;
+
   // Your recording, when it's in private/ (or named with --audio).
   const audioSrc = (dirs.length === 1 && opt("--audio")) || (m.source && m.source.name && path.join(root, "private", m.source.name)) || null;
   if (!chart.audio && audioSrc && fs.existsSync(audioSrc)) {

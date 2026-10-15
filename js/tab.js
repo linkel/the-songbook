@@ -98,7 +98,8 @@ export function tabLegend(ctx, view) {
 // One section's bars as tab or notation, a button each. start: the bar
 // number before the first (the whole song numbers its bars on); form: which
 // play of the song's form this is (data-form, for lighting the bar that plays).
-export function partBarsHtml(ctx, view, sel = -1, { start = 0, form = null, sec = null } = {}) {
+// lyrics: Map(bar index -> the words sung from that bar), written under it.
+export function partBarsHtml(ctx, view, sel = -1, { start = 0, form = null, sec = null, lyrics = null } = {}) {
   const ex = expanded(ctx);
   const at = (form !== null ? ` data-form='${form}'` : "") + (sec !== null ? ` data-sec='${sec}'` : "");
   return ex.map((e, i) => {
@@ -106,9 +107,11 @@ export function partBarsHtml(ctx, view, sel = -1, { start = 0, form = null, sec 
     const cls = `pbar tab-bar pv-${view}${i === sel ? " sel" : ""}${e.confidence !== null && e.confidence < LOW ? " unsure" : ""}`;
     const num = start + i + 1;
     if (!e.steps) return `<button class='${cls} empty' data-pbar='${i}'${at} aria-label='Bar ${num}, ${esc(chords)}: nothing written yet'><span class='meta'>${num} · ${esc(prettyChord(ctx.bars[i].chords[0].name))}</span></button>`;
-    const inner = view === "tab" ? tabBarSvg(ctx, i, e, num)
-      : `<span class='tchord-label'>${num} · ${esc(ctx.bars[i].chords.map((c) => prettyChord(c.name)).join(" "))}</span>${notationBarSvg(ctx, i, e)}`;
-    return `<button class='${cls}' data-pbar='${i}'${at} aria-label='Bar ${num}, ${esc(chords)}'>${inner}</button>`;
+    const words = lyrics && lyrics.get(i);
+    const inner = (view === "tab" ? tabBarSvg(ctx, i, e, num)
+      : `<span class='tchord-label'>${num} · ${esc(ctx.bars[i].chords.map((c) => prettyChord(c.name)).join(" "))}</span>${notationBarSvg(ctx, i, e)}`)
+      + (lyrics ? `<span class='tab-lyric'>${words ? esc(words) : "&nbsp;"}</span>` : "");
+    return `<button class='${cls}${words ? " sung" : ""}' data-pbar='${i}'${at} aria-label='Bar ${num}, ${esc(chords)}${words ? ": " + esc(words) : ""}'>${inner}</button>`;
   }).join("");
 }
 

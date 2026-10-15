@@ -1,0 +1,63 @@
+{
+  "id": "every-second",
+  "type": "song",
+  "title": "Every Second",
+  "artist": "Mina Okabe",
+  "spotify": null,
+  "key": "Bb",
+  "capo": 0,
+  "time": "4/4",
+  "tempo": null,
+  "style": null,
+  "strum": null,
+  "voicings": {},
+  "sections": [
+    {
+      "name": "Verse",
+      "chords": "Cm | F | Bb | Gm | Cm | F | Bb | Gm | Cm | F | Bb | Gm | Cm | F | Bb | G7"
+    },
+    {
+      "name": "Pre-Chorus",
+      "chords": "Cm | F | Bb | D"
+    },
+    {
+      "name": "Chorus",
+      "chords": "Eb | F | Gm F | Eb | F | Eb F | Gm F | Eb"
+    },
+    {
+      "name": "Bridge",
+      "chords": "Eb | F | Gm F | Eb",
+      "repeat": 2
+    },
+    {
+      "name": "Outro",
+      "chords": "Eb | F | Gm F | Eb",
+      "repeat": 4
+    }
+  ],
+  "form": [
+    "Verse",
+    "Pre-Chorus",
+    "Chorus",
+    "Verse",
+    "Pre-Chorus",
+    "Chorus",
+    "Bridge",
+    "Chorus",
+    "Outro"
+  ],
+  "source": "web",
+  "detector": null,
+  "confidence": "medium",
+  "sources": [
+    {
+      "label": "Chords (Ultimate Guitar 3873914): verse Cm F Bb Gm, pre-chorus Cm F Bb D, chorus Eb F Gm F Eb",
+      "url": "https://tabs.ultimate-guitar.com/tab/mina-okabe/every-second-chords-3873914"
+    },
+    {
+      "label": "Acoustic live chords (Ultimate Guitar 4415444): Am D7 G Em, chorus C D7 Em D7 C (Cmaj7 later)",
+      "url": "https://tabs.ultimate-guitar.com/tab/mina-okabe/every-second-chords-4415444"
+    }
+  ],
+  "notes": "As the recording sounds. The acoustic live chart plays the same progression three frets lower (Am D7 G Em): with a capo on 3, those shapes sound these chords, and it adds sevenths (D7, Cmaj7). Neither source gives bar lengths, so it's one chord per bar (two where a sheet line pairs them closely): check the timing by ear."
+}

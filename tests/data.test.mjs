@@ -19,13 +19,13 @@ const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "in
 
 const CHART_KEYS = new Set(["id", "type", "title", "artist", "spotify", "key", "capo", "time", "tempo", "style", "strum",
   "voicings", "sections", "form", "source", "detector", "confidence", "sources", "notes", "picking", "beats",
-  "tuning", "links", "bars", "analysis", "checkedFrom", "audio", "stems", "arrangement"]);
+  "tuning", "links", "bars", "analysis", "checkedFrom", "audio", "stems", "arrangement", "lyricTiming"]);
 const SECTION_KEYS = new Set(["name", "chords", "repeat", "picking", "strength", "part"]);
 const PICKING_KEYS = new Set(["patterns", "also", "match", "source", "confidence", "part", "sources", "description", "from", "pattern"]);
 const SOURCES = new Set(["detected", "web", "mine", "verified"]);
 const PICK_SOURCES = new Set(["mine", "web", "suggested"]);
 // Free text lives only in these fields, and stays short.
-const TEXT_FIELDS = new Set(["notes", "description", "label", "title", "artist", "name", "from", "about", "detector", "checkedFrom"]);
+const TEXT_FIELDS = new Set(["notes", "description", "label", "title", "artist", "name", "from", "about", "detector", "checkedFrom", "aligner"]);
 const LYRIC_KEYS = /^(lyrics?|words|text|sheet|lines?|chordpro|verse_text)$/i;
 
 function walk(obj, path, fn) {
@@ -107,6 +107,11 @@ for (const f of files) {
   // A shipped recording and stems are in the repo.
   if (c.audio) check(`${w}: its recording is in the repo`, fs.existsSync(new URL("../" + c.audio.file, import.meta.url)), c.audio.file);
   for (const f of (c.stems && c.stems.files) || []) check(`${w}: stem ${f.name} is in the repo`, fs.existsSync(new URL("../" + f.file, import.meta.url)), f.file);
+  if (c.lyricTiming) {
+    const lt = c.lyricTiming;
+    check(`${w}: lyric timing names its LRCLIB lines`, lt.lrclib && Number.isInteger(lt.lrclib.id), JSON.stringify(lt.lrclib));
+    check(`${w}: lyric timing is times only, no words`, Array.isArray(lt.times) && lt.times.length > 0 && lt.times.every((x) => Object.keys(x).sort().join() === "j,t" && Number.isInteger(x.j) && isFinite(x.t)));
+  }
   if (c.arrangement) {
     const u = new URL("../" + c.arrangement.file, import.meta.url);
     check(`${w}: its band arrangement is in the repo`, fs.existsSync(u), c.arrangement.file);

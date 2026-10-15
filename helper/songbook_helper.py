@@ -19,7 +19,9 @@ Endpoints:
     POST /analyze[?url=<link>] -> {"id": ...}: queue an analysis. multipart/form-data fields:
                                   file (the audio, unless ?url= or job=), song, title, artist, name,
                                   lyrics (JSON [{index, text}]), lang, parts=guitar (with tuning,
-                                  capo), job=<id> (with parts=guitar: just the part, on that job's bundle)
+                                  capo), job=<id> (with parts=guitar: just the part, on that job's bundle),
+                                  align=lyrics (with song and lyrics: just line the lyrics up with the
+                                  vocal stem of that song's newest bundle; the job ends with "timing")
     GET  /jobs                 -> recent jobs
     GET  /jobs/<id>            -> {"state": "queued|running|done|failed|cancelled", "step", "progress", ...}
     POST /jobs/<id>/cancel
@@ -151,6 +153,8 @@ class Jobs:
             steps = [s for s in steps if s[0] != "parts"]
         if opts.get("job"):
             steps = [("parts", "Guitar part (basic-pitch)")]
+        if opts.get("align"):
+            steps = [("lyrics", "Lining up your lyrics")]
         job = {"id": jid, "state": "queued", "step": None, "progress": 0, "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
                "song": opts.get("song"), "title": opts.get("title"), "artist": opts.get("artist"), "name": opts.get("name"),
                "url": url, "steps": [{"key": k, "label": label, "p": 0} for k, label in steps], "error": None,
@@ -161,6 +165,20 @@ class Jobs:
             self.order = self.order[-200:]
         self.q.put(jid)
         return job
+
+    def bundle_for(self, song):
+        """The newest bundle folder analysed for song id `song` (with a vocal stem), or None."""
+        best = None
+        for d in os.listdir(self.root) if song and os.path.isdir(self.root) else []:
+            p = os.path.join(self.root, d)
+            try:
+                m = json.load(open(os.path.join(p, "bundle.json")))
+            except (OSError, ValueError):
+                continue
+            if m.get("songId") == song and not m.get("partsOnly") and os.path.exists(os.path.join(p, "stems", "vocals.m4a")):
+                if best is None or (m.get("created") or "") > best[0]:
+                    best = (m.get("created") or "", p)
+        return best and best[1]
 
     def public(self, job):
         out = {k: v for k, v in job.items() if not k.startswith("_") and k != "zip"}
@@ -205,6 +223,24 @@ class Jobs:
             try:
                 opts = dict(job["_opts"])
                 src = job["_audio"]
+                if opts.get("align"):
+                    # Just the lyrics, on the vocal stem of this song's newest bundle.
+                    out = self.bundle_for(opts.get("song"))
+                    if not out:
+                        raise RuntimeError("There's no analysis of this song on the PC to line the lyrics up with; analyse its recording first.")
+                    if self.models is None:
+                        self.models = analysis.Models()
+                    self.set_step(job, "lyrics", 0.1)
+                    vocals = analysis.decode(os.path.join(out, "stems", "vocals.m4a"))
+                    timing = analysis.align_lyrics(self.models, vocals, opts["lyrics"], opts.get("lang") or "en")
+                    v = self.models.versions()
+                    doc = {"songId": opts.get("song"), "lines": timing, "source": "aligned", "from": opts.get("from") or None,
+                           "aligner": f"stable-ts {v.get('stable_whisper')} (Whisper {analysis.WHISPER}) on the vocal stem"}
+                    with open(os.path.join(out, "timing.json"), "w") as f:
+                        json.dump(doc, f, indent=1)
+                    job.update({"state": "done", "slug": os.path.basename(out), "timing": doc, "progress": 1,
+                                "finished": time.strftime("%Y-%m-%dT%H:%M:%S")})
+                    continue
                 if opts.get("job"):
                     # Just the guitar part, on an earlier job's bundle.
                     base = self.jobs.get(opts["job"])
@@ -389,10 +425,13 @@ class Handler(BaseHTTPRequestHandler):
                 lyrics = [{"index": int(x["index"]), "text": str(x["text"])} for x in json.loads(fields["lyrics"])]
             except Exception:
                 return self.send_json(400, {"error": "lyrics should be JSON: [{index, text}]"})
-        opts = {k: fields[k] for k in ("song", "title", "artist", "name", "lang", "parts", "tuning", "capo", "job") if isinstance(fields.get(k), str)}
+        opts = {k: fields[k] for k in ("song", "title", "artist", "name", "lang", "parts", "tuning", "capo", "job", "align", "from") if isinstance(fields.get(k), str)}
         opts["lyrics"] = lyrics
         audio_path = None
-        if opts.get("job"):
+        if opts.get("align"):
+            if opts["align"] != "lyrics" or not opts.get("song") or not lyrics:
+                return self.send_json(400, {"error": "align=lyrics needs song and lyrics."})
+        elif opts.get("job"):
             if opts.get("parts") != "guitar":
                 return self.send_json(400, {"error": "job= re-runs the guitar part: send parts=guitar too."})
         elif url:

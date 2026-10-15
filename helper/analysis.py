@@ -557,7 +557,63 @@ def guess_key_name(keys, profile="temperley"):
 # ---------------------------------------------------------------- lyrics
 
 def align_lyrics(models, vocals, lines, lang="en"):
-    """Pasted lyric lines [{index, text}] + the vocal stem -> [{index, t}]."""
+    """Lyric lines [{index, text}] + the vocal stem -> [{index, t}]: by what's
+    actually sung (match_transcript) when that places a fair share of the
+    lines, which holds up when a live take leaves lines out or sings them
+    differently; else stable-ts's forced alignment of the whole text (which
+    squeezes lines that aren't sung into the nearest gap)."""
+    lines = [l for l in lines if str(l.get("text", "")).strip()]
+    if not lines:
+        return []
+    by_words = match_transcript(models, vocals, lines, lang)
+    # Lines it can't place are mostly ones this take doesn't sing (a verse
+    # left out live): fewer placed lines is still the better answer, as long
+    # as it's a fair share.
+    if len(by_words) >= max(4, 0.35 * len(lines)):
+        return by_words
+    return force_align(models, vocals, lines, lang)
+
+
+_word = lambda w: re.sub(r"[^a-z0-9']", "", w.lower().replace("’", "'"))
+
+
+def match_transcript(models, vocals, lines, lang="en"):
+    """Whisper's transcript of the vocal stem, word by word with times, matched
+    to the lyric words (difflib's longest matching runs). A line starts at its
+    first matched word, less a beat per word before it; a line with too
+    little matched (a verse this take leaves out) stays untimed."""
+    import difflib
+    import soundfile as sf
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "vocals.wav")
+        sf.write(p, vocals.mean(0), SR)
+        result = models.whisper().transcribe(p, language=lang, vad=True, verbose=None, word_timestamps=True)
+    heard = [(_word(w.word), float(w.start)) for sg in result.segments for w in (sg.words or []) if _word(w.word)]
+    lyric = [(_word(w), li) for li, l in enumerate(lines) for w in str(l["text"]).split() if _word(w)]
+    sm = difflib.SequenceMatcher(None, [w for w, _ in lyric], [w for w, _ in heard], autojunk=False)
+    hit = {}                                   # lyric word -> time sung
+    for a, b, n in sm.get_matching_blocks():
+        for k in range(n):
+            hit[a + k] = heard[b + k][1]
+    out = []
+    pos = 0
+    for li, l in enumerate(lines):
+        idx = [k for k in range(pos, len(lyric)) if lyric[k][1] == li]
+        pos = idx[-1] + 1 if idx else pos
+        got = [k for k in idx if k in hit]
+        if not idx or len(got) < max(2, 0.4 * len(idx)):
+            continue
+        first = got[0]
+        t = hit[first] - 0.25 * (first - idx[0])
+        out.append({"index": int(l["index"]), "t": round(max(0.0, t), 2)})
+    for a, b in zip(out, out[1:]):
+        if b["t"] < a["t"]:
+            b["t"] = a["t"]
+    return out
+
+
+def force_align(models, vocals, lines, lang="en"):
+    """stable-ts's forced alignment of the whole text -> [{index, t}]."""
     import soundfile as sf
     lines = [l for l in lines if str(l.get("text", "")).strip()]
     if not lines:

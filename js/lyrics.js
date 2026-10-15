@@ -155,12 +155,13 @@ export function sheetFromTiming(timed, bars, { title = "", artist = "" } = {}) {
 export const LRCLIB = "https://lrclib.net/api";
 
 // -> { synced: [{ t, text }], plain, duration, source } or null when nothing's found.
-export async function findSyncedLyrics({ title, artist, duration }) {
+// id: that LRCLIB record (the one a song's shipped lyric times were made from).
+export async function findSyncedLyrics({ title, artist, duration, id = null }) {
   const q = new URLSearchParams({ track_name: title, artist_name: artist || "" });
   if (duration) q.set("duration", String(Math.round(duration)));
   let rec = null;
   try {
-    const r = await fetch(`${LRCLIB}/get?${q}`);
+    const r = await fetch(id ? `${LRCLIB}/get/${encodeURIComponent(id)}` : `${LRCLIB}/get?${q}`);
     if (r.ok) rec = await r.json();
   } catch (e) {
     throw new Error("Couldn't reach LRCLIB. Are you online?");
@@ -174,8 +175,35 @@ export async function findSyncedLyrics({ title, artist, duration }) {
     rec = synced[0] || null;
   }
   if (!rec || !rec.syncedLyrics) return null;
-  return { synced: parseLrc(rec.syncedLyrics), plain: rec.plainLyrics || "", duration: rec.duration || null,
+  return { id: rec.id || null, synced: parseLrc(rec.syncedLyrics), plain: rec.plainLyrics || "", duration: rec.duration || null,
     source: { label: `LRCLIB: ${rec.trackName || title} · ${rec.artistName || artist}`, url: "https://lrclib.net/" } };
+}
+
+// LRCLIB's lines retimed to your recording: `aligned` is [{ j, t }], j
+// counting LRCLIB's lines with words (no text: the times alone ship with a
+// song). A line it doesn't time (often one this take doesn't sing) sits
+// between the timed lines around it, spaced as LRCLIB spaced them; before the
+// first or after the last, it keeps LRCLIB's spacing from there.
+export function retime(synced, aligned) {
+  const at = new Map((aligned || []).map((x) => [x.j, x.t]));
+  if (!at.size) return synced;
+  let j = 0;
+  const rows = synced.map((x) => ({ ...x, j: x.text ? j++ : null }));
+  const known = rows.map((x, k) => (x.j !== null && at.has(x.j) ? k : -1)).filter((k) => k >= 0);
+  const out = rows.map((x, k) => {
+    if (x.j !== null && at.has(x.j)) return { t: at.get(x.j), text: x.text };
+    const prev = [...known].reverse().find((q) => q < k), next = known.find((q) => q > k);
+    const tp = prev !== undefined ? at.get(rows[prev].j) : null, tn = next !== undefined ? at.get(rows[next].j) : null;
+    let t;
+    if (tp !== null && tn !== null) {
+      const a = rows[prev].t, b = rows[next].t;
+      t = b > a ? tp + (tn - tp) * (x.t - a) / (b - a) : tp;
+    } else if (tp !== null) t = tp + (x.t - rows[prev].t);
+    else t = tn - (rows[next].t - x.t);
+    return { t: Math.max(0, t), text: x.text };
+  });
+  for (let k = 1; k < out.length; k++) if (out[k].t < out[k - 1].t) out[k] = { ...out[k], t: out[k - 1].t };
+  return out;
 }
 
 // For tests: a chord name check, so sheets only ever contain chords we parse.

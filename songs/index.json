@@ -34,6 +34,21 @@
    "pickingSource": "suggested"
   },
   {
+   "id": "every-second",
+   "type": "song",
+   "title": "Every Second",
+   "artist": "Mina Okabe",
+   "style": null,
+   "source": "web",
+   "confidence": "medium",
+   "hasChords": true,
+   "capo": 0,
+   "key": "Bb",
+   "tuning": null,
+   "patterns": [],
+   "pickingSource": null
+  },
+  {
    "id": "landslide",
    "type": "song",
    "title": "Landslide",
@@ -62,6 +77,21 @@
    "capo": 0,
    "key": "D",
    "tuning": "Open D",
+   "patterns": [],
+   "pickingSource": null
+  },
+  {
+   "id": "ode-to-the-mets",
+   "type": "song",
+   "title": "Ode To The Mets",
+   "artist": "The Strokes",
+   "style": null,
+   "source": "web",
+   "confidence": "medium",
+   "hasChords": true,
+   "capo": 2,
+   "key": "C#m",
+   "tuning": null,
    "patterns": [],
    "pickingSource": null
   },
@@ -98,6 +128,21 @@
    "pickingSource": null
   },
   {
+   "id": "someone-like-you",
+   "type": "song",
+   "title": "Someone Like You",
+   "artist": "Adele",
+   "style": null,
+   "source": "web",
+   "confidence": "medium",
+   "hasChords": true,
+   "capo": 2,
+   "key": "A",
+   "tuning": null,
+   "patterns": [],
+   "pickingSource": null
+  },
+  {
    "id": "ssrignr",
    "type": "song",
    "title": "Bandit - (stripped)",
@@ -108,6 +153,21 @@
    "hasChords": true,
    "capo": 0,
    "key": "Gm",
+   "tuning": null,
+   "patterns": [],
+   "pickingSource": null
+  },
+  {
+   "id": "the-devil-i-know",
+   "type": "song",
+   "title": "The Devil I Know",
+   "artist": "Mae Hill",
+   "style": null,
+   "source": "web",
+   "confidence": "low",
+   "hasChords": true,
+   "capo": 0,
+   "key": "Bm",
    "tuning": null,
    "patterns": [],
    "pickingSource": null
