@@ -38,7 +38,7 @@ function checkSources(where, list) {
   for (const s of list || []) check(`${where}: source has a label and an https link`, s.label && /^https:\/\/\S+$/.test(s.url), JSON.stringify(s));
 }
 
-check("there are shipped charts", files.length >= 13, String(files.length));
+check("there are shipped charts", files.length >= 4, String(files.length));
 
 for (const f of files) {
   const c = JSON.parse(fs.readFileSync(new URL(f, dir), "utf8"));

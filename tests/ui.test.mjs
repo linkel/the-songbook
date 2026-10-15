@@ -29,6 +29,16 @@ const THEMES = SHOTS ? [["mocha", "dark"], ["latte", "light"]] : [["mocha", "dar
 const newPage = (w, h, scheme, { library = fixtureLibrary() } = {}) => openPage(browser, { w, h, scheme, library, audio404: false });
 
 // Add the invented example song with its sheet; returns its id.
+// A song with no chords yet (one you added by hand).
+async function bareSong(page) {
+  return page.evaluate(async () => {
+    const L = await import("/js/library.js");
+    const id = await L.addManualSong("No Chords Song", "Nobody");
+    (await import("/js/songs.js")).invalidateSongs();
+    return id;
+  });
+}
+
 async function seedSheet(page, source = "mine") {
   return page.evaluate(async ([text, source]) => {
     const L = await import("/js/library.js");
@@ -72,13 +82,14 @@ for (const [w, h] of SIZES) {
       const { context, page, errors } = await newPage(w, h, scheme);
       eq(`${tag}: theme follows the system`, await page.evaluate(() => document.documentElement.dataset.theme), theme);
       const id = await seedSheet(page);
+      const bare = await bareSong(page);
       const pages = [
         ["songs", "#/songs", false],
         ["sheet", `#/song/${id}/sheet`, true],
         ["editor", `#/song/${id}/edit`, false],
         ["landslide", "#/song/landslide", true],
         ["rising-sun", "#/song/the-house-of-the-rising-sun", true],
-        ["boxer", "#/song/the-boxer", true],
+        ["no-chords", `#/song/${bare}`, true],
         ["picking", "#/song/landslide/picking", true],
         ["picking-six", "#/song/the-house-of-the-rising-sun/picking", true],
         ["practice", "#/practice", false],
@@ -476,7 +487,7 @@ await section("charts", async () => {
   await page.keyboard.press("Escape");
   eq("chosen shape saved", (await state(page)).prefs.voicings.Bm7, specs[1]);
 
-  await show(page, "#/song/the-boxer");
+  await show(page, `#/song/${await bareSong(page)}`);
   check("no-chords song: Play disabled", await page.$eval(".transport.mobile .play", (b) => b.disabled));
   check("no-chords song: says nothing is invented", (await page.textContent(".song-scroll")).includes("Nothing here is invented"));
 

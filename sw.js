@@ -63,20 +63,11 @@ const ASSETS = [
   "songs/bodas-de-galisteo.json",
   "songs/smyko7t.json",
   "songs/ssrignr.json",
-  "songs/babe-im-gonna-leave-you.json",
-  "songs/candy-man.json",
-  "songs/dear-prudence.json",
-  "songs/dont-think-twice-its-all-right.json",
   "songs/dust-in-the-wind.json",
-  "songs/freight-train.json",
-  "songs/julia.json",
   "songs/landslide.json",
   "songs/late-july.json",
-  "songs/nothing-else-matters.json",
   "songs/romance.json",
-  "songs/the-boxer.json",
   "songs/the-house-of-the-rising-sun.json",
-  "songs/the-sound-of-silence.json",
 ];
 
 self.addEventListener("install", (e) => {
