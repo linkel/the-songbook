@@ -1,8 +1,9 @@
 // Ships a song analysed on the PC with the app, so it's ready on any device
 // without importing anything: the PC helper's bundle (private/songs/<slug>/)
 // becomes songs/<id>.json (the chart, with each section's guitar part),
-// songs/stems/<id>/*.m4a (the stems), and songs/audio/ (your recording, when
-// it's in private/). The library finds it by title and artist.
+// songs/stems/<id>/*.m4a (the stems), songs/arrangements/<id>.json (the synth
+// band's transcribed parts), and songs/audio/ (your recording, when it's in
+// private/). The library finds it by title and artist.
 //   node tools/ship-bundle.mjs private/songs/<slug> [--audio <file>] [--id <id>]
 //   node tools/ship-bundle.mjs --all        every bundle in private/songs/
 // songs/index.json is rebuilt and sw.js precaches the chart. Then
@@ -12,6 +13,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { shippableChart } from "../js/chartfile.js";
 import { checkPart } from "../js/part.js";
+import { checkArrangement } from "../js/bundle.js";
 import { songKey } from "../js/library.js";
 import { buildIndex } from "./build-song-index.mjs";
 
@@ -37,15 +39,19 @@ for (const dir of dirs) {
   if (m.app !== "songbook" || m.kind !== "bundle" || m.partsOnly) { console.warn(`skipped ${dir}: not a full analysis bundle`); continue; }
   const raw = readJson(path.join(dir, "chart.json"));
   // The song's id: a chart already shipped for it, else one from its title.
-  const old = shipped.find((c) => songKey(c.title, c.artist) === songKey(m.title, m.artist)) || null;
+  // (By title alone when that's the only one: an upload can garble the artist's accents.)
+  const byTitle = shipped.filter((c) => slug(c.title) === slug(m.title || raw.title));
+  const old = shipped.find((c) => songKey(c.title, c.artist) === songKey(m.title, m.artist)) || (byTitle.length === 1 ? byTitle[0] : null);
   const id = (dirs.length === 1 && opt("--id")) || (old && old.id) || slug(m.title || raw.title);
-  const chart = shippableChart({ ...raw, id, title: m.title || raw.title, artist: m.artist || raw.artist });
+  // A song shipped before keeps its title and artist as written there (an upload can garble an accent).
+  const chart = shippableChart({ ...raw, id, title: (old && old.title) || m.title || raw.title, artist: (old && old.artist) || m.artist || raw.artist });
   if (!chart) { console.warn(`skipped ${dir}: no chords in the chart`); continue; }
   // A cited chart isn't replaced by a detected one (a tab lined up by helper/import_gp.py is cited too).
   if (old && old.source === "web" && chart.source !== "web") { console.warn(`kept songs/${id}.json: it's a cited chart`); continue; }
   // What the shipped chart already knew (tuning, links, picking, its recording) stays.
   for (const k of ["tuning", "links", "picking", "type", "style", "audio"]) if (old && old[k] && !chart[k]) chart[k] = old[k];
-  if (old && old.notes && chart.source === "detected" && !chart.notes.includes(old.notes)) chart.notes = old.notes;
+  // The notes as you left them when it's the same kind of chart again (shipping it twice keeps your edits).
+  if (old && old.notes && (chart.source === "detected" || old.source === chart.source) && !chart.notes.includes(old.notes)) chart.notes = old.notes;
 
   // Each section's guitar part (detected: a draft).
   const pf = path.join(dir, "part.json");
@@ -68,6 +74,17 @@ for (const dir of dirs) {
     chart.stems.files.push({ name: s.name, label: s.label, file: `songs/stems/${id}/${s.name}.m4a` });
   }
 
+  // The synth band's transcribed parts (helper/arrange.py).
+  const af = path.join(dir, "arrangement.json");
+  const arr = fs.existsSync(af) ? checkArrangement(readJson(af)) : null;
+  if (arr) {
+    fs.mkdirSync(path.join(songsDir, "arrangements"), { recursive: true });
+    const r = (x) => Math.round(x * 1000) / 1000;
+    const tracks = Object.fromEntries(Object.entries(arr.tracks).map(([k, t]) => [k, { ...t, events: t.events.map((e) => (e.drum ? { t: r(e.t), drum: e.drum, vel: e.vel } : { t: r(e.t), dur: r(e.dur), midi: e.midi, vel: e.vel })) }]));
+    fs.writeFileSync(path.join(songsDir, "arrangements", id + ".json"), JSON.stringify({ app: "songbook", kind: "arrangement", version: 1, detector: arr.detector, tracks }) + "\n");
+    chart.arrangement = { file: `songs/arrangements/${id}.json`, detector: arr.detector, tracks: Object.keys(tracks) };
+  }
+
   // Your recording, when it's in private/ (or named with --audio).
   const audioSrc = (dirs.length === 1 && opt("--audio")) || (m.source && m.source.name && path.join(root, "private", m.source.name)) || null;
   if (!chart.audio && audioSrc && fs.existsSync(audioSrc)) {
@@ -80,7 +97,7 @@ for (const dir of dirs) {
   fs.writeFileSync(path.join(songsDir, id + ".json"), JSON.stringify(chart, null, 2) + "\n");
   added.push(id);
   const parts = chart.sections.filter((s) => s.part).length;
-  console.log(`wrote songs/${id}.json  ${chart.title} · ${chart.artist}: ${chart.bars.length} bars, ${chart.stems.files.length} stems, parts for ${parts} section${parts === 1 ? "" : "s"}${chart.audio ? ", " + chart.audio.file : ""}`);
+  console.log(`wrote songs/${id}.json  ${chart.title} · ${chart.artist}: ${chart.bars.length} bars, ${chart.stems.files.length} stems, parts for ${parts} section${parts === 1 ? "" : "s"}${chart.arrangement ? ", band: " + chart.arrangement.tracks.join(" ") : ""}${chart.audio ? ", " + chart.audio.file : ""}`);
 }
 if (!added.length) process.exit(0);
 

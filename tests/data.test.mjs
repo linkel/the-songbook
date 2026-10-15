@@ -9,6 +9,7 @@ import * as C from "../js/chords.js";
 import { PATTERN_BY_ID } from "../js/patterns.js";
 import { tuningFrom, parseTuning } from "../js/tuning.js";
 import { checkPart } from "../js/part.js";
+import { checkArrangement } from "../js/bundle.js";
 import { buildIndex } from "../tools/build-song-index.mjs";
 
 C.setChordDb(JSON.parse(fs.readFileSync(new URL("../vendor/chords-db/guitar.json", import.meta.url), "utf8")));
@@ -18,7 +19,7 @@ const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "in
 
 const CHART_KEYS = new Set(["id", "type", "title", "artist", "spotify", "key", "capo", "time", "tempo", "style", "strum",
   "voicings", "sections", "form", "source", "detector", "confidence", "sources", "notes", "picking", "beats",
-  "tuning", "links", "bars", "analysis", "checkedFrom", "audio", "stems"]);
+  "tuning", "links", "bars", "analysis", "checkedFrom", "audio", "stems", "arrangement"]);
 const SECTION_KEYS = new Set(["name", "chords", "repeat", "picking", "strength", "part"]);
 const PICKING_KEYS = new Set(["patterns", "also", "match", "source", "confidence", "part", "sources", "description", "from", "pattern"]);
 const SOURCES = new Set(["detected", "web", "mine", "verified"]);
@@ -106,6 +107,15 @@ for (const f of files) {
   // A shipped recording and stems are in the repo.
   if (c.audio) check(`${w}: its recording is in the repo`, fs.existsSync(new URL("../" + c.audio.file, import.meta.url)), c.audio.file);
   for (const f of (c.stems && c.stems.files) || []) check(`${w}: stem ${f.name} is in the repo`, fs.existsSync(new URL("../" + f.file, import.meta.url)), f.file);
+  if (c.arrangement) {
+    const u = new URL("../" + c.arrangement.file, import.meta.url);
+    check(`${w}: its band arrangement is in the repo`, fs.existsSync(u), c.arrangement.file);
+    if (fs.existsSync(u)) {
+      const a = checkArrangement(JSON.parse(fs.readFileSync(u, "utf8")));
+      check(`${w}: the arrangement's tracks are valid and as listed`, a && Object.keys(a.tracks).join() === c.arrangement.tracks.join(), JSON.stringify(c.arrangement.tracks));
+      check(`${w}: the arrangement says how it was made`, !!(a && a.detector));
+    }
+  }
   for (const l of c.links || []) check(`${w}: link has a label and an https url`, l.label && /^https:\/\/\S+$/.test(l.url) && l.kind, JSON.stringify(l));
   const pickings = [c.picking, ...sections.map((s) => s.picking)].filter(Boolean);
   for (const p of pickings) {

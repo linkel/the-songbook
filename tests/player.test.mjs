@@ -8,7 +8,11 @@
 // chords, the mixer drives the right track, settings survive a reload, saved
 // loops reach Practice, and YouTube (a stand-in for its player API), the PC
 // helper (a stand-in for its download), LRCLIB (invented lyrics), tap-to-sync
-// and the speedy-pitcher import all work. Nothing real is fetched.
+// and the speedy-pitcher import all work. The synth band (Phase 6) plays a
+// chart with no recording at its tempo, and Late July on its recording's bar
+// times: bass on the bars' roots and fifths, drums on the beat, at any speed,
+// transposed with the pitch, looping, through its own mixer rows, and heard.
+// Nothing real is fetched.
 // node player.test.mjs [shotsDir]
 import { chromium } from "playwright-core";
 import fs from "fs";
@@ -438,6 +442,133 @@ await section("bundled audio", async () => {
   check("bundled: no page errors", errors.length === 0, errors.join("; "));
   await context.close();
 });
+
+/* ---- The synth band (Phase 6): a chart with no recording, then Late July's bar times ---- */
+const bandSched = (page) => page.evaluate(() => window.songbook.playerState().band.scheduled);
+const tap = (page, sel) => page.evaluate((s) => { const el = document.querySelector(s); el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true })); el.click(); }, sel);
+await section("band", async () => {
+  const { context, page, errors } = await newPage();
+  const id = await page.evaluate(async () => {
+    const L = await import("/js/library.js");
+    const { invalidateSongs } = await import("/js/songs.js");
+    const id = await L.addManualSong("Band Song", "Nobody");
+    await L.saveChart({ id, title: "Band Song", artist: "Nobody", type: "song", key: "C", capo: 0, time: "4/4", tempo: 120, style: null, strum: null, voicings: {},
+      sections: [{ name: "Verse", chords: "C | G/B | Am F | C" }, { name: "Chorus", chords: "F | G | C | C" }], form: ["Verse", "Chorus"],
+      source: "mine", detector: null, confidence: "high", sources: [], notes: "Made up for the tests." });
+    invalidateSongs();
+    return id;
+  });
+  await show(page, `#/song/${id}/player`);
+  await page.waitForSelector("[data-act=band]");
+  check("band: offered when there's no recording", (await page.textContent(".player")).includes("Synth band"));
+  await page.click("[data-act=band]");
+  await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "band" && s.duration > 0; }, null, { timeout: 20000 });
+  const st = await page.evaluate(() => window.songbook.playerState().band);
+  eq("band: the chart laid out at its tempo (8 bars), rock in 4/4", [st.bars, st.groove], [8, "rock"]);
+  eq("band: labelled, with its own mixer rows", [await page.textContent(".topbar .badge"), await page.$$eval(".mixer .tn", (els) => els.map((e) => e.firstChild.textContent))],
+    ["Synth band", ["Guitar", "Bass", "Drums", "Count-in"]]);
+  await layout(page, "band 375");
+  // Listen on the band's tracks.
+  await page.evaluate(async () => {
+    const A = await import("/js/audio.js");
+    window.__lv = {};
+    for (const n of ["band-bass", "band-drums", "app-guitar"]) {
+      const an = A.audioContext().createAnalyser();
+      an.fftSize = 2048;
+      A.track(n).gain.connect(an);
+      const buf = new Float32Array(2048);
+      window.__lv[n] = 0;
+      setInterval(() => { an.getFloatTimeDomainData(buf); let m = 0; for (const x of buf) m = Math.max(m, Math.abs(x)); window.__lv[n] = Math.max(window.__lv[n], m); }, 20);
+    }
+  });
+  await page.click(".transport.mobile .p-play");
+  await page.waitForTimeout(2600);
+  const bass = (await bandSched(page)).filter((x) => x.midi !== null).sort((a, b) => a.song - b.song);
+  eq("band: bass on bar 1's root and fifth, a step, then G/B's B", bass.slice(0, 4).map((x) => [x.song, x.midi % 12]), [[0.5, 0], [1.5, 7], [2, 0], [2.5, 11]]);
+  const kicks = (await bandSched(page)).filter((x) => x.drum === "kick").sort((a, b) => a.song - b.song);
+  check("band: kicks on beats 1 and 3", kicks.length >= 2 && Math.abs(kicks[0].song - 0.5) < 1e-6 && Math.abs(kicks[1].song - 1.5) < 1e-6, JSON.stringify(kicks.slice(0, 2)));
+  const lv = await page.evaluate(() => window.__lv);
+  check("band: bass, drums and guitar are heard", lv["band-bass"] > 0.01 && lv["band-drums"] > 0.01 && lv["app-guitar"] > 0.01, JSON.stringify(lv));
+  check("band: the chord now follows", /^[CGAF]/.test((await page.textContent(".karaoke .big")).trim()), await page.textContent(".karaoke .big"));
+  await page.click(".transport.mobile .p-play");
+  // Up 2 semitones: every part moves, and the chords are renamed.
+  await tap(page, "[data-hold='pitch+']");
+  await tap(page, "[data-hold='pitch+']");
+  eq("band: pitch +2", (await P(page)).set.semis, 2);
+  await page.evaluate(() => window.songbook.playerState().engine.seek(0));
+  await page.click(".transport.mobile .p-play");
+  await page.waitForTimeout(800);
+  const up = (await bandSched(page)).filter((x) => x.midi !== null).sort((a, b) => a.song - b.song);
+  const voices = await page.evaluate(() => window.songbook.playerState().voicesCents);
+  check("band: pitch +2 transposes the bass and the guitar", up.length > 0 && voices === 200, `${voices} ${up.length}`);
+  check("band: chords renamed with the pitch", (await page.textContent(".karaoke .big")).trim() === "D", await page.textContent(".karaoke .big"));
+  await page.click(".transport.mobile .p-play");
+  await tap(page, "[data-hold='pitch-']");
+  await tap(page, "[data-hold='pitch-']");
+  // Half speed: the same song times, twice as far apart on the clock.
+  for (let i = 0; i < 10; i++) await tap(page, "[data-hold='speed-']");
+  await page.evaluate(() => window.songbook.playerState().engine.seek(0));
+  await page.click(".transport.mobile .p-play");
+  await page.waitForTimeout(3800);
+  const slow = (await bandSched(page)).filter((x) => x.drum === "kick").sort((a, b) => a.song - b.song);
+  const sp = (await P(page)).set.speed;
+  check("band: at 50% the kicks are 2 s apart (1 s of song)", sp === 0.5 && slow.length >= 2 && Math.abs((slow[1].at - slow[0].at) - 2) < 0.01, `${sp} ${JSON.stringify(slow.slice(0, 2))}`);
+  await page.click(".transport.mobile .p-play");
+  // Loop the verse; a muted row isn't scheduled.
+  await page.click(".mixer [data-mute='drums']");
+  await page.evaluate(() => window.songbook.playerState().engine.seek(1));
+  await page.waitForSelector(".loop-pills [data-act=loop-sec]");
+  await page.click(".loop-pills [data-act=loop-sec]");
+  eq("band: loops a section by its bars", [(await P(page)).set.a, (await P(page)).set.b], [0.5, 8.5]);
+  await page.click(".transport.mobile .p-play");
+  await page.waitForTimeout(1500);
+  eq("band: muted drums aren't played", (await bandSched(page)).filter((x) => x.drum).length, 0);
+  await page.click(".transport.mobile .p-play");
+  await shot(page, `${out}/band-375.png`);
+  // Kept as the song's source.
+  await page.reload();
+  await page.waitForSelector("html[data-ready]");
+  await show(page, `#/song/${id}/player`);
+  await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind; }, null, { timeout: 20000 });
+  eq("band: reopens on the band", (await P(page)).kind, "band");
+  // Late July: on its recording's bar times, with its tab as the guitar.
+  await context.route("**/songs/stems/**", (r) => r.fulfill({ status: 404, body: "" }));
+  await show(page, "#/song/late-july/player");
+  await page.waitForSelector("[data-act=band]");
+  await page.click("[data-act=band]");
+  await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "band" && s.band; }, null, { timeout: 20000 });
+  const lj = await page.evaluate(async () => { const s = window.songbook.playerState(); const c = await fetch("songs/late-july.json").then((r) => r.json()); return { band: s.band, n: c.bars.length }; });
+  eq("band: Late July on its recording's bars, the tab's notes as the guitar", [lj.band.bars, lj.band.covered > 100, lj.band.guitar > 500], [lj.n, true, true]);
+  // Its bass, melody and drums were transcribed on the PC (songs/arrangements/), and say so.
+  eq("band: Late July's transcribed parts", [lj.band.transcribed, lj.band.melody > 100], [["bass", "melody", "drums"], true]);
+  eq("band: a Melody row, the transcribed rows labelled", await page.$$eval(".mixer .track", (els) => els.map((e) => e.querySelector(".tn").textContent)),
+    ["Guitarthe part, or strums", "Basstranscribed", "Drumstranscribed", "Melodytranscribed", "Count-inclicks"]);
+  check("band: says the parts were transcribed", (await page.textContent(".player")).includes("Transcribed on your PC"));
+  await page.click("[data-band-parts='generated']");
+  await page.waitForTimeout(200);
+  const gen = await page.evaluate(() => window.songbook.playerState().band);
+  eq("band: or generated from the chart instead", [gen.transcribed, gen.melody, gen.groove], [[], 0, "rock"]);
+  await page.click(".transport.mobile .p-play");
+  await page.waitForTimeout(1200);
+  check("band: Late July plays", (await P(page)).playing);
+  await page.click(".transport.mobile .p-play");
+  await page.click("[data-band-parts='transcribed']");
+  check("band: no page errors", errors.length === 0, errors.join("; "));
+  await context.close();
+});
+for (const [w, h, scheme] of [[1440, 900, "light"], [375, 630, "light"]]) {
+  await section(`band layout ${w}x${h}`, async () => {
+    const { context, page, errors } = await newPage(w, h, scheme);
+    await show(page, "#/song/dust-in-the-wind/player");
+    await page.waitForSelector("[data-act=band]");
+    await page.click("[data-act=band]");
+    await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "band"; }, null, { timeout: 20000 });
+    await layout(page, `band ${w}x${h} ${scheme}`, { transport: w < 860 });
+    await shot(page, `${out}/band-${w}-${scheme}.png`);
+    check(`band ${w}: no page errors`, errors.length === 0, errors.join("; "));
+    await context.close();
+  });
+}
 
 /* ---- The PC helper's download (a stand-in), then pitch ---- */
 await section("helper", async () => {

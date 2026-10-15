@@ -47,6 +47,7 @@ STEPS = [
     ("chords", "Chords (ChordMini)", 0.15),
     ("sections", "Key and sections", 0.07),
     ("parts", "Guitar part (basic-pitch)", 0.12),
+    ("band", "Bass, melody and drums for the band", 0.05),
     ("lyrics", "Lining up your lyrics", 0.2),
     ("bundle", "Packing the bundle", 0.1),
 ]
@@ -662,6 +663,16 @@ def analyse(src, out_dir, opts, models, progress=lambda step, p: None, cancelled
         part_doc = guitar_part(stems, None, opts, sections=sections, form=form, segs=segs, bars=bars, bpb=bpb)
         done("parts")
 
+    # The synth band's transcribed parts (arrange.py).
+    step("band")
+    try:
+        import arrange
+        arr = arrange.arrangement({k: librosa.resample(v.mean(0), orig_sr=SR, target_sr=arrange.SR) for k, v in stems.items()})
+    except Exception as e:
+        log("arrangement failed:", e)
+        arr = None
+    done("band")
+
     timing = []
     lyr = opts.get("lyrics") or []
     if lyr and "vocals" in stems:
@@ -718,6 +729,10 @@ def analyse(src, out_dir, opts, models, progress=lambda step, p: None, cancelled
         with open(os.path.join(out_dir, "part.json"), "w") as f:
             json.dump(part_doc, f, indent=1)
         files.append("part.json")
+    if arr and arr["tracks"]:
+        with open(os.path.join(out_dir, "arrangement.json"), "w") as f:
+            json.dump(arr, f)
+        files.append("arrangement.json")
     if timing:
         with open(os.path.join(out_dir, "timing.json"), "w") as f:
             json.dump({"songId": opts.get("song"), "lines": timing, "source": "aligned",
@@ -727,7 +742,7 @@ def analyse(src, out_dir, opts, models, progress=lambda step, p: None, cancelled
         "app": "songbook", "kind": "bundle", "version": BUNDLE_VERSION, "songId": opts.get("song"),
         "title": opts.get("title"), "artist": opts.get("artist"), "created": chart["analysis"]["at"],
         "source": {"name": opts.get("name"), "link": opts.get("link")}, "duration": round(duration, 3),
-        "detector": detector, "stems": stem_list, "files": files, "timing": bool(timing), "part": bool(part_doc),
+        "detector": detector, "stems": stem_list, "files": files, "timing": bool(timing), "part": bool(part_doc), "arrangement": bool(arr and arr["tracks"]),
         "audio": "audio.m4a" if opts.get("keep_audio") else None, "seconds": round(time.time() - t_start, 1),
     }
     with open(os.path.join(out_dir, "bundle.json"), "w") as f:

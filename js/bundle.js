@@ -3,14 +3,15 @@
 // format, with per-beat chords so bar lines and tempo can still change),
 // stems/*.m4a, timing.json (your lyric lines lined up with the vocals) when
 // you sent lyrics, and part.json (the guitar part, detected) when you asked
-// for it. audio.m4a is the recording itself when the PC downloaded it from a
-// link. A "partsOnly" bundle (the part found again for an earlier analysis)
+// for it, and arrangement.json (the synth band's bass, melody and drums,
+// transcribed from the stems). audio.m4a is the recording itself when the PC
+// downloaded it from a link. A "partsOnly" bundle (the part found again for an earlier analysis)
 // has just part.json. Importing keeps it all on this device: the chart and
 // parts in IndexedDB, the stems and recording in OPFS.
 // checkManifest/checkChart are pure; node tests them.
 
 import { readZip } from "./zip.js";
-import { saveChart } from "./library.js";
+import { saveChart, put } from "./library.js";
 import { saveStems, saveRecording, recordingMeta } from "./recordings.js";
 import { saveTiming } from "./lyrics.js";
 import { keepShippedFacts } from "./chartfile.js";
@@ -53,6 +54,26 @@ export function checkChart(c) {
   out.voicings = out.voicings || {};
   out.sources = [];
   return out;
+}
+
+const DRUMS = ["kick", "snare", "rim", "hat", "open-hat", "crash"];
+
+// arrangement.json -> its tracks made safe to play, or null: notes { t, dur,
+// midi, vel } for bass and melody, hits { t, drum, vel } for drums. Pure.
+export function checkArrangement(doc) {
+  if (!doc || doc.kind !== "arrangement" || !doc.tracks || typeof doc.tracks !== "object") return null;
+  const ok = (x) => typeof x === "number" && isFinite(x);
+  const tracks = {};
+  for (const name of ["bass", "melody", "drums"]) {
+    const tr = doc.tracks[name];
+    if (!tr || !Array.isArray(tr.events)) continue;
+    const events = name === "drums"
+      ? tr.events.filter((e) => e && ok(e.t) && e.t >= 0 && DRUMS.includes(e.drum)).map((e) => ({ t: e.t, drum: e.drum, vel: ok(e.vel) ? Math.max(0, Math.min(1, e.vel)) : 0.8 }))
+      : tr.events.filter((e) => e && ok(e.t) && e.t >= 0 && ok(e.dur) && e.dur > 0 && Number.isInteger(e.midi) && e.midi >= 12 && e.midi <= 108)
+        .map((e) => ({ t: e.t, dur: e.dur, midi: e.midi, vel: ok(e.vel) ? Math.max(0, Math.min(1, e.vel)) : 0.8 }));
+    if (events.length) tracks[name] = { kind: "transcribed", from: typeof tr.from === "string" ? tr.from : null, events: events.sort((a, b) => a.t - b.t) };
+  }
+  return Object.keys(tracks).length ? { detector: typeof doc.detector === "string" ? doc.detector : null, tracks } : null;
 }
 
 async function json(files, name) {
@@ -114,7 +135,11 @@ export async function importBundle(blob, songId, ctx = {}) {
     if (lines.length) { await saveTiming(songId, lines, "aligned"); timing = lines.length; }
   }
 
+  // The synth band's transcribed parts, on the recording's clock like the chart.
+  const arr = manifest.files.includes("arrangement.json") ? checkArrangement(await json(files, "arrangement.json")) : null;
+  if (arr) await put("arrangements", { id: songId, ...arr, created: manifest.created });
+
   await saveChart(chart);
   const parts = manifest.files.includes("part.json") ? await importParts(await json(files, "part.json"), songId, chart.sections.map((s) => s.name)) : 0;
-  return { chart, stems: stems.length, timing, audio, parts, manifest };
+  return { chart, stems: stems.length, timing, audio, parts, arrangement: arr ? Object.keys(arr.tracks) : [], manifest };
 }

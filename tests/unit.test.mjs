@@ -1,4 +1,4 @@
-// Unit checks: chord engine, patterns, strum parsing. node unit.test.mjs
+// Unit checks: chord engine, patterns, strum parsing, the synth band's parts. node unit.test.mjs
 import fs from "fs";
 import { check, eq, report } from "./lib.mjs";
 import * as C from "../js/chords.js";
@@ -6,6 +6,8 @@ import * as P from "../js/patterns.js";
 import { parseStrum, plainStrum, strumNotes } from "../js/audio.js";
 import { meter } from "../js/chartplay.js";
 import * as Pk from "../js/picking.js";
+import * as Band from "../js/band.js";
+import { checkArrangement } from "../js/bundle.js";
 
 C.setChordDb(JSON.parse(fs.readFileSync(new URL("../vendor/chords-db/guitar.json", import.meta.url), "utf8")));
 
@@ -148,6 +150,36 @@ check("validateExport accepts the import tool's format", L.validateExport({ fetc
     ["https://example.com/pimapeggio/", "travis", "C | G/B | Am7 G/B", "C:x32010,G/B:x20033,Am7:x02010", "3", "80", "Song · Intro"]);
   eq("picking: Pimapeggio next to the deployed app", Pk.pimapeggioBase({ hostname: "kellyhuntlin.com", href: "https://kellyhuntlin.com/the-songbook/#/song/x/picking" }), "https://kellyhuntlin.com/pimapeggio/");
   eq("picking: and its local copy", Pk.pimapeggioBase({ hostname: "localhost", href: "http://localhost:8320/" }), "http://localhost:8318/");
+}
+
+/* ---- the synth band (js/band.js) ---- */
+{
+  const chart = { tempo: 120, sections: [{ name: "Verse", chords: "C | G/B | Am F | N.C." }, { name: "Chorus", chords: "F | C", repeat: 2 }], form: ["Verse", "Chorus", "Verse"] };
+  const tl = Band.bandTimeline(chart, { tempo: 120, beats: 4 });
+  eq("band timeline: bars in form order, repeats played out, at the tempo", [tl.bars.length, tl.bars[0].t, tl.bars[1].t, tl.bars[4].chords, tl.analysis.segments.map((s) => s.bars)], [12, 0.5, 2.5, ["F"], [[0, 3], [4, 7], [8, 11]]]);
+  eq("band timeline: a beat per beat, and the end", [tl.beats.length, tl.beats[1], tl.end], [49, 1, 24.5]);
+  const bars = tl.bars.map((b, i) => ({ ...b, t1: tl.bars[i + 1] ? tl.bars[i + 1].t : tl.end }));
+  const sections = tl.analysis.segments.map((s) => ({ name: s.name, bars: Array.from({ length: s.bars[1] - s.bars[0] + 1 }, (_, k) => s.bars[0] + k) }));
+  const a = Band.arrange({ bars, sections }, { beats: 4, tempo: 120 });
+  const at = (t) => a.bass.filter((n) => Math.abs(n.t - t) < 1e-6).map((n) => n.midi % 12);
+  eq("band bass: C's root on 1, its fifth on 3", [at(0.5), at(1.5)], [[0], [7]]);
+  eq("band bass: a slash chord plays its bass note", at(2.5), [11]);
+  eq("band bass: two chords in a bar, a root each", [at(4.5), at(5.5)], [[9], [5]]);
+  eq("band bass: N.C. is silent", a.bass.filter((n) => n.t >= 6.5 && n.t < 8.5).length, 0);
+  check("band bass: in the bass's range", a.bass.every((n) => n.midi >= 28 && n.midi <= 47));
+  check("band bass: steps into a new chord on the bar's last beat", a.bass.some((n) => Math.abs(n.t - 2) < 1e-6));
+  eq("band drums: rock at 120 in 4/4: kick on 1 and 3, snare on 2 and 4", [a.groove, a.drums.filter((d) => d.t < 2.49 && d.drum !== "hat").map((d) => d.drum + "@" + d.t)], ["rock", ["kick@0.5", "snare@1", "kick@1.5", "snare@2"]]);
+  eq("band drums: eighth-note hats", a.drums.filter((d) => d.t < 2.49 && d.drum === "hat").length, 8);
+  eq("band drums: nothing in the N.C. bar", a.drums.filter((d) => d.t >= 6.5 && d.t < 8.5 - 1e-6).length, 0);
+  check("band drums: a crash where the chorus starts", a.drums.some((d) => d.drum === "crash" && Math.abs(d.t - 8.5) < 1e-6));
+  const arr = checkArrangement({ kind: "arrangement", detector: "pc", tracks: {
+    bass: { events: [{ t: 1, dur: 0.5, midi: 40, vel: 0.9 }, { t: -1, dur: 1, midi: 40 }, { t: 2, dur: 0, midi: 40 }, { t: 0.5, dur: 0.2, midi: 41.5 }] },
+    drums: { events: [{ t: 0.5, drum: "kick", vel: 2 }, { t: 1, drum: "cowbell" }] }, melody: { events: [] }, kazoo: { events: [{ t: 1, dur: 1, midi: 60 }] } } });
+  eq("band arrangement: bad notes and hits dropped, unknown and empty tracks left out", [Object.keys(arr.tracks), arr.tracks.bass.events.length, arr.tracks.drums.events[0].vel, arr.tracks.bass.kind],
+    [["bass", "drums"], 1, 1, "transcribed"]);
+  eq("band arrangement: not one", [checkArrangement(null), checkArrangement({ kind: "chart", tracks: {} }), checkArrangement({ kind: "arrangement", tracks: { bass: { events: [] } } })], [null, null, null]);
+  eq("band drums: grooves by meter, tempo and style", [Band.grooveFor({ beats: 3 }).name, Band.grooveFor({ beats: 4, tempo: 70 }).name, Band.grooveFor({ beats: 4, style: "fingerpicked" }).name, Band.grooveFor({ beats: 2, sub: 3 }).name, Band.grooveFor({ beats: 4, tempo: 160 }).name],
+    ["waltz", "soft", "soft", "compound", "rock, quarter hats"]);
 }
 
 report("unit");

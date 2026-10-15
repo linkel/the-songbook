@@ -2467,5 +2467,14 @@
         "file": "songs/stems/late-july/other.m4a"
       }
     ]
+  },
+  "arrangement": {
+    "file": "songs/arrangements/late-july.json",
+    "detector": "basic-pitch (bass and vocal stems), drum onsets by frequency band, on the PC helper",
+    "tracks": [
+      "bass",
+      "melody",
+      "drums"
+    ]
   }
 }

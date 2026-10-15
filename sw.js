@@ -35,6 +35,8 @@ const ASSETS = [
   "js/part.js",
   "js/partedit.js",
   "js/tab.js",
+  "js/band.js",
+  "js/bandvoices.js",
   "js/review.js",
   "js/playalong.js",
   "js/batch.js",

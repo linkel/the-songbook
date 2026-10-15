@@ -31,6 +31,11 @@ bar times from the recording; both say where they're from. The detected chart
 and part stay in the bundle as `chart.detected.json` and `part.detected.json`.
 `python helper/test_gp.py` checks the tab reader.
 
+Every analysis also transcribes the synth band's parts (bass, the vocal melody,
+drums) into `arrangement.json`. For a bundle made before that:
+
+    wsl -d Ubuntu-24.04 -- bash -lc "source ~/.venvs/songbook/bin/activate && python helper/arrange.py private/songs/<song>"
+
 ## What the analysis uses
 
 | Step | What does it | Licence |

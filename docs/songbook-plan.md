@@ -439,6 +439,7 @@ The chord detector averages each beat into pitch classes, so it can't see string
 - **Parts:** from the arrangement. Transcribed tracks are labelled as such; otherwise parts are **generated** from the chart: bass from roots and fifths, drums from a groove chosen by meter and tempo, and guitar from the section's guitar part (§7) when it has one, else from the strum or picking pattern.
 - **Voices:** pluck guitar, low pluck bass, synthesized kick, snare and hat, and a soft lead labelled "melody". The app doesn't synthesize sung lyrics.
 - **Controls:** the same mixer, any tempo with no artefacts, and transpose applied to every part. It works for every song with a chart, even without a recording.
+- **As built** (Phase 6): `js/band.js` (the timeline and generated parts), `js/bandvoices.js` (bass, drums, melody voices), `BandEngine` in `js/engine.js` (the recording's clock without audio, so speed, loops, count-in and the trainer work unchanged). The band plays on the chart's own bar times when it has them, else lays the form out at the chart's tempo. Transcribed parts come from `helper/arrange.py` (in every analysis, or run on an old bundle) as `arrangement.json`; `tools/ship-bundle.mjs` ships them as `songs/arrangements/<id>.json`. A stem more than 25 dB under the loudest is bleed and gets no track. Drums are grouped per song by k-means on four frequency bands (kick darkest, hat brightest), since kits differ. Transcribed or Generated is a toggle.
 
 ### 9.3 Lyric timing
 Without timestamps, the sheet auto-scrolls at a set speed. Timestamps come from:
@@ -494,7 +495,7 @@ Each phase ends with tests passing, screenshots reviewed at 375×752, 375×630 a
      - Tab | Notation | Picking (`js/tab.js`): the whole section as guitar tab (frets in the song's tuning, techniques, chord over each bar) or staff notation, a tappable bar each, lit as it plays. A part that's mostly written out opens as tab; one carried by library patterns opens on the picking stage. Your choice is kept per song.
   4. **PC detector** (§8.4): a draft `part.json` in the bundle, imported like the rest of it.
   5. **Review** (§8.4 step 8): play along, fix bars, mark as checked.
-- **Phase 6: synth band** (§9.2): generated parts first, then transcribed parts from Phase 5a and 5b bundles.
+- **Phase 6: synth band** (§9.2): generated parts first, then transcribed parts from Phase 5a and 5b bundles. Done (§9.2, As built).
 - **Phase 7, optional:** a web research pass for cited chord charts (chords only), and LRCLIB. Each one only if the owner approves (§12).
 
 ## 11. UI notes and testing

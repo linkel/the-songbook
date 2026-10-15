@@ -1427,6 +1427,10 @@
       }
     }
   },
+  "audio": {
+    "file": "songs/audio/BIG ENOUGH - Estella Dawn.mp3",
+    "label": "Your recording. The chords' bar times fit it."
+  },
   "stems": {
     "detector": "ChordMini BTC (aa6e3a8), beat_this ?, Demucs htdemucs_6s, on the PC helper",
     "from": "BIG ENOUGH - Estella Dawn.mp3",
@@ -1458,8 +1462,13 @@
       }
     ]
   },
-  "audio": {
-    "file": "songs/audio/BIG ENOUGH - Estella Dawn.mp3",
-    "label": "Your recording. The chords' bar times fit it."
+  "arrangement": {
+    "file": "songs/arrangements/smyko7t.json",
+    "detector": "basic-pitch (bass and vocal stems), drum onsets by frequency band, on the PC helper",
+    "tracks": [
+      "bass",
+      "melody",
+      "drums"
+    ]
   }
 }

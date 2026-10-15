@@ -421,3 +421,34 @@ function lowerBound(a, x) {
   while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < x) lo = m + 1; else hi = m; }
   return lo;
 }
+
+// The synth band's clock (plan §9.2): the same schedule of song time against
+// the audio clock as a recording (speed, loops, count-in, the trainer), with
+// nothing to stretch. The band's parts are notes scheduled through
+// timesBetween, like the app guitar, so any speed is free of artefacts and a
+// pitch shift just transposes them.
+export class BandEngine extends FileEngine {
+  constructor() {
+    super();
+    this.kind = "band";
+  }
+
+  async useNode() {
+    // No audio of its own: a stand-in that keeps FileEngine's bookkeeping.
+    this.node = this.node || { schedule() {}, disconnect() {}, connect() {}, dropBuffers() {}, latency: async () => 0 };
+    this.lead = 0.06;
+  }
+
+  async load(duration) {
+    await this.init();
+    this.stopNow();
+    this.duration = duration;
+    this.pausedAt = 0;
+    this.plan = [{ output: 0, input: 0, rate: this.rate, active: false }];
+  }
+
+  setPitch(semitones) {
+    // The band transposes its notes; the schedule doesn't change.
+    this.semitones = semitones;
+  }
+}

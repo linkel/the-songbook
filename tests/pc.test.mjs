@@ -94,7 +94,7 @@ async function standInBundle(page, id, withAudio = false) {
     const files = [
       { name: "bundle.json", data: JSON.stringify({ app: "songbook", kind: "bundle", version: 1, songId: id, title: "PC Song", artist: "Nobody", created: "2026-10-14T00:00:00Z",
         source: { name: withAudio ? "A tutorial.m4a" : "pc-song.wav", link: withAudio ? "https://www.youtube.com/watch?v=H_p4siY3Zc4" : null }, detector: chart.detector,
-        files: ["chart.json", "stems/vocals.m4a", "stems/guitar.m4a", "stems/drums.m4a", "timing.json", ...(withAudio ? ["audio.m4a"] : [])],
+        files: ["chart.json", "stems/vocals.m4a", "stems/guitar.m4a", "stems/drums.m4a", "timing.json", "arrangement.json", ...(withAudio ? ["audio.m4a"] : [])],
         stems: [{ name: "vocals", label: "Vocals", file: "stems/vocals.m4a" }, { name: "guitar", label: "Guitar", file: "stems/guitar.m4a" }, { name: "drums", label: "Drums", file: "stems/drums.m4a" }],
         timing: true, audio: withAudio ? "audio.m4a" : null }) },
       { name: "chart.json", data: JSON.stringify(chart) },
@@ -102,6 +102,8 @@ async function standInBundle(page, id, withAudio = false) {
       { name: "stems/guitar.m4a", data: wav(signal) },
       { name: "stems/drums.m4a", data: wav(quiet) },
       { name: "timing.json", data: JSON.stringify({ lines: [{ index: 0, t: 2.4 }, { index: 1, t: 4.8 }, { index: 2, t: 7.2 }, { index: 99, t: 9 }] }) },
+      { name: "arrangement.json", data: JSON.stringify({ app: "songbook", kind: "arrangement", version: 1, detector: "stand-in",
+        tracks: { melody: { kind: "transcribed", from: "the vocal stem", events: [{ t: 2.4, dur: 0.5, midi: 67, vel: 0.8 }] }, drums: { kind: "transcribed", events: [{ t: 1, drum: "kick", vel: 0.9 }] } } }) },
     ];
     if (withAudio) files.push({ name: "audio.m4a", data: wav(signal) });
     const z = await makeZip(files);
@@ -169,7 +171,8 @@ async function standIn(context, zip) {
       const c = await L.get("charts", id);
       const m = await Rec.stemsMeta(id);
       const t = await Ly.getTiming(id);
-      return { source: c.source, detector: c.detector, bars: c.bars.length, form: c.form, stems: m && m.stems.map((s) => s.label), backend: m && m.stems[0].backend,
+      const arr = await L.get("arrangements", id);
+      return { arr: arr && [Object.keys(arr.tracks), arr.detector], source: c.source, detector: c.detector, bars: c.bars.length, form: c.form, stems: m && m.stems.map((s) => s.label), backend: m && m.stems[0].backend,
         timing: t && t.lines.map((x) => x.index), timingSource: t && t.source, jobs: window.songbook.pcJobs(), html: document.querySelector("#view-song").textContent,
         wantForm: window.__form };
     }, id);
@@ -179,6 +182,7 @@ async function standIn(context, zip) {
     eq(`${w}: stems kept`, st.stems, ["Vocals", "Guitar", "Drums"]);
     check(`${w}: stems in OPFS`, st.backend === "opfs", st.backend);
     eq(`${w}: lyric timing kept for lines the sheet has`, [st.timing, st.timingSource], [[0, 1, 2], "aligned"]);
+    eq(`${w}: the band's transcribed parts kept`, st.arr, [["melody", "drums"], "stand-in"]);
     check(`${w}: the review shows the PC's draft`, /Analysed on your PC: stand-in detector/.test(st.html) && /bars/.test(st.html), st.html.slice(0, 300));
     await shot(page, `${out}/analyse-pc-done-${w}-${scheme}.png`);
     await layout(page, "the PC's draft in review", { transport: true });

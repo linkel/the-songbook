@@ -11,8 +11,14 @@
 // in songs/stems/), the mixer has a row per stem instead of the one recording
 // row: all of them go through one stretcher, so they stay in sync at any
 // speed and pitch.
+// Or the synth band (plan §9.2, js/band.js): the app guitar, bass and drums
+// playing the chart, on the chart's own bar times or at its tempo, through
+// the same clock (js/engine.js BandEngine), so speed, loops, count-in and the
+// trainer work the same, at any tempo, and pitch transposes every part.
 
-import { FileEngine } from "./engine.js";
+import { FileEngine, BandEngine } from "./engine.js";
+import { arrange } from "./band.js";
+import { BassVoice, DrumKit, LeadVoice } from "./bandvoices.js";
 import { YouTubeEngine, parseYouTubeId, youTubeTitle } from "./youtube.js";
 import { WaveView } from "./waveform.js";
 import { decodeSong, estimateTuning, makeAnalysis } from "./wavedata.js";
@@ -29,7 +35,9 @@ import { esc, toast, showPopover, closePopover, ICONS } from "./ui.js";
 
 const SECTION_COLORS = ["--blue", "--mauve", "--lavender", "--teal", "--pink", "--sky"];
 const MIX = [["recording", "Recording", "your file"], ["guitar", "App guitar", "strums the chords"], ["click", "Count-in", "clicks"]];
-const TRACK = { recording: "recording", guitar: "app-guitar", click: "click" };
+const BAND_MIX = [["guitar", "Guitar", "strums the chords"], ["bass", "Bass", "roots and fifths"], ["drums", "Drums", "a groove"], ["click", "Count-in", "clicks"]];
+const MELODY_ROW = ["melody", "Melody", "the vocal line, transcribed"];
+const TRACK = { recording: "recording", guitar: "app-guitar", click: "click", bass: "band-bass", drums: "band-drums", melody: "band-melody" };
 const trackOf = (key) => TRACK[key] || "stem-" + key.slice(5);
 // Stems play in stereo on a computer; on a phone each is mono, which halves
 // the memory and the stretcher's work.
@@ -44,13 +52,18 @@ export const PLAYER_DEFAULTS = {
   countIn: 0,            // bars
   trainerOn: false, trainer: { start: 0.7, step: 0.05, every: 2, target: 1 },
   mix: { recording: { vol: 1, on: true }, guitar: { vol: 0.6, on: false }, click: { vol: 0.8, on: true } },
+  bandMix: { guitar: { vol: 0.7, on: true }, bass: { vol: 0.8, on: true }, drums: { vol: 0.6, on: true }, melody: { vol: 0.5, on: true }, click: { vol: 0.8, on: true } },
+  bandParts: "transcribed",  // the band's bass, melody and drums: "transcribed" (when the PC made them) or "generated" 
   position: 0, view: null,
 };
 
 let S = null;                 // the session for the open song
 let fileEngine = null;
 let ytEngine = null;
+let bandEngine = null;
 const frameListeners = new Set();
+// Played on the song's clock: a recording, or the synth band.
+const clocked = () => S.kind === "file" || S.kind === "band";
 
 function getFileEngine() {
   if (!fileEngine) {
@@ -58,6 +71,14 @@ function getFileEngine() {
     for (const type of ["state", "seek", "rate", "wrap", "beat", "ended"]) fileEngine.addEventListener(type, (e) => onEngine(type, e.detail, fileEngine));
   }
   return fileEngine;
+}
+
+function getBandEngine() {
+  if (!bandEngine) {
+    bandEngine = new BandEngine();
+    for (const type of ["state", "seek", "rate", "wrap", "beat", "ended"]) bandEngine.addEventListener(type, (e) => onEngine(type, e.detail, bandEngine));
+  }
+  return bandEngine;
 }
 
 function getYtEngine(host) {
@@ -77,9 +98,9 @@ export function playerNow() {
   return { id: S.id, kind: S.kind, pos: S.engine.position, playing: S.engine.playing };
 }
 
-// Chords follow pitch: semitones the recording is shifted by (file only).
+// Chords follow pitch: semitones the recording (or the band) is shifted by.
 export function pitchShift(id) {
-  return S && S.id === id && S.kind === "file" ? S.set.semis : 0;
+  return S && S.id === id && clocked() ? S.set.semis : 0;
 }
 
 export function onPlayerFrame(fn) { frameListeners.add(fn); return () => frameListeners.delete(fn); }
@@ -92,7 +113,7 @@ export function setPartLayer(id, events) {
     S.partEvents = partLayers.get(id);
     S.partTimes = S.partEvents ? S.partEvents.map((e) => e.t) : null;
     stopGuitar();
-    if (S.engine && S.engine.playing && S.set.mix.guitar.on) startGuitar();
+    if (S.engine && S.engine.playing && mixOf("guitar").on) startGuitar();
     syncMixer();
   }
 }
@@ -127,7 +148,7 @@ export async function openPlayer(view, ctx) {
   }
   S.ctx = ctx;
   S.view = view;
-  prepareBars();
+  timeline();
   render();
   if (!S.kind && !S.loading) autoLoad();
 }
@@ -148,14 +169,17 @@ export async function playRecording(ctx) {
   if (S && S.kind === "file") await togglePlayer();
 }
 
-// The mixer's rows: the recording, or one per stem; then the app guitar and the count-in.
+// The mixer's rows: the recording, or one per stem; then the app guitar and
+// the count-in. The band has its own rows (and settings).
 function mixRows() {
+  if (S.kind === "band") return S.band && S.band.melody ? [...BAND_MIX.slice(0, 3), MELODY_ROW, BAND_MIX[3]] : BAND_MIX;
   if (S.playingStems) return [...S.stems.stems.map((x) => ["stem:" + x.name, x.label || x.name, "stem"]), MIX[1], MIX[2]];
   return MIX;
 }
 function mixOf(key) {
-  if (!S.set.mix[key]) S.set.mix[key] = { vol: 1, on: true };
-  return S.set.mix[key];
+  const mix = S.kind === "band" ? S.set.bandMix : S.set.mix;
+  if (!mix[key]) mix[key] = { vol: 1, on: true };
+  return mix[key];
 }
 
 // The song's stems: yours on this device, else the ones shipped with it.
@@ -176,8 +200,10 @@ export function closePlayer() {
   if (S.engine) S.engine.pause();
   if (fileEngine && S.kind === "file") fileEngine.unload();
   if (ytEngine && S.kind === "youtube") ytEngine.unload();
+  if (bandEngine && S.kind === "band") bandEngine.unload();
   if (S.guitarLook) S.guitarLook.stop();
   if (S.voices) S.voices.silence(0.05);
+  stopBand();
   stopKeepalive();
   releaseWakeLock();
   if (S.wave) S.wave.destroyed = true;
@@ -206,7 +232,7 @@ export async function togglePlayer() {
 export function speedBy(d) { if (S) setSpeed(S.set.speed + d); }
 // Loop song time a..b (seconds), e.g. from Practice or a shortcut.
 export function loopTo(a, b, id = null) { if (S) setLoop(a, b, true, id); }
-export function pitchBy(d) { if (S && S.kind === "file") setPitch(S.set.semis + d); }
+export function pitchBy(d) { if (S && clocked()) setPitch(S.set.semis + d); }
 export function loopCurrentSection() { if (S) loopSection(); }
 export function focusMixer() {
   const el = S && S.view && S.view.querySelector(".mixer");
@@ -219,17 +245,26 @@ function newSession(ctx) {
   const saved = (ctx.prefs && ctx.prefs.player) || {};
   const set = { ...structuredClone(PLAYER_DEFAULTS), ...structuredClone(saved) };
   set.mix = { ...structuredClone(PLAYER_DEFAULTS.mix), ...(saved.mix || {}) };
+  set.bandMix = { ...structuredClone(PLAYER_DEFAULTS.bandMix), ...(saved.bandMix || {}) };
   set.trainer = { ...PLAYER_DEFAULTS.trainer, ...(saved.trainer || {}) };
   const partEvents = partLayers.get(ctx.id) || null;
   return { id: ctx.id, ctx, set, kind: null, engine: null, an: null, duration: 0, loading: null, error: null,
     view: null, wave: null, voices: new StringVoices(TRACK.guitar), scheduled: new Map(), loops: [], raf: 0, note: "",
-    partEvents, partTimes: partEvents ? partEvents.map((e) => e.t) : null };
+    partEvents, partTimes: partEvents ? partEvents.map((e) => e.t) : null,
+    bass: new BassVoice(TRACK.bass), drums: new DrumKit(TRACK.drums), melody: new LeadVoice(TRACK.melody), band: null, bandScheduled: new Map(), arr: undefined };
 }
 
-// The chart's bars with times (from an analysed recording): bars, beats,
-// sections, and the strum times for the app guitar.
-function prepareBars() {
-  const c = S.ctx.chart;
+// The bars the player follows: the synth band's timeline, or the recording's analysed bars.
+function timeline() {
+  if (S.kind === "band" && S.ctx.band) {
+    prepareBars(S.ctx.band.chart());
+    arrangeBand();
+  } else prepareBars();
+}
+
+// The chart's bars with times (from an analysed recording, or the band's
+// timeline): bars, beats, sections, and the strum times for the app guitar.
+function prepareBars(c = S.ctx.chart) {
   S.timed = null;
   if (!c || !Array.isArray(c.bars) || !c.bars.length || typeof c.bars[0].t !== "number") return;
   const beats = (c.beats || []).slice();
@@ -271,6 +306,7 @@ function prepareBars() {
 async function autoLoad() {
   const want = S.set.source;
   const s = S;
+  if (want === "band" && s.ctx.band) return loadBand();
   const meta = s.ctx.rec || await recordingMeta(s.id);
   s.stems = await findStems(s);
   if (S !== s) return;
@@ -328,6 +364,7 @@ async function loadFile(direct = null, directMeta = null) {
     }
     if (S !== s) return;
     if (ytEngine && s.kind === "youtube") ytEngine.unload();
+    if (s.kind === "band") leaveBand();
     const engine = getFileEngine();
     // Switching full mix <-> stems keeps the place, and plays on if it was.
     const at = s.kind === "file" && engine.duration ? engine.position : null;
@@ -409,6 +446,7 @@ async function loadYouTube(id) {
   const s = S;
   if (!s.view) return;
   if (fileEngine && s.kind === "file") { fileEngine.pause(); fileEngine.unload(); }
+  if (s.kind === "band") leaveBand();
   s.kind = "youtube";
   s.set.source = "youtube";
   if (!s.set.youtube || s.set.youtube.id !== id) s.set.youtube = { id, title: null };
@@ -434,6 +472,116 @@ async function loadYouTube(id) {
   }
   syncAll();
   persist();
+}
+
+/* ---- The synth band ---- */
+
+async function loadBand() {
+  const s = S;
+  if (!s.ctx.band) return;
+  if (fileEngine && s.kind === "file") { fileEngine.pause(); fileEngine.unload(); }
+  if (ytEngine && s.kind === "youtube") { ytEngine.pause(); ytEngine.unload(); }
+  s.kind = "band";
+  s.set.source = "band";
+  Object.assign(s, { an: null, meta: null, playingStems: false, error: null, loading: null });
+  if (s.arr === undefined) s.arr = await s.ctx.band.arrangement().catch(() => null);
+  if (S !== s) return;
+  timeline();
+  if (!s.timed || !s.timed.bars.length) { s.error = "The band needs the song's chords."; s.kind = null; if (s.view) render(); return; }
+  const last = s.timed.bars[s.timed.bars.length - 1];
+  s.duration = last.t1 + 1;
+  const engine = getBandEngine();
+  s.engine = engine;
+  s.enginePromise = engine.load(s.duration).then(() => {
+    if (S !== s) return;
+    engine.pausedAt = clamp(s.set.position || 0, 0, s.duration);
+    applyAll();
+  });
+  if (s.view) render();
+  await s.enginePromise;
+  updateMediaSession();
+}
+
+// From the band back to the recording: yours (or its stems), else the one with the app.
+async function toRecording() {
+  const s = S;
+  s.set.source = "file";
+  const meta = await recordingMeta(s.id);
+  if (s.stems === undefined) s.stems = await findStems(s);
+  if (S !== s) return;
+  if (!meta && !s.stems && shippedAudio(s)) await loadShipped(); else await loadFile();
+}
+
+function leaveBand() {
+  stopBand();
+  if (bandEngine) { bandEngine.pause(); bandEngine.unload(); }
+  S.band = null;
+  prepareBars();
+}
+
+// The band's parts on the timeline, in song time; and the app guitar's notes
+// (each section's part or picking pattern; other bars are strummed).
+function arrangeBand() {
+  const c = S.ctx.band.chart();
+  const t = S.timed;
+  const m = String(c.time || "4/4").split("/").map(Number);
+  const sub = m[1] === 8 && m[0] % 3 === 0 ? 3 : 2;
+  const a = arrange(t, { beats: t.bpb, sub, tempo: songTempo(), style: S.ctx.band.style });
+  const g = S.ctx.band.guitar();
+  // Transcribed parts from the PC replace the generated ones, track by track.
+  const tr = S.arr && S.set.bandParts !== "generated" ? S.arr.tracks : {};
+  const bass = tr.bass ? tr.bass.events : a.bass, drums = tr.drums ? tr.drums.events : a.drums, melody = tr.melody ? tr.melody.events : null;
+  S.band = { groove: a.groove, bass, drums, melody, transcribed: Object.keys(tr),
+    bassTimes: bass.map((e) => e.t), drumTimes: drums.map((e) => e.t), melodyTimes: melody ? melody.map((e) => e.t) : [],
+    guitar: g.events.length ? { events: g.events, times: g.events.map((e) => e.t), covered: g.covered } : null };
+}
+
+function startBand() {
+  if (S.kind !== "band" || !S.band) return;
+  if (!S.bandLook) S.bandLook = new Lookahead((h, now) => fillBand(h, now));
+  if (!S.bandLook.running && S.engine.playing) S.bandLook.start();
+}
+
+function stopBand() {
+  if (!S) return;
+  if (S.bandLook) S.bandLook.stop();
+  S.bass.silence(0.03);
+  S.drums.silence(0.03);
+  S.melody.silence(0.03);
+  S.bandScheduled.clear();
+}
+
+function fillBand(horizon, now) {
+  if (!S || S.kind !== "band" || !S.engine.playing || !S.band) return;
+  const e = S.engine, semis = S.set.semis;
+  if (mixOf("bass").on) {
+    for (const h of e.timesBetween(S.band.bassTimes, Math.max(now, now + 0.005), horizon)) {
+      const key = "b" + h.seg.toFixed(4) + ":" + h.index;
+      if (S.bandScheduled.has(key)) continue;
+      S.bandScheduled.set(key, h.at);
+      const n = S.band.bass[h.index];
+      S.bass.play(n.midi + semis, h.at, n.dur / (e.segAt(h.at).rate || 1), n.vel);
+    }
+  }
+  if (mixOf("drums").on) {
+    for (const h of e.timesBetween(S.band.drumTimes, Math.max(now, now + 0.005), horizon)) {
+      const key = "d" + h.seg.toFixed(4) + ":" + h.index;
+      if (S.bandScheduled.has(key)) continue;
+      S.bandScheduled.set(key, h.at);
+      const n = S.band.drums[h.index];
+      S.drums.play(n.drum, h.at, n.vel);
+    }
+  }
+  if (S.band.melody && mixOf("melody").on) {
+    for (const h of e.timesBetween(S.band.melodyTimes, Math.max(now, now + 0.005), horizon)) {
+      const key = "m" + h.seg.toFixed(4) + ":" + h.index;
+      if (S.bandScheduled.has(key)) continue;
+      S.bandScheduled.set(key, h.at);
+      const n = S.band.melody[h.index];
+      S.melody.play(n.midi + semis, h.at, n.dur / (e.segAt(h.at).rate || 1), n.vel);
+    }
+  }
+  if (S.bandScheduled.size > 512) for (const [k, at] of S.bandScheduled) if (at < now - 1) S.bandScheduled.delete(k);
 }
 
 function applyAll() {
@@ -484,7 +632,9 @@ function setCents(c) {
 function applyPitch(save = true) {
   if (S.engine && S.kind === "file") S.engine.setPitch(S.set.semis + S.set.cents / 100, S.set.formant);
   // The app guitar plays at the recording's pitch: its tuning plus your shift.
-  S.voices.cents = (S.timed ? S.timed.tuning : 0) + S.set.semis * 100 + S.set.cents;
+  // With the band, the shift alone (the band transposes its notes).
+  S.voices.cents = S.kind === "band" ? S.set.semis * 100 : (S.timed ? S.timed.tuning : 0) + S.set.semis * 100 + S.set.cents;
+  if (S.kind === "band" && S.engine && S.engine.playing) { stopBand(); startBand(); }
   refreshLanes();
   syncControls();
   if (save) persist();
@@ -525,8 +675,9 @@ function applyMix() {
     t.setVolume(m.vol);
     t.setMuted(!m.on);
   }
-  if (S.set.mix.guitar.on && S.engine && S.engine.playing) startGuitar();
+  if (mixOf("guitar").on && S.engine && S.engine.playing) startGuitar();
   else stopGuitar();
+  if (S.kind === "band" && S.engine && S.engine.playing) { stopBand(); startBand(); }
 }
 
 /* ---- Loops ---- */
@@ -678,19 +829,24 @@ function chordAt(t) {
   return b.chords[Math.max(0, k)];
 }
 
+// What the app guitar plays note by note: in the band, its parts and patterns;
+// with a recording, your part in Picking mode's play-along.
+const guitarNotes = () => (S.kind === "band" ? S.band && S.band.guitar : S.partEvents ? { events: S.partEvents, times: S.partTimes, covered: null } : null);
+
 async function startGuitar() {
-  if (!S.timed || S.kind !== "file") return;
+  if (!S.timed || !clocked()) return;
   if (!S.guitarLook) S.guitarLook = new Lookahead((h, now) => fillGuitar(h, now));
   if (S.guitarLook.running) return;
   const midis = [];
-  if (S.partEvents) midis.push(...new Set(S.partEvents.map((e) => e.midi)));
-  else {
+  const gn = guitarNotes();
+  if (gn) midis.push(...new Set(gn.events.map((e) => e.midi)));
+  if (!gn || gn.covered) {
     const names = [...new Set(S.timed.bars.flatMap((b) => b.chords))];
     const open = openStrings();
     for (const n of names) { const f = framesFor(n); if (f) f.forEach((x, i) => { if (x !== null) midis.push(open[6 - i] + x); }); }
   }
   await warmNotes(midis);
-  if (S && S.engine && S.engine.playing && S.set.mix.guitar.on) S.guitarLook.start();
+  if (S && S.engine && S.engine.playing && mixOf("guitar").on) S.guitarLook.start();
 }
 
 function stopGuitar() {
@@ -701,25 +857,28 @@ function stopGuitar() {
 }
 
 function fillGuitar(horizon, now) {
-  if (!S || S.kind !== "file" || !S.engine.playing || !S.timed) return;
-  if (S.partEvents) {
-    // Your part, note by note, on the recording's clock (any speed, across loop jumps).
-    for (const h of S.engine.timesBetween(S.partTimes, Math.max(now, now + 0.005), horizon)) {
+  if (!S || !clocked() || !S.engine.playing || !S.timed) return;
+  const gn = guitarNotes();
+  if (gn) {
+    // The part, note by note, on the song's clock (any speed, across loop jumps).
+    for (const h of S.engine.timesBetween(gn.times, Math.max(now, now + 0.005), horizon)) {
       const key = "p" + h.seg.toFixed(4) + ":" + h.index;
       if (S.scheduled.has(key)) continue;
       S.scheduled.set(key, h.at);
-      const e = S.partEvents[h.index];
+      const e = gn.events[h.index];
       S.voices.playNote(e.string, e.midi, h.at, e.level);
       if (e.mute) S.voices.damp(e.string, h.at + 0.03, 0.01);
     }
     if (S.scheduled.size > 256) for (const [k, at] of S.scheduled) if (at < now - 1) S.scheduled.delete(k);
-    return;
+    if (!gn.covered) return;
   }
   const hits = S.engine.timesBetween(S.timed.strumTimes, Math.max(now, now + 0.005), horizon);
   for (const h of hits) {
     const key = h.seg.toFixed(4) + ":" + h.index;
     if (S.scheduled.has(key)) continue;
     S.scheduled.set(key, h.at);
+    // Bars the band's guitar picks aren't strummed too.
+    if (gn && gn.covered && gn.covered.has(barIndexAt(h.song + 0.01))) continue;
     const name = chordAt(h.song + 0.01);
     const frets = name && framesFor(name);
     if (frets) strum(S.voices, frets, h.at, { dir: S.timed.strums[h.index].dir, level: S.timed.strums[h.index].dir === "U" ? 0.18 : 0.26, open: openStrings() });
@@ -735,11 +894,13 @@ function onEngine(type, detail, engine) {
   if (type === "state") {
     if (engine.playing) {
       requestWakeLock();
-      if (S.kind === "file") startKeepalive();
-      if (S.set.mix.guitar.on) startGuitar();
+      if (clocked()) startKeepalive();
+      if (mixOf("guitar").on) startGuitar();
+      startBand();
       startFrames();
     } else {
       stopGuitar();
+      stopBand();
       stopKeepalive();
       releaseWakeLock();
       persist();
@@ -749,6 +910,7 @@ function onEngine(type, detail, engine) {
   } else if (type === "seek" || type === "rate") {
     S.voices.silence(0.03);
     S.scheduled.clear();
+    if (S.kind === "band") { S.bass.silence(0.03); S.drums.silence(0.03); S.melody.silence(0.03); S.bandScheduled.clear(); }
     if (type === "rate") { S.set.speed = engine.currentRate; syncControls(); }
     updatePositionState();
   } else if (type === "wrap") {
@@ -825,7 +987,7 @@ function syncNow(pos) {
   const box = S.view.querySelector(".karaoke");
   if (!box) return;
   let html = "";
-  const disp = S.ctx.disp;
+  const disp = dispNow();
   const lyr = S.ctx.lyrics;
   let lineText = "", nextText = "";
   if (lyr && lyr.timing && lyr.timing.length) {
@@ -835,7 +997,7 @@ function syncNow(pos) {
     lineText = li >= 0 ? lyr.lines[li] || "" : "";
     nextText = after ? lyr.lines[after.index] || "" : "";
   }
-  if (S.timed && S.kind === "file") {
+  if (S.timed && clocked()) {
     const i = barIndexAt(pos);
     const b = S.timed.bars[Math.max(0, i)];
     const now = i >= 0 ? chordAt(pos) : null;
@@ -867,10 +1029,13 @@ function syncNow(pos) {
 
 /* ---- Lanes ---- */
 
+// Chord names as you play them: the band's timeline has its own (sounding, capo 0).
+const dispNow = () => (S.kind === "band" && S.ctx.band ? S.ctx.band.disp : S.ctx.disp);
+
 function refreshLanes() {
   if (!S.wave) return;
-  if (!S.timed || S.kind !== "file") { S.wave.setLanes({}); return; }
-  const disp = S.ctx.disp;
+  if (!S.timed || !clocked()) { S.wave.setLanes({}); return; }
+  const disp = dispNow();
   S.wave.setLanes({
     bars: S.timed.bars.map((b) => ({ t: b.t, label: b.chords.map((c) => prettyChord(disp(c))).join(" ") })),
     sections: S.timed.sections,
@@ -931,6 +1096,7 @@ function render() {
 }
 
 function sourceBadge() {
+  if (S.kind === "band") return "<span class='badge pick'>Synth band</span>";
   if (S.kind === "file" && S.playingStems) return "<span class='badge mine'>Stems</span>";
   if (S.kind === "file") return `<span class='badge mine'>${S.meta && S.meta.source === "helper" ? "Downloaded" : S.meta && S.meta.source === "app" ? "With the app" : "Your file"}</span>`;
   if (S.kind === "youtube") return "<span class='badge pick'>YouTube</span>";
@@ -954,6 +1120,8 @@ function sourceHtml() {
   const yts = youTubeLinks();
   const helper = helperUrl();
   return `<div class='card set-group'>
+    ${S.ctx.band ? `<div class='set-row'><div><div class='set-label'>Synth band</div><div class='meta'>The app plays the chords: guitar, bass and drums, made up from the chart (nothing transcribed). Any tempo; pitch moves every part.</div></div>
+      <button class='btn outline small' data-act='band'>Play</button></div>` : ""}
     ${S.ctx.chart && S.ctx.chart.audio ? `<div class='set-row'><div><div class='set-label'>The recording with the app</div><div class='meta'>${esc(S.ctx.chart.audio.label || "")}</div></div>
       <button class='btn primary small' data-act='shipped'>Load</button></div>` : ""}
     <div class='set-row'><div><div class='set-label'>Your recording</div><div class='meta'>mp3, m4a, wav or flac from Files. Kept on this device; speed and pitch work on it.</div></div>
@@ -1020,7 +1188,7 @@ async function analyseLink(link) {
 }
 
 function stageHtml() {
-  const file = S.kind === "file";
+  const file = S.kind === "file", band = S.kind === "band";
   const s = S.set;
   return `
     <div class='card wave-card ${file ? "" : "timeline-only"}'>
@@ -1046,11 +1214,11 @@ function stageHtml() {
     </div>
     <div class='card ctl-card'>
       <div class='ctl'><span class='k'>Speed</span><button class='btn outline round' data-hold='speed-' aria-label='Slower'>−</button>
-        <div class='val'><span class='v-speed'></span><small>${file ? "pitch kept" : "YouTube's own speed"}</small></div>
+        <div class='val'><span class='v-speed'></span><small>${file ? "pitch kept" : band ? "any tempo" : "YouTube's own speed"}</small></div>
         <button class='btn outline round' data-hold='speed+' aria-label='Faster'>+</button></div>
-      <div class='ctl ${file ? "" : "off"}'><span class='k'>Pitch</span><button class='btn outline round' data-hold='pitch-' aria-label='Pitch down' ${file ? "" : "disabled"}>−</button>
-        <div class='val'><span class='v-pitch'></span><small>${file ? "semitones · chords follow" : "needs the audio (the helper)"}</small></div>
-        <button class='btn outline round' data-hold='pitch+' aria-label='Pitch up' ${file ? "" : "disabled"}>+</button></div>
+      <div class='ctl ${file || band ? "" : "off"}'><span class='k'>Pitch</span><button class='btn outline round' data-hold='pitch-' aria-label='Pitch down' ${file || band ? "" : "disabled"}>−</button>
+        <div class='val'><span class='v-pitch'></span><small>${file ? "semitones · chords follow" : band ? "semitones · every part" : "needs the audio (the helper)"}</small></div>
+        <button class='btn outline round' data-hold='pitch+' aria-label='Pitch up' ${file || band ? "" : "disabled"}>+</button></div>
       <div class='ctl ${file ? "" : "off"}'><span class='k'>Tune</span><button class='btn outline round' data-hold='cents-' aria-label='Tune down' ${file ? "" : "disabled"}>−</button>
         <div class='val'><span class='v-cents'></span><small class='tune-note'>fine tune</small></div>
         <button class='btn outline round' data-hold='cents+' aria-label='Tune up' ${file ? "" : "disabled"}>+</button></div>
@@ -1067,6 +1235,25 @@ function sourceDetails() {
   const helper = helperUrl();
   const yts = youTubeLinks();
   const id = encodeURIComponent(S.id);
+  if (S.kind === "band") {
+    const b = S.band || {};
+    const rec = !!(S.ctx.rec || shippedAudio(S));
+    const tr = b.transcribed || [];
+    const gtr = `the guitar ${b.guitar ? "on the song's guitar part or picking pattern, strumming the rest" : "strumming"}`;
+    const what = tr.length
+      ? `Transcribed on your PC from the stems (${esc(S.arr.detector || "basic-pitch")}): ${esc(tr.map((k) => ({ bass: "the bass", melody: "the vocal melody", drums: "the drums" })[k]).join(", "))}. A draft, like the chords; ${gtr}.`
+      : `Made up from the chart, not transcribed: the bass on the roots and fifths, drums in a ${esc(b.groove || "plain")} groove, ${gtr}.`;
+    return `<div class='card set-group'>
+      <div class='set-row'><div><div class='set-label'>Synth band</div>
+        <div class='meta'>${what} ${S.ctx.band.timed ? "On the recording's bar times." : `At ${Math.round(songTempo())} bpm (change it in Chords mode); speed scales it.`}</div></div></div>
+      ${S.arr ? `<div class='seg small-seg' role='group' aria-label='Bass, melody and drums' style='margin-bottom:10px'>${[["transcribed", "Transcribed"], ["generated", "Generated"]].map(([v, l]) =>
+        `<button data-band-parts='${v}' class='${(S.set.bandParts || "transcribed") === v ? "on" : ""}' aria-pressed='${(S.set.bandParts || "transcribed") === v}'>${l}</button>`).join("")}</div>` : ""}
+      ${rec ? `<div class='set-row'><div class='meta'>Your recording instead.</div><button class='btn outline small' data-act='to-file'>Switch</button></div>` : ""}
+      ${yts.length ? `<div class='set-row'><div class='meta'>Or on YouTube: ${esc(yts[0].label || "link")}</div><button class='btn outline small' data-yt='${esc(yts[0].id)}'>Switch</button></div>` : ""}
+      ${rec ? "" : `<div class='set-row'><div class='meta'>Or your own recording.</div><label class='btn outline small file-btn'>Choose file${FILE_INPUT}</label></div>`}
+    </div>`;
+  }
+  const bandRow = S.ctx.band ? `<div class='set-row'><div class='meta'>Or the synth band: the app plays the chords.</div><button class='btn outline small' data-act='band'>Switch</button></div>` : "";
   if (S.kind === "file") {
     const m = S.meta;
     const timedFrom = S.timed && S.timed.file;
@@ -1078,6 +1265,7 @@ function sourceDetails() {
         : `<div class='set-row'><div><div class='set-label'>Chords</div><div class='meta'>Analyse the recording for chord and section lanes, loops by bar and the app guitar.</div></div>
           <a class='btn outline small' href='#/song/${id}/analyse'>Analyse</a></div>`}
       ${yts.length ? `<div class='set-row'><div class='meta'>Also on YouTube: ${esc(yts[0].label || "link")}</div><button class='btn outline small' data-yt='${esc(yts[0].id)}'>Switch</button></div>` : ""}
+      ${bandRow}
     </div>`;
   }
   return `<div class='card set-group'>
@@ -1088,6 +1276,7 @@ function sourceDetails() {
     ${S.dl ? `<div class='prog'><i style='width:${Math.round((S.dl.p || 0) * 100)}%'></i></div><p class='note'>${esc(S.dl.text)}</p>` : ""}
     <div class='pc-status'>${pcStatusHtml()}</div>
     <div class='set-row'><div class='meta'>Or use your own file.</div><label class='btn outline small file-btn'>Choose file${FILE_INPUT}</label></div>
+    ${bandRow}
   </div>`;
 }
 
@@ -1124,7 +1313,7 @@ function syncControls() {
   const q = (sel) => S.view.querySelector(sel);
   const speed = S.engine && S.engine.playing ? S.engine.currentRate || S.set.speed : S.set.speed;
   if (q(".v-speed")) q(".v-speed").textContent = Math.round(speed * 100) + "%";
-  if (q(".v-pitch")) q(".v-pitch").textContent = S.kind === "file" ? fmtSemis(S.set.semis) : "–";
+  if (q(".v-pitch")) q(".v-pitch").textContent = clocked() ? fmtSemis(S.set.semis) : "–";
   if (q(".v-cents")) q(".v-cents").textContent = S.kind === "file" ? fmtCents(S.set.cents) : "–";
   if (q(".tune-note") && S.note) q(".tune-note").textContent = S.note;
   S.view.querySelectorAll("[data-act=formant]").forEach((b) => { b.classList.toggle("on", S.set.formant); b.setAttribute("aria-pressed", S.set.formant); });
@@ -1136,13 +1325,13 @@ function syncLoop() {
   if (!box) return;
   const s = S.set;
   const pos = S.engine ? S.engine.position : 0;
-  const sec = S.timed && S.kind === "file" ? sectionAt(pos) : null;
+  const sec = S.timed && clocked() ? sectionAt(pos) : null;
   const pills = [];
   if (sec) {
     const on = s.loopOn && Math.abs(s.a - sec.t0) < 0.02 && Math.abs(s.b - sec.t1) < 0.02;
     pills.push(`<button class='pill ${on ? "on" : ""}' data-act='loop-sec' aria-pressed='${on}'>Loop ${esc(sec.name)}</button>`);
   }
-  if (S.timed && S.kind === "file") {
+  if (S.timed && clocked()) {
     const i = Math.max(0, barIndexAt(pos)), from = Math.floor(i / 4) * 4, to = Math.min(S.timed.bars.length - 1, from + 3);
     pills.push(`<button class='pill' data-act='loop-bars'>Bars ${from + 1}–${to + 1}</button>`);
   }
@@ -1200,7 +1389,7 @@ function syncMixer() {
   if (!S || !S.view) return;
   const box = S.view.querySelector(".mixer");
   if (!box) return;
-  const guitarOk = !!S.timed && S.kind === "file";
+  const guitarOk = !!S.timed && clocked();
   const hasRec = !!(S.meta && S.meta.source !== "unsaved") || shippedAudio(S);
   const seg = S.stems && S.kind === "file" ? `<div class='seg small-seg' role='group' aria-label='Play the recording or its stems' style='margin-bottom:8px'>
       <button data-stems='0' class='${S.playingStems ? "" : "on"}' aria-pressed='${!S.playingStems}' ${hasRec ? "" : "disabled"}>Full mix</button>
@@ -1208,7 +1397,10 @@ function syncMixer() {
   box.innerHTML = `<div class='h2'>Mixer</div>` + seg + mixRows().map(([key, name, sub]) => {
     const m = mixOf(key);
     const off = key === "guitar" && !guitarOk;
-    const subText = key === "recording" && S.kind === "youtube" ? "YouTube sets its own volume" : off ? "needs analysed bars" : key === "guitar" && S.partEvents ? "plays your guitar part" : sub;
+    const subText = key === "recording" && S.kind === "youtube" ? "YouTube sets its own volume" : off ? "needs analysed bars"
+      : key === "guitar" && S.kind === "band" ? (S.band && S.band.guitar ? "the part, or strums" : "strums the chords")
+      : key === "guitar" && S.partEvents ? "plays your guitar part"
+      : S.kind === "band" && S.band && S.band.transcribed.includes(key) ? "transcribed" : key === "drums" && S.band ? S.band.groove : sub;
     return `<div class='track ${m.on && !off ? "" : "off"}'>
       <span class='tn'>${esc(name)}<span class='ts'>${subText}</span></span>
       <input type='range' min='0' max='1' step='0.05' value='${m.vol}' data-vol='${esc(key)}' aria-label='${esc(name)} volume' ${off || (key === "recording" && S.kind === "youtube") ? "disabled" : ""}>
@@ -1264,6 +1456,14 @@ function wire() {
     toast("Kept on this device. Analyse it for chords and sections.");
   }));
   v.querySelectorAll("[data-yt]").forEach((b) => b.addEventListener("click", async () => { await resumeAudio(); loadYouTube(b.dataset.yt); }));
+  v.querySelectorAll("[data-band-parts]").forEach((b) => b.addEventListener("click", () => {
+    S.set.bandParts = b.dataset.bandParts;
+    persist();
+    stopBand();
+    timeline();
+    render();
+    startBand();
+  }));
   v.querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => download(b.dataset.dl)));
   v.querySelectorAll("[data-pcl]").forEach((b) => b.addEventListener("click", () => analyseLink(b.dataset.pcl)));
   v.querySelectorAll(".pc-status").forEach(wirePcStatus);
@@ -1311,6 +1511,8 @@ function act(a, el) {
   else if (a === "save-loop") saveLoopDialog();
   else if (a === "match") matchTuning();
   else if (a === "shipped") loadShipped();
+  else if (a === "band") { resumeAudio(); loadBand(); }
+  else if (a === "to-file") toRecording();
   else if (a === "formant") { S.set.formant = !S.set.formant; applyPitch(); }
   else if (a === "reset-pitch") { S.set.semis = 0; S.set.cents = 0; S.note = ""; applyPitch(); if (S.ctx.onPitch) S.ctx.onPitch(); }
   kick();
@@ -1394,7 +1596,7 @@ function startKeepalive() {
 function stopKeepalive() { if (keepalive && !keepalive.paused) keepalive.pause(); }
 
 function updateMediaSession() {
-  if (!("mediaSession" in navigator) || !S || S.kind !== "file") return;
+  if (!("mediaSession" in navigator) || !S || !clocked()) return;
   try {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: S.ctx.title, artist: S.ctx.artist || "", album: "The Songbook",
@@ -1435,6 +1637,11 @@ export const playerState = () => S && {
   layout: S.engine && S.engine.layout ? S.engine.layout.map((l) => ({ track: l.track, channels: l.channels.length })) : null,
   engine: S.engine, voicesCents: S.voices.cents, scheduled: S.scheduled.size, passes: S.passes || 0,
   strums: [...S.scheduled].filter(([key]) => key[0] !== "p").map(([key, at]) => ({ key, at, song: S.timed ? S.timed.strumTimes[+key.split(":")[1]] : null })),
-  partNotes: [...S.scheduled].filter(([key]) => key[0] === "p").map(([key, at]) => ({ at, song: S.partTimes[+key.split(":")[1]], midi: S.partEvents[+key.split(":")[1]].midi })),
+  partNotes: S.partEvents ? [...S.scheduled].filter(([key]) => key[0] === "p").map(([key, at]) => ({ at, song: S.partTimes[+key.split(":")[1]], midi: S.partEvents[+key.split(":")[1]].midi })) : [],
   partLayer: !!S.partEvents,
+  band: S.band && { groove: S.band.groove, bass: S.band.bass.length, drums: S.band.drums.length, guitar: S.band.guitar ? S.band.guitar.events.length : 0,
+    melody: S.band.melody ? S.band.melody.length : 0, transcribed: S.band.transcribed,
+    covered: S.band.guitar ? S.band.guitar.covered.size : 0, bars: S.timed ? S.timed.bars.length : 0,
+    scheduled: [...S.bandScheduled].filter(([key]) => key[0] !== "m").map(([key, at]) => ({ key, at, song: (key[0] === "b" ? S.band.bassTimes : S.band.drumTimes)[+key.split(":")[1]],
+      midi: key[0] === "b" ? S.band.bass[+key.split(":")[1]].midi : null, drum: key[0] === "d" ? S.band.drums[+key.split(":")[1]].drum : null })) },
 };

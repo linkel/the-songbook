@@ -32,6 +32,8 @@ import { helperUrl } from "./helper-client.js";
 import { pcJob, onPcJob, startPcJob, clearPcJob } from "./pcjob.js";
 import { stripHtml, openBarEditor, partPlayBars, barAsPattern, barChord, expanded } from "./partedit.js";
 import { partSheetHtml, defaultPartView, litTabStep, PART_VIEWS } from "./tab.js";
+import { bandTimeline } from "./band.js";
+import { checkArrangement } from "./bundle.js";
 
 const MODES = [["sheet", "Sheet"], ["chords", "Chords"], ["picking", "Picking"], ["player", "Player"]];
 const READY = new Set(["sheet", "chords", "picking", "edit", "analyse", "player"]);
@@ -358,8 +360,10 @@ function timedSpans(c) {
 
 // Every note of every section's part, in song time, at the recording's pitch
 // (the player shifts it with the recording): [{ t, string, midi, level, sec, bar }].
-function partAlongEvents() {
-  const c = timedChart();
+// c: a chart with bar times (the recording's, or the synth band's timeline);
+// patterns: sections without a part play their picking pattern (the band),
+// and covered (a Set) collects the bars that got notes.
+function partAlongEvents(c = timedChart(), { patterns = false, covered = null } = {}) {
   if (!c || !Array.isArray(c.bars) || !c.bars.length || typeof c.bars[0].t !== "number") return [];
   const k = soundingKey(c);
   const shapeKey = k ? transposeKey(k.key, -capoNow()) : null;
@@ -370,14 +374,17 @@ function partAlongEvents() {
     const si = (c.sections || []).findIndex((s) => s.name === span.name);
     if (si < 0) continue;
     const sec = c.sections[si];
-    const part = (cur.parts && cur.parts[sec.name]) || sec.part;
+    const pf = patterns ? patternFor(cur.chart || c, sec, cur.prefs) : null;
+    const part = (cur.parts && cur.parts[sec.name]) || sec.part || (pf && pf.pattern ? { source: "mine", bars: [{ pattern: pf.pattern.id }] } : null);
     if (!part) continue;
     const bars = sectionBars(c, si, disp0, vm, tun());
     const ctx = partCtx(c, sec, bars, part, "device");
     const pb = partPlayBars(ctx);
     span.bars.forEach((bi, kk) => {
-      const tb = c.bars[bi], b = pb[kk];
+      // A section played more than once (repeat) plays its part again.
+      const tb = c.bars[bi], b = pb.length ? pb[kk % pb.length] : null;
       if (!tb || !b || !b.part) return;
+      if (covered) covered.add(bi);
       const t0 = tb.t, t1 = c.bars[bi + 1] ? c.bars[bi + 1].t : t0 + 2;
       const n = b.part.steps.length;
       b.part.steps.forEach((st, j) => {
@@ -652,11 +659,58 @@ function playerCtx() {
     lyrics: cur.doc ? { lines: lyricLines(cur.doc).map((x) => x.text), timing: cur.timing ? cur.timing.lines : [] } : null,
     onPitch: () => {},
     startLoop: cur.startLoop,
+    band: hasChords(base()) ? bandCtx() : null,
     // A link analysed on the PC came back with its recording, chords and stems.
     onImported: async () => {
       const id = await reload();
       closePlayer();
       if (location.hash.startsWith(`#/song/${encodeURIComponent(id)}/player`)) await openSong(document.getElementById("view-song"), id, "player");
+    },
+  };
+}
+
+// The synth band (js/band.js): the chart's own bar times when it has them,
+// else its bars laid out at your tempo, in sounding pitch (capo 0); and the
+// app guitar's notes: each section's part, else its picking pattern
+// ({ events, covered: bars with notes }; the rest are strummed).
+function bandCtx() {
+  const c = timedChart();
+  const timed = c && Array.isArray(c.bars) && c.bars.length && typeof c.bars[0].t === "number";
+  const make = () => {
+    if (timed) return c;
+    const b = base();
+    const shift = b.capo || 0;
+    const sections = (b.sections || []).map((s) => ({ ...s, chords: splitBars(s.chords).map((bar) => bar.map((n) => transposeChord(n, shift, transposeKey(b.key, shift))).join(" ")).join(" | ") }));
+    const tl = bandTimeline({ ...b, sections }, { tempo: tempo(), beats: meter(b.time || "4/4").beats });
+    return { ...b, capo: 0, key: b.key ? transposeKey(b.key, shift) : b.key, sections, bars: tl.bars, beats: tl.beats, analysis: { ...(b.analysis || {}), ...tl.analysis }, band: true };
+  };
+  let chart = null, cache = { key: null, fn: null };
+  return {
+    chart: () => (chart = chart || make()),
+    timed: !!timed,
+    style: (cur.chart && cur.chart.style) || (cur.shipped && cur.shipped.style) || null,
+    disp: (name) => {
+      const key = tr() + ":" + capoNow() + ":" + cur.prefs.simple;
+      if (cache.key !== key) cache = { key, fn: makeDisp(chart = chart || make()) };
+      return cache.fn(name);
+    },
+    guitar: () => {
+      const covered = new Set();
+      const events = partAlongEvents(chart || make(), { patterns: true, covered });
+      return { events, covered };
+    },
+    // Transcribed parts from the PC (bass, melody, drums), on the recording's
+    // clock: from your own analysis on this device, else shipped with the song.
+    arrangement: async () => {
+      if (!timed) return null;
+      const mine = await get("arrangements", cur.id).catch(() => null);
+      if (mine && mine.tracks) return checkArrangement({ kind: "arrangement", ...mine });
+      const a = (cur.chart && cur.chart.arrangement) || (cur.shipped && cur.shipped.arrangement);
+      if (!a || !a.file) return null;
+      try {
+        const r = await fetch(a.file.split("/").map(encodeURIComponent).join("/"));
+        return r.ok ? checkArrangement(await r.json()) : null;
+      } catch (e) { return null; }
     },
   };
 }
