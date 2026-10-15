@@ -19,7 +19,7 @@ const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json") && f !== "in
 
 const CHART_KEYS = new Set(["id", "type", "title", "artist", "spotify", "key", "capo", "time", "tempo", "style", "strum",
   "voicings", "sections", "form", "source", "detector", "confidence", "sources", "notes", "picking", "beats",
-  "tuning", "links", "bars", "analysis", "checkedFrom", "audio", "stems", "arrangement", "lyricTiming"]);
+  "tuning", "links", "bars", "analysis", "checkedFrom", "audio", "stems", "arrangement", "lyricTiming", "sheetFile"]);
 const SECTION_KEYS = new Set(["name", "chords", "repeat", "picking", "strength", "part"]);
 const PICKING_KEYS = new Set(["patterns", "also", "match", "source", "confidence", "part", "sources", "description", "from", "pattern"]);
 const SOURCES = new Set(["detected", "web", "mine", "verified"]);
@@ -107,6 +107,17 @@ for (const f of files) {
   // A shipped recording and stems are in the repo.
   if (c.audio) check(`${w}: its recording is in the repo`, fs.existsSync(new URL("../" + c.audio.file, import.meta.url)), c.audio.file);
   for (const f of (c.stems && c.stems.files) || []) check(`${w}: stem ${f.name} is in the repo`, fs.existsSync(new URL("../" + f.file, import.meta.url)), f.file);
+  // A sheet of your own words (tools/ship-sheet.mjs), the only lyrics shipped: yours, by your choice.
+  if (c.sheetFile) {
+    const u = new URL("../" + c.sheetFile, import.meta.url);
+    check(`${w}: its sheet is in the repo`, /^songs\/sheets\/[a-z0-9-]+\.json$/.test(c.sheetFile) && fs.existsSync(u), c.sheetFile);
+    if (fs.existsSync(u)) {
+      const sh = JSON.parse(fs.readFileSync(u, "utf8"));
+      check(`${w}: the sheet is yours, and says so`, sh.source === "mine" && sh.label && sh.id === c.id, JSON.stringify([sh.source, sh.label]));
+      check(`${w}: the sheet's chords parse`, [...sh.chordpro.matchAll(/\[([^\]]+)\]/g)].every((m) => C.parseChord(m[1])), "");
+      check(`${w}: the sheet's times are in order`, sh.timing.lines.every((x, k, a) => isFinite(x.t) && (!k || x.t >= a[k - 1].t)));
+    }
+  }
   if (c.lyricTiming) {
     const lt = c.lyricTiming;
     check(`${w}: lyric timing names its LRCLIB lines`, lt.lrclib && Number.isInteger(lt.lrclib.id), JSON.stringify(lt.lrclib));

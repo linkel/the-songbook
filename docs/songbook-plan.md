@@ -134,7 +134,7 @@ Its README also records the time-stretch comparison (Signalsmith vs SoundTouch v
    - **analysing a recording** (§7), which works for any song and is the main path;
    - **cited web chord charts** (chords only), used to confirm detections;
    - **the owner's pasted sheets.**
-3. **Lyrics.** They come from the owner's pasted sheets, stored on the device only, or optionally from a runtime LRCLIB lookup (§12). For the sheet to scroll in time with playback, lyric lines need timestamps (§8.3).
+3. **Lyrics.** They come from the owner's pasted sheets, stored on the device only, or optionally from a runtime LRCLIB lookup (§12). By the owner's choice, a song can also ship with the owner's own transcription as its default sheet (`tools/ship-sheet.mjs`, `songs/sheets/`), and with lyric times keyed to LRCLIB's lines (`lyricTiming`, times only). For the sheet to scroll in time with playback, lyric lines need timestamps (§8.3).
 4. **Audio files.** Spotify streams can't be analysed (DRM, and no previews for new apps).
    - The owner's own files work: mp3 from Amazon or Bandcamp, Apple/iTunes m4a (DRM-free AAC), flac, wav. Buying files is the clean route.
    - The owner's choice: a song analysed on the PC can ship with the app (its recording, stems, chart and guitar part in `songs/`, by `tools/ship-bundle.mjs`), so it's ready on every device without importing. The repo is public, so whatever is in `songs/` is too.

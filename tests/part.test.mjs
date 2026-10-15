@@ -219,6 +219,8 @@ for (const [w, h, scheme] of [[375, 752, "dark"], [1440, 900, "light"]]) {
     await context.route("**/songs/audio/**", (r) => r.fulfill({ status: 200, contentType: "audio/wav", body: wav }));
     await context.route("**/songs/stems/**", (r) => r.fulfill({ status: 200, contentType: "audio/wav", body: wav }));
     const lrc = Array.from({ length: 66 }, (_, k) => `[${String(Math.floor(k * 4 / 60)).padStart(2, "0")}:${String((k * 4) % 60).padStart(2, "0")}.00]Invented line ${k + 1} for the tests`).join("\n");
+    // (Without the sheet Late July comes with, to try LRCLIB's words; that sheet is checked below.)
+    await context.route("**/songs/sheets/**", (r) => r.fulfill({ status: 404, body: "" }));
     await context.route("https://lrclib.net/api/**", (r) => r.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" },
       body: JSON.stringify({ id: 34374191, trackName: "Late July", artistName: "Shakey Graves", duration: 368, syncedLyrics: lrc, plainLyrics: "" }) }));
     await show(page, "#/song/late-july/picking");
@@ -301,6 +303,37 @@ for (const [w, h, scheme] of [[375, 752, "dark"], [1440, 900, "light"]]) {
     await context.close();
   });
 }
+
+/* ---- Late July comes with your own words: the default sheet, lined up with the recording ---- */
+await section("shipped sheet", async () => {
+  const { context, page, errors } = await newPage();
+  await context.route("**/songs/audio/**", (r) => r.fulfill({ status: 404, body: "" }));
+  await show(page, "#/song/late-july/sheet");
+  await page.waitForSelector(".sheet .line");
+  const sh = await page.evaluate(() => fetch("songs/sheets/late-july.json").then((r) => r.json()));
+  const st = await page.evaluate(() => ({ lines: document.querySelectorAll(".sheet .line").length, chords: document.querySelectorAll(".sheet .c").length, badge: document.querySelector(".topbar .badge").textContent }));
+  check("shipped sheet: Sheet opens on it, with chords", st.lines > 40 && st.chords > 30, JSON.stringify(st));
+  eq("shipped sheet: labelled yours", st.badge, "Mine");
+  check("shipped sheet: says where the words are from", (await page.textContent(".song-scroll")).includes(sh.label));
+  // The tab's Lyrics: your words under the bars, by the shipped times.
+  await show(page, "#/song/late-july/picking");
+  await page.waitForSelector("[data-act=tab-lyrics]");
+  await page.click("[data-act=tab-lyrics]");
+  await page.waitForSelector(".pick-card.whole .tab-bar.sung");
+  const ly = await page.evaluate(async () => {
+    const c = await fetch("songs/late-july.json").then((r) => r.json());
+    const s = await fetch("songs/sheets/late-july.json").then((r) => r.json());
+    const first = Math.min(...s.timing.lines.map((x) => x.t));
+    let bi = 0;
+    for (let i = 0; i < c.bars.length && c.bars[i].t <= first + 0.25; i++) bi = i;
+    const sung = [...document.querySelectorAll(".pick-card.whole .tab-bar.sung")].map((b) => +b.querySelector(".tnum").textContent);
+    return { first: sung[0], want: bi + 1, n: sung.length };
+  });
+  eq("shipped sheet: the first sung line under its bar", ly.first, ly.want);
+  check("shipped sheet: words under many bars", ly.n > 20, String(ly.n));
+  check("shipped sheet: no page errors", errors.length === 0, errors.join("; "));
+  await context.close();
+});
 
 /* ---- The tuning picker, and your own shapes ---- */
 await section("tuning and shapes", async () => {

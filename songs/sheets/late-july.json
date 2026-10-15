@@ -1,0 +1,175 @@
+{
+ "id": "late-july",
+ "title": "Late July",
+ "artist": "Shakey Graves",
+ "source": "mine",
+ "label": "Your transcription, from your recording",
+ "chordsFrom": "web",
+ "chordpro": "{title: Late July}\n{artist: Shakey Graves}\n[Dsus2] [D] [Dsus2] [D] [Dsus2] [D] [Dsus2] [G/D] [G] [F#] [G5] [Em/G] [G5] [Em/G] [G5] [G] [G/D] [Bm] [Bb] [Dsus2/E] [Dsus2] [B5] [Bb] [Dsus2/E] [Dsus2] [B5] [Bb5] [A5]\n\n[A5]Well gold [D]digger took my money yeah\nDipped [Dsus2]my heart and hands in honey\nOh [D5]Snake Lady done stole my savings\n[D5]Told gold digger she was having my [G]babies\n\n[G]Well, gold digger swung, snake lady fell\n[G]I [F#]took Gold Digger up to [F#5]Chapel Hill\n[F#5]Oh, I [G5]married her fast, murdered her young\n[G5]Took my money back and made my run\n\n[G5]Well, [D]bus driver, all in red\n[D]Yeah, go [D5]pull this bus over [D]and end up dead\n[D]Yeah go drive this bus [Dsus2]down to Mexico\n[Dsus2]Park it [D5]on a cliff where that good grass grows\n\n[D5]Till a [G]chopper came along one sunny day\n[G]To [F#]burn my crops, lock me away\n[F#]Well I'm [G5]eager, young and qualified\n[G5]Got a date with that chair, [G5/D]oh, in late July\n[G5/D]Mmmm[Bb5]\n\n[Bb5]- B7 [Dsus2/E]and low D pull [Dsus2]off bridge -\n\n[E5]Well [D]my mama, old and grey\n[Dsus2]Sittin' at-a home just a-weepin' away\n[Dsus2]Her [D5]only boy washed down the drain\n[D5]Gonna take her son and lock him away\n[D5]Well, [G]mama should be, proud of me\n[G]Oh, I lived [F#]like a man, Oh I'll die like a king\n[F#]Cause [G5]I'm eager, young and qualified\n[G5]Got a date with that chair, oh, in late July\n\n[G5]But my [D]papa he's old and fat\n[D]Chewin his cigar with his hair slicked back\nYeah, [D5]roll him over, beat him black\n[D5]Say it's from that boy he never had\n[D5]Well, [G]papa should be in my place\n[G]Fry [F#]like bacon, hang like lace\n[F#]Cause [G5]I'm eager, young and qualified\n[G5]Got a date with that chair, oh, in late July\n[G5]Mmmm[Bb5]\n\n[Bb5]- B7 and [Em]low D bridge [Dsus2/E]again with some vocal [Dsus2]oohs -\n\n[E5]Yeah well, [D5]Big Betty, [Dsus2]my old squeeze\n[D5]Kiss you so good, you go [Dsus2]weak in the knees\n[Dsus2]Come [D]to see her old man pop\n[D]I wanna have you there, when my big heart stops\n[D]But [G]don't you worry, don't you fret\n[G]Oh [F#]I won't die with no regrets\n[F#]Because [G5]I'm eager, young and qualified\n[G5]Yeah I'm eager, young and starry-eyed\n[G5]Oh the big leagues call, and I reply\n[G5]I got a date with that chair, oh, in late July\n[G5]Mmm\n\n[G5]-  B7 and low [Bm]D bridge with vocal [Bb5]crooning --\n\n[Bb5]Ends with some [G5/D]oohing and chords [Dsus2/E]version of [Dsus2]the B7 slides down to the open [B5]D tuning open strings",
+ "timing": {
+  "source": "aligned",
+  "aligner": "stable-ts 2.19.1 (Whisper large-v3) on the vocal stem",
+  "lines": [
+   {
+    "index": 1,
+    "t": 64.2
+   },
+   {
+    "index": 2,
+    "t": 66.86
+   },
+   {
+    "index": 3,
+    "t": 68.9
+   },
+   {
+    "index": 4,
+    "t": 71.13
+   },
+   {
+    "index": 5,
+    "t": 73.71
+   },
+   {
+    "index": 6,
+    "t": 77.08
+   },
+   {
+    "index": 7,
+    "t": 80.4
+   },
+   {
+    "index": 8,
+    "t": 84.68
+   },
+   {
+    "index": 9,
+    "t": 88.52
+   },
+   {
+    "index": 10,
+    "t": 92.86
+   },
+   {
+    "index": 11,
+    "t": 96.78
+   },
+   {
+    "index": 12,
+    "t": 101.01
+   },
+   {
+    "index": 13,
+    "t": 104.87
+   },
+   {
+    "index": 14,
+    "t": 109.38
+   },
+   {
+    "index": 15,
+    "t": 112.86
+   },
+   {
+    "index": 16,
+    "t": 117.58
+   },
+   {
+    "index": 19,
+    "t": 145.44
+   },
+   {
+    "index": 20,
+    "t": 147.8
+   },
+   {
+    "index": 21,
+    "t": 149.44
+   },
+   {
+    "index": 22,
+    "t": 151.78
+   },
+   {
+    "index": 23,
+    "t": 153.34
+   },
+   {
+    "index": 24,
+    "t": 156.65
+   },
+   {
+    "index": 25,
+    "t": 161.24
+   },
+   {
+    "index": 26,
+    "t": 165.6
+   },
+   {
+    "index": 27,
+    "t": 169.36
+   },
+   {
+    "index": 29,
+    "t": 173.84
+   },
+   {
+    "index": 30,
+    "t": 175.72
+   },
+   {
+    "index": 31,
+    "t": 177.7
+   },
+   {
+    "index": 32,
+    "t": 181.4
+   },
+   {
+    "index": 33,
+    "t": 185.39
+   },
+   {
+    "index": 37,
+    "t": 224.51
+   },
+   {
+    "index": 38,
+    "t": 229.86
+   },
+   {
+    "index": 39,
+    "t": 233.52
+   },
+   {
+    "index": 40,
+    "t": 237.04
+   },
+   {
+    "index": 41,
+    "t": 241.24
+   },
+   {
+    "index": 42,
+    "t": 245.77
+   },
+   {
+    "index": 43,
+    "t": 249.51
+   },
+   {
+    "index": 44,
+    "t": 253.38
+   },
+   {
+    "index": 45,
+    "t": 257.24
+   },
+   {
+    "index": 46,
+    "t": 261.4
+   }
+  ]
+ }
+}

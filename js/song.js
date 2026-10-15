@@ -186,9 +186,18 @@ const recPlayingHere = () => { const pn = playerNow(); return !!(pn && pn.id ===
 export async function openSong(view, id, mode, arg = null) {
   if (!cur || cur.id !== id) {
     stopAll();
-    const [entry, device, shipped, sheet, rec, timing, parts] = await Promise.all([
+    let [entry, device, shipped, sheet, rec, timing, parts] = await Promise.all([
       getEntry(id), get("charts", id).catch(() => null), shippedChart(id).catch(() => null), getSheet(id), recordingMeta(id), getTiming(id), loadParts(id)]);
     const chart = device || shipped;
+    // A song can come with your own sheet (tools/ship-sheet.mjs): it's the
+    // default until you edit one here, and its times follow the recording.
+    if (!sheet && shipped && shipped.sheetFile) {
+      const d = await fetch(shipped.sheetFile.split("/").map(encodeURIComponent).join("/")).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      if (d && d.chordpro) {
+        sheet = { id, chordpro: d.chordpro, source: d.source || "mine", chordsFrom: d.chordsFrom || null, label: d.label || null, shipped: true };
+        if (!timing && d.timing && Array.isArray(d.timing.lines)) timing = { id, lines: d.timing.lines, source: d.timing.source || "aligned", shipped: true };
+      }
+    }
     if (!entry && !chart && !sheet) {
       view.innerHTML = `<div class='topbar'><a class='back' href='#/songs' aria-label='Back'>${ICONS.back}</a>
         <div class='topbar-title'><div class='t'>Song not found</div></div></div>
@@ -1107,13 +1116,16 @@ function sheetBody(b, disp) {
   const strumText = cur.chart && cur.chart.strum ? `<br>Strum <b>${esc(cur.chart.strum)}</b>` : "";
   const src = cur.sheet.source === "web" ? "From the web, cited below"
     : cur.sheet.source === "lrclib" ? `Lyrics and line times from LRCLIB${cur.sheet.chordsFrom ? `; chords from your ${cur.sheet.chordsFrom === "mine" ? "checked" : "detected"} chart, placed by time (check them)` : ""}`
+    : cur.sheet.shipped ? `${esc(cur.sheet.label || "Your words")}${cur.sheet.chordsFrom ? "; the chart's chords placed on it by time (check them)" : ""}`
     : "Your sheet";
+  const how = { lrclib: "LRCLIB", aligned: "lined up with the vocals on your PC", tap: "tapped" }[cur.timing && cur.timing.source] || "tapped";
   const timed = cur.timing && cur.timing.lines.length
-    ? `<div class='note' style='margin-top:6px'>${cur.timing.lines.length} lines timed (${cur.timing.source === "lrclib" ? "LRCLIB" : "tapped"}): the sheet follows the recording.</div>` : "";
+    ? `<div class='note' style='margin-top:6px'>${cur.timing.lines.length} lines timed (${how}): the sheet follows the recording.</div>` : "";
+  const kept = cur.sheet.shipped ? "it comes with the app; edit it and your copy stays on this device" : "stored on this device only";
   return `<div class='sheet-info'>${info.join(" · ")}${strumText}</div>
     <div class='sheet' style='--scale:${(1 + 0.12 * (cur.prefs.font || 0)).toFixed(2)}'>${sheetHtml(cur.doc, disp)}</div>
     <div class='card sources'>
-      <div><b>Sheet:</b> ${src}, stored on this device only.</div>${timed}${provenance(cur.sheet, cur.sheet.sources)}
+      <div><b>Sheet:</b> ${src}, ${kept}.</div>${timed}${provenance(cur.sheet, cur.sheet.sources)}
       <div style='margin-top:10px'><a class='btn outline small' href='#/song/${encodeURIComponent(cur.id)}/edit'>Edit sheet</a></div>
     </div>`;
 }
