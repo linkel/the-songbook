@@ -422,9 +422,12 @@ def make_bars(ticks, labels, bpb, phase):
             chords = [c]
         chords = [c for c in chords if c]
         strength = sum(s for _, s in bs) / len(bs)
-        if chords:
-            bars.append({"t": round(ticks[i0], 3), "t1": round(ticks[min(i1, len(ticks) - 1)], 3), "n": len(bs), "beat": i0,
-                         "chords": chords, "strength": round(strength, 3), "sure": bool(share >= 0.6 and strength >= WEAK)})
+        # No chord all bar (a break, drums and voice): an N.C. bar, so the bars
+        # still run through the whole song.
+        if not chords:
+            chords, share = ["N.C."], 1.0
+        bars.append({"t": round(ticks[i0], 3), "t1": round(ticks[min(i1, len(ticks) - 1)], 3), "n": len(bs), "beat": i0,
+                     "chords": chords, "strength": round(strength, 3), "sure": bool(share >= 0.6 and strength >= WEAK)})
 
     if phase > 0:
         add(0, phase)

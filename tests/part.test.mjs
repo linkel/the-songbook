@@ -181,7 +181,8 @@ await section("late july", async () => {
   check("late july: D is drawn as the open-D shape (000000)", d && d[2].includes("000000"), JSON.stringify(d));
   check("late july: every box uses its open-D shape", shapes.every(([name, spec, label]) => !spec || (label || "").includes(spec)), JSON.stringify(shapes.slice(0, 5)));
   await page.locator("[data-act=play]:visible").first().click();
-  await page.waitForTimeout(1200);
+  // The song starts with two bars of no chord (N.C.): wait for the first strum.
+  await until(page, () => window.songbook.getPlayer().log.some((e) => e.type === "strum"), null, 15000);
   const pl = await page.evaluate(async () => {
     const C = await import("/js/chords.js");
     const s = window.songbook.getPlayer().session;
@@ -342,6 +343,24 @@ await section("detected part", async () => {
   check("detected: says the fingers are inferred, not heard", (await page.textContent("#view-song")).includes("inferred, not heard"));
   eq("detected: the unsure bar shows ?", await page.$$eval(".pbar.unsure", (els) => els.map((e) => e.dataset.pbar)), ["1"]);
   await page.screenshot({ path: `${out}/detected-part-375.png` });
+  // Mostly written out (its own pattern, a bar of steps): shown as tab, the whole section.
+  eq("tab: a written-out part opens as tab", await page.$eval("[data-pview].on", (e) => e.dataset.pview), "tab");
+  eq("tab: a bar each, the empty one repeating the last", await page.$$eval(".tab-bar svg.tab-svg", (els) => els.length), 4);
+  eq("tab: bar 3's frets in order (D: the bass, i3@2 on the G string, the A string, m)", await page.$$eval(".tab-bar[data-pbar='2'] .tfret", (els) => els.map((e) => e.textContent)), ["0", "2", "2", "3"]);
+  check("tab: the chord over each bar", (await page.textContent(".tab-bar[data-pbar='0']")).includes("Em"));
+  await settled(page, "tab view");
+  await page.click("[data-pview=notation]");
+  await page.waitForSelector(".tab-bar svg.notation");
+  eq("notation: a staff per bar", await page.$$eval(".tab-bar svg.notation", (els) => els.length), 4);
+  await settled(page, "notation view");
+  await page.click("[data-pview=picking]");
+  await page.waitForSelector(".part-strip .pbar");
+  await page.reload();
+  await page.waitForSelector("html[data-ready]");
+  await show(page, `#/song/${id}/picking`);
+  await page.click("[data-pick-sec='1']");
+  await page.waitForSelector(".pbar");
+  eq("part view: your choice is kept", await page.$eval("[data-pview].on", (e) => e.dataset.pview), "picking");
   await page.click("[data-act=part-check]");
   await page.waitForTimeout(400);
   const p = await page.evaluate((id) => import("/js/part.js").then((P) => P.loadParts(id)).then((x) => x.Chorus), id);

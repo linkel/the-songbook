@@ -346,7 +346,8 @@ await section("sheet", async () => {
 
   // In the list, with a Sheet badge.
   await show(page, "#/songs");
-  check("sheet song is listed with charts", (await rows(page)).slice(0, 4).includes(id));
+  const first = await page.$$eval("#song-groups .h2", (h) => [h[0].textContent, [...h[0].nextElementSibling.querySelectorAll(".row")].map((x) => x.dataset.id)]);
+  check("sheet song is listed with charts", first[1].includes(id), JSON.stringify(first));
 
   // Delete the sheet, then the song.
   await show(page, `#/song/${id}/edit`);

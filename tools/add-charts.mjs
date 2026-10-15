@@ -4,7 +4,7 @@
 //   node tools/add-charts.mjs <export.json> [id ...]
 // Each chart becomes songs/<id>.json (chords and timing only; see
 // js/chartfile.js), songs/index.json is rebuilt, and sw.js gets the new files
-// and a new CACHE version. Name ids to add only those; list them with --list.
+// (CACHE stays as it is). Name ids to add only those; list them with --list.
 // A cited (web) chart already in songs/ is never replaced; for a shipped song
 // without chords (like Late July) the chords are added and its tuning, links
 // and notes are kept. Run the tests afterwards (cd tests && npm test).
@@ -58,14 +58,13 @@ if (!added.length) { console.log("Nothing to add."); process.exit(0); }
 fs.writeFileSync(path.join(root, "songs", "index.json"), JSON.stringify(buildIndex(), null, 1) + "\n");
 console.log("rebuilt songs/index.json");
 
-// sw.js: precache the new charts, and bump CACHE so installed copies update.
+// sw.js: precache the new charts.
 const swPath = path.join(root, "sw.js");
 let sw = fs.readFileSync(swPath, "utf8");
 for (const id of added) {
   const entry = `  "songs/${id}.json",`;
   if (!sw.includes(entry)) sw = sw.replace(/( {2}"songs\/index\.json",)(\r?\n)/, (_, line, nl) => `${line}${nl}${entry}${nl}`);
 }
-sw = sw.replace(/const CACHE = "songbook-v(\d+)";/, (_, n) => `const CACHE = "songbook-v${+n + 1}";`);
 fs.writeFileSync(swPath, sw);
-console.log("updated sw.js (" + sw.match(/const CACHE = "([^"]+)"/)[1] + ")");
+console.log("updated sw.js");
 console.log("Next: cd tests && npm test, then commit songs/ and sw.js.");

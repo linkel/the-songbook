@@ -87,7 +87,8 @@ for (const f of files) {
     check(`${w}/${s.name}: bar syntax`, !/\|\s*\|/.test(s.chords) && bars.every((b) => b.length <= 4));
     for (const name of bars.flat()) {
       check(`${w}/${s.name}: "${name}" parses`, C.parseChord(name) !== null);
-      check(`${w}/${s.name}: "${name}" has a shape`, !!C.bestVoicing(name, c.voicings, tun));
+      // N.C. (no chord: a break) has no shape.
+      if (!(C.parseChord(name) || {}).nc) check(`${w}/${s.name}: "${name}" has a shape`, !!C.bestVoicing(name, c.voicings, tun));
     }
     if (s.repeat !== undefined) check(`${w}/${s.name}: repeat`, Number.isInteger(s.repeat) && s.repeat >= 1);
     if (s.part) {

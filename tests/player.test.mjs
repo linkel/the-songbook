@@ -410,11 +410,16 @@ await section("bundled audio", async () => {
     const { signal } = await g.renderSong({ bpm: 118, bars: ["D", "G", "D", "A"], repeat: 1 });
     return Array.from(g.wavBytes(signal));
   }));
-  let asked = null;
+  let asked = null, stems = 0;
   await context.route("**/songs/audio/**", (r) => { asked = r.request().url(); r.fulfill({ status: 200, contentType: "audio/wav", body: wav }); });
+  await context.route("**/songs/stems/late-july/**", (r) => { stems++; r.fulfill({ status: 200, contentType: "audio/wav", body: wav }); });
   await show(page, "#/song/late-july/player");
   await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "file" && s.duration > 0; }, null, { timeout: 20000 });
-  check("bundled: loads Late July's clip by itself", asked && asked.includes("/songs/audio/Late%20July"), asked);
+  // It ships with its stems from the PC: they play first; Full mix is the clip.
+  check("bundled: plays the stems that come with it", (await page.evaluate(() => window.songbook.playerState().stems)) && stems === 5, String(stems));
+  await page.evaluate(() => document.querySelector(".mixer [data-stems='0']").click());
+  await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && !s.stems && s.duration > 0; }, null, { timeout: 20000 });
+  check("bundled: Full mix loads Late July's clip by itself", asked && asked.includes("/songs/audio/Late%20July"), asked);
   eq("bundled: with the chords' bar times", (await P(page)).timed, true);
   eq("bundled: played straight from the app, not stored again", await page.evaluate(() => import("/js/recordings.js").then((m) => m.recordingMeta("late-july"))), null);
   check("bundled: labelled", (await page.textContent(".topbar .badge")).includes("With the app"));

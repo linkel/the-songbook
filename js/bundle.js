@@ -41,7 +41,8 @@ export function checkChart(c) {
   const bars = c.bars.filter((b) => b && typeof b.t === "number" && Array.isArray(b.chords) && b.chords.length);
   if (!bars.length) throw new Error("The bundle's chart has no bars.");
   for (const b of bars) {
-    if (b.chords.some((x) => { const p = parseChord(x); return !p || p.nc; })) throw new Error(`The bundle's chart has a chord the app can't read: ${b.chords.join(" ")}.`);
+    // N.C.: a bar with no chord (a break), so the bars run through the song.
+    if (b.chords.some((x) => !parseChord(x))) throw new Error(`The bundle's chart has a chord the app can't read: ${b.chords.join(" ")}.`);
   }
   for (const s of c.sections) {
     if (typeof s.name !== "string" || typeof s.chords !== "string") throw new Error("The bundle's chart has a broken section.");

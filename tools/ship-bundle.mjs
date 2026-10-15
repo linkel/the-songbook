@@ -5,7 +5,7 @@
 // it's in private/). The library finds it by title and artist.
 //   node tools/ship-bundle.mjs private/songs/<slug> [--audio <file>] [--id <id>]
 //   node tools/ship-bundle.mjs --all        every bundle in private/songs/
-// songs/index.json is rebuilt and sw.js gets the chart and a new CACHE. Then
+// songs/index.json is rebuilt and sw.js precaches the chart. Then
 // run the tests (cd tests && npm run quick) and commit songs/ and sw.js.
 import fs from "fs";
 import path from "path";
@@ -91,6 +91,5 @@ for (const id of added) {
   const entry = `  "songs/${id}.json",`;
   if (!sw.includes(entry)) sw = sw.replace(/( {2}"songs\/index\.json",)(\r?\n)/, (_, line, nl) => `${line}${nl}${entry}${nl}`);
 }
-sw = sw.replace(/const CACHE = "songbook-v(\d+)";/, (_, n) => `const CACHE = "songbook-v${+n + 1}";`);
 fs.writeFileSync(swPath, sw);
-console.log("updated sw.js (" + sw.match(/const CACHE = "([^"]+)"/)[1] + ")");
+console.log("updated sw.js");

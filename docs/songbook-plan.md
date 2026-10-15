@@ -28,7 +28,7 @@ This file is the brief for the agent building it. Read all of it, plus `CLAUDE.m
   - Prefer copying code into this repo (with a credit comment) over making this app load files from the other repos.
 - **Stack:**
   - Plain HTML/CSS/JS with no build step, using native ES modules (`<script type="module">`).
-  - Works offline. The service worker (`sw.js`) is network-first; bump `CACHE` on every change and add new files to `ASSETS`.
+  - Works offline. The service worker (`sw.js`) is network-first; add new files to `ASSETS`. `CACHE` stays at `songbook-v1` until the owner installs the app.
   - Large optional assets (WASM, models) are lazy-loaded and cached on first use, not precached.
   - Vendored libraries go in `vendor/` with their licences.
 - **Device:** the target is an iPhone 12 mini (375×812; test 375×752 and 375×630), with 44 px tap targets and text readable at arm's length on a music stand. There's also a desktop layout (≥ 860 px).
@@ -491,6 +491,7 @@ Each phase ends with tests passing, screenshots reviewed at 375×752, 375×630 a
      - Per bar, choose a library pattern or one of the song's own, or write the bar out on a step grid (strings × steps; tap to place a finger, long-press for fret, technique or mute). Repeat it over the following bars, or copy it.
      - Play picks the part bar by bar, with its frets and techniques, and the stage follows the pattern changes.
      - "Open in Pimapeggio" passes written-out steps; add a `steps=` URL parameter to Pimapeggio.
+     - Tab | Notation | Picking (`js/tab.js`): the whole section as guitar tab (frets in the song's tuning, techniques, chord over each bar) or staff notation, a tappable bar each, lit as it plays. A part that's mostly written out opens as tab; one carried by library patterns opens on the picking stage. Your choice is kept per song.
   4. **PC detector** (§8.4): a draft `part.json` in the bundle, imported like the rest of it.
   5. **Review** (§8.4 step 8): play along, fix bars, mark as checked.
 - **Phase 6: synth band** (§9.2): generated parts first, then transcribed parts from Phase 5a and 5b bundles.

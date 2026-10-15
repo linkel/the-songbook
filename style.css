@@ -659,6 +659,33 @@ button.pick.on { border-color: var(--mauve); background: color-mix(in srgb, var(
 .pbar.sel { border-color: var(--mauve); box-shadow: 0 0 0 2px color-mix(in srgb, var(--mauve) 35%, transparent); }
 .pbar.on { background: var(--peach); border-color: var(--peach); }
 .pbar.on .ch, .pbar.on .pl { color: var(--on-peach); }
+/* The part as tab or notation (js/tab.js): a button per bar, wrapping in rows. */
+.part-views { margin: 4px 0 8px; }
+.tab-legend { margin: 0 0 8px; }
+.tab-sheet { display: flex; flex-wrap: wrap; gap: 6px; }
+.pbar.tab-bar { display: block; min-height: 44px; padding: 2px 0; flex: 0 0 auto; max-width: 100%; overflow-x: auto; }
+.pbar.tab-bar.empty { display: flex; min-width: 88px; padding: 0 10px; }
+.pbar.tab-bar.pv-notation { padding: 4px 6px; text-align: left; }
+.pbar.tab-bar.on { background: color-mix(in srgb, var(--peach) 22%, var(--mantle)); }
+.tab-svg { display: block; }
+.tab-svg .tline { stroke: var(--overlay0); stroke-width: 1; }
+.tab-svg .tbar { stroke: var(--subtext0); stroke-width: 1.2; }
+.tab-svg .tcol { fill: transparent; }
+.tab-svg .tcol.cur { fill: color-mix(in srgb, var(--peach) 45%, transparent); }
+.tab-svg .tknock { fill: var(--mantle); }
+.pbar.tab-bar.on .tknock { fill: color-mix(in srgb, var(--peach) 22%, var(--mantle)); }
+.tab-svg text { font: 700 12px/1 ui-monospace, "SF Mono", Menlo, monospace; fill: var(--text); }
+.tab-svg .tfret { text-anchor: middle; font-size: 12.5px; }
+.tab-svg .tfret.f-p { fill: var(--ink-peach); }
+.tab-svg .tfret.f-i { fill: var(--ink-blue); }
+.tab-svg .tfret.f-m { fill: var(--ink-green); }
+.tab-svg .tfret.f-a { fill: var(--ink-mauve); }
+.tab-svg .tnum, .tab-svg .tstr { fill: var(--meta); font-size: 10px; font-weight: 600; }
+.tab-svg .tchord { fill: var(--ink-mauve); font: 800 12.5px/1 system-ui, -apple-system, sans-serif; }
+.tab-svg .tq { fill: var(--ink-yellow); }
+.tab-bar.pv-notation .tchord-label { display: block; font-size: 12.5px; font-weight: 800; color: var(--ink-mauve); }
+.tab-bar.pv-notation .tchord-label { padding-left: 2px; }
+.tab-bar.pv-notation svg.notation { display: block; max-width: none; height: auto; }
 .fcell .rest { color: var(--meta); }
 .step-grid-wrap { overflow-x: auto; margin: 0 -4px; padding: 0 4px 4px; flex-shrink: 0; }
 .step-grid { display: grid; grid-template-columns: 18px repeat(var(--steps), 44px); gap: 0; width: max-content; }

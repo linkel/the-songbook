@@ -30,7 +30,8 @@ import { patternFor, patternBadge, sectionBars, fingersHtml, diagramSvg, notatio
 import { loadParts, saveSectionPart, checkedPart } from "./part.js";
 import { helperUrl } from "./helper-client.js";
 import { pcJob, onPcJob, startPcJob, clearPcJob } from "./pcjob.js";
-import { stripHtml, openBarEditor, partPlayBars, barAsPattern, barChord } from "./partedit.js";
+import { stripHtml, openBarEditor, partPlayBars, barAsPattern, barChord, expanded } from "./partedit.js";
+import { partSheetHtml, defaultPartView, litTabStep, PART_VIEWS } from "./tab.js";
 
 const MODES = [["sheet", "Sheet"], ["chords", "Chords"], ["picking", "Picking"], ["player", "Player"]];
 const READY = new Set(["sheet", "chords", "picking", "edit", "analyse", "player"]);
@@ -428,15 +429,32 @@ onPlayerFrame((f) => {
   const { sec } = pickPlan();
   const span = sec && timedSpans(c).find((s) => s.name === sec.name && s.bars.includes(bi));
   const k = span ? span.bars.indexOf(bi) : -1;
-  if (k === partLit) return;
-  partLit = k;
-  cur.view.querySelectorAll(".pbar.on").forEach((x) => x.classList.remove("on"));
-  if (k >= 0) {
-    const el = cur.view.querySelector(`.pbar[data-pbar='${k}']`);
-    if (el) el.classList.add("on");
-    showPartBar(k);
+  if (k !== partLit) {
+    partLit = k;
+    cur.view.querySelectorAll(".pbar.on").forEach((x) => x.classList.remove("on"));
+    if (k >= 0) {
+      const el = cur.view.querySelector(`.pbar[data-pbar='${k}']`);
+      if (el) { el.classList.add("on"); if (el.classList.contains("tab-bar")) follow(el); }
+      showPartBar(k);
+    }
+  }
+  // On the tab, the step too.
+  if (k >= 0 && cur.view.querySelector(".tab-bar.on")) {
+    const { ctx } = pickPlan();
+    const e = ctx && expanded(ctx)[k];
+    const t0 = c.bars[bi].t, t1 = c.bars[bi + 1] ? c.bars[bi + 1].t : t0 + 2;
+    litTabStep(cur.view, e && e.steps ? Math.min(e.steps.length - 1, Math.floor((f.pos - t0) / (t1 - t0) * e.steps.length)) : -1);
   }
 });
+
+// How the part shows: as tab, notation, or the picking stage: yours, else
+// what suits the part when you opened it (so it doesn't switch as you write).
+function partView(ctx) {
+  const v = cur.prefs.partView;
+  if (PART_VIEWS.some(([id]) => id === v)) return v;
+  cur.partViews = cur.partViews || {};
+  return (cur.partViews[ctx.sectionName] = cur.partViews[ctx.sectionName] || defaultPartView(ctx));
+}
 
 // The stage shows a bar of the part: the one you chose, or the one playing.
 function showPartBar(i) {
@@ -466,17 +484,25 @@ function partBody(b, pills, plan) {
     : part.checkedFrom ? `Yours: detected by ${esc(part.checkedFrom)}, then checked by you.`
     : ctx.partFrom === "chart" ? (part.source === "mine" ? "Your description, from the chart." : "From the chart.") : "Yours, written here.";
   const sel = ctx.bars[i];
+  const pv = partView(ctx);
+  const views = `<div class='seg small-seg part-views' role='group' aria-label='Show the part as'>${PART_VIEWS.map(([id, label]) =>
+    `<button data-pview='${id}' class='${id === pv ? "on" : ""}' aria-pressed='${id === pv}'>${label}</button>`).join("")}</div>`;
+  const body = pv === "picking" ? `
+      ${p ? fingersHtml(p) : "<div class='fingers'></div>"}
+      <div class='pick-stage'>${p ? diagramSvg(p, ch, tun().open) : ""}</div>
+      ${p ? notationHtml(p, ch, tun().open) : "<div class='pick-notation'></div>"}
+      ${stripHtml(ctx, i)}
+      <p class='note' style='margin:8px 0 0'>Tap a bar to choose its pattern, write it out or give it a shape of its own.</p>`
+    : `${partSheetHtml(ctx, pv, i)}
+      <p class='note' style='margin:8px 0 0'>Tap a bar to edit it.</p>`;
   const pimaArgs = { bars: [sel], capo: capoNow(), bpm: tempo(), name: `${songTitle()} · ${sec.name}, bar ${i + 1}`, tuning: tun(), beats: ctx.beats };
   const link = p && p.id && !p.steps.some((st) => st.some((n) => n.fret !== undefined || n.tech || n.mute)) && PATTERN_BY_ID.has(p.id)
     ? pimapeggioLink({ ...pimaArgs, pattern: PATTERN_BY_ID.get(p.id) }) : p ? pimapeggioLink({ ...pimaArgs, steps: p.steps }) : null;
   return `${pills}
     <div class='card pick-card'>
-      <div class='sec-head'><span class='sec-name'>${esc(sec.name)} · <span class='part-bar-name nowrap'>${p ? `Bar ${i + 1}: ${esc(p.name)}` : `Bar ${i + 1}`}</span></span>${lab}</div>
-      ${p ? fingersHtml(p) : "<div class='fingers'></div>"}
-      <div class='pick-stage'>${p ? diagramSvg(p, ch, tun().open) : ""}</div>
-      ${p ? notationHtml(p, ch, tun().open) : "<div class='pick-notation'></div>"}
-      ${stripHtml(ctx, i)}
-      <p class='note' style='margin:8px 0 0'>Tap a bar to choose its pattern, write it out or give it a shape of its own.</p>
+      <div class='sec-head'><span class='sec-name'>${esc(sec.name)}${pv === "picking" ? ` · <span class='part-bar-name nowrap'>${p ? `Bar ${i + 1}: ${esc(p.name)}` : `Bar ${i + 1}`}</span>` : ""}</span>${lab}</div>
+      ${views}
+      ${body}
     </div>
     <div class='card set-group'>
       <div class='set-row'><div><div class='set-label'>Guitar part</div><div class='meta'>${prov}</div></div></div>
@@ -571,6 +597,7 @@ function pickStep(i) {
   const v = cur.view;
   v.querySelectorAll(".fcell.cur, .dg-col.cur").forEach((e) => e.classList.remove("cur"));
   litStep = i;
+  litTabStep(v, i);
   if (i < 0) return;
   const a = v.querySelector(`.fcell[data-i='${i}']`), c = v.querySelector(`.dg-col[data-i='${i}']`);
   if (a) a.classList.add("cur");
@@ -1181,6 +1208,12 @@ function wire(view) {
     if (player && player.playing) player.stop();
     cur.pickSec = +b.dataset.pickSec;
     cur.partSel = 0;
+    render();
+  }));
+  view.querySelectorAll("[data-pview]").forEach((b) => b.addEventListener("click", () => {
+    cur.prefs.partView = b.dataset.pview;
+    savePrefs(cur.id, cur.prefs);
+    partLit = null;
     render();
   }));
   view.querySelectorAll("[data-ab]").forEach((b) => b.addEventListener("click", () => {
