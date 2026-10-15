@@ -12,7 +12,7 @@ import { prettyChord } from "./chords.js";
 import { stringNames } from "./tuning.js";
 import { esc } from "./ui.js";
 
-const COL = 18;          // px per step
+const COLW = 18;         // px per step (less in a bar of more than 16 steps)
 const GAP = 13;          // px between strings
 const TOP = 26;          // room for the bar number and chord names
 const PAD = 8;
@@ -44,6 +44,7 @@ const chordAt = (bar, k, n) => Math.min(bar.chords.length - 1, Math.floor(k * ba
 
 function tabBarSvg(ctx, i, e) {
   const n = e.steps.length;
+  const COL = n > 16 ? Math.max(12, Math.round(288 / n)) : COLW;
   const bar = ctx.bars[i];
   const names = i === 0 ? stringNames(ctx.tuning) : null;
   const left = names ? 14 : 0;

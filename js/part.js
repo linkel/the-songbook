@@ -81,8 +81,10 @@ export function shapesOf(shape) {
 export function checkPart(part) {
   const errs = [];
   if (!part || typeof part !== "object") return ["A part should be an object."];
-  if (!["mine", "detected", "verified"].includes(part.source)) errs.push(`A part's source should be mine, detected or verified (got ${part.source}).`);
+  if (!["mine", "detected", "verified", "web"].includes(part.source)) errs.push(`A part's source should be mine, detected, web or verified (got ${part.source}).`);
   if (part.source === "detected" && !part.detector) errs.push("A detected part should name its detector.");
+  if (part.source === "web" && !part.from) errs.push("A part from a tab should say where it's from.");
+  if (part.url !== undefined && !/^https:\/\/\S+$/.test(part.url)) errs.push("A part's link should be https.");
   for (const [k, v] of Object.entries(part.patterns || {})) {
     try { parseSteps(typeof v === "string" ? v : v.steps); } catch (e) { errs.push(`Pattern ${k}: ${e.message}`); }
     if (PATTERN_BY_ID.has(k)) errs.push(`The part's own pattern "${k}" has a library pattern's name.`);
@@ -116,9 +118,11 @@ export function patternRuns(expanded) {
 }
 
 // A part you're editing: a new one is yours ("mine"); a detected one stays
-// detected (its edited bars lose their confidence) until you mark it checked.
+// detected (its edited bars lose their confidence) until you mark it checked;
+// one from a tab becomes yours, saying which tab it started from.
 export function editedPart(part) {
   const p = structuredClone(part || { bars: [] });
+  if (p.source === "web") { p.editedFrom = p.from; delete p.from; delete p.url; p.source = "mine"; }
   if (!p.source || p.source === "verified") p.source = "mine";
   return p;
 }

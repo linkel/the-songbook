@@ -41,10 +41,11 @@ for (const dir of dirs) {
   const id = (dirs.length === 1 && opt("--id")) || (old && old.id) || slug(m.title || raw.title);
   const chart = shippableChart({ ...raw, id, title: m.title || raw.title, artist: m.artist || raw.artist });
   if (!chart) { console.warn(`skipped ${dir}: no chords in the chart`); continue; }
-  if (old && old.source === "web") { console.warn(`kept songs/${id}.json: it's a cited chart`); continue; }
+  // A cited chart isn't replaced by a detected one (a tab lined up by helper/import_gp.py is cited too).
+  if (old && old.source === "web" && chart.source !== "web") { console.warn(`kept songs/${id}.json: it's a cited chart`); continue; }
   // What the shipped chart already knew (tuning, links, picking, its recording) stays.
   for (const k of ["tuning", "links", "picking", "type", "style", "audio"]) if (old && old[k] && !chart[k]) chart[k] = old[k];
-  if (old && old.notes && !chart.notes.includes(old.notes)) chart.notes = old.notes;
+  if (old && old.notes && chart.source === "detected" && !chart.notes.includes(old.notes)) chart.notes = old.notes;
 
   // Each section's guitar part (detected: a draft).
   const pf = path.join(dir, "part.json");
@@ -53,8 +54,8 @@ for (const dir of dirs) {
     for (const s of chart.sections) {
       const part = doc.sections && doc.sections[s.name];
       if (!part || checkPart(part).length) continue;
-      const { source, detector, fingers, patterns, bars } = part;
-      s.part = { source, detector, fingers, ...(patterns && Object.keys(patterns).length ? { patterns } : {}), bars };
+      const { source, detector, from, url, fingers, patterns, bars } = part;
+      s.part = { source, ...(source === "web" ? { from, ...(url ? { url } : {}) } : { detector }), fingers, ...(patterns && Object.keys(patterns).length ? { patterns } : {}), bars };
     }
   }
 

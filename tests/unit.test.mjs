@@ -27,6 +27,7 @@ eq("transpose A/C# -2 in G", C.transposeChord("A/C#", -2, "G"), "G/B");
 eq("transpose C#m +1 in D", C.transposeChord("C#m", 1, "D"), "Dm");
 eq("transpose sharps in E", C.transposeChord("D", 2, "E"), "E");
 eq("transpose to F# in sharp key", C.transposeChord("E", 2, "A"), "F#");
+eq("not transposed: spelled as written (Bb in D stays Bb)", [C.transposeChord("Bb5", 0, "D"), C.transposeChord("A#m", 0, "F"), C.transposeChord("Bb/D", 2, "D")], ["Bb5", "A#m", "C/E"]);
 eq("transpose to Gb in flat key", C.transposeChord("E", 2, "Db"), "Gb");
 eq("common spelling with no key", ["C", "C#", "D", "D#", "E"].map((n) => C.transposeChord(n, 1)), ["C#", "D", "Eb", "E", "F"]);
 eq("transpose round trip", ["Am7", "F#m7b5", "Bb/D", "Esus4"].map((n) => C.transposeChord(C.transposeChord(n, 5), -5)), ["Am7", "F#m7b5", "Bb/D", "Esus4"]);

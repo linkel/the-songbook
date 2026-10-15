@@ -20,6 +20,17 @@ else. The analysis bundles go in `private/songs/` (gitignored); to ship a song w
 the app, recording, stems, chart and guitar part included, run
 `node tools/ship-bundle.mjs private/songs/<song>` (or `--all`) and commit `songs/`.
 
+When the detected part isn't right and you have a tab of the same performance
+as a Guitar Pro file (GP7/GP8 `.gp`), line it up with the recording and use it
+instead, then ship as above:
+
+    wsl -d Ubuntu-24.04 -- bash -lc "source ~/.venvs/songbook/bin/activate && python helper/import_gp.py private/songs/<song> 'private/<tab>.gp' --from Songsterr --url <link>"
+
+The bars, chords (named from the tab's notes) and part come from the tab, the
+bar times from the recording; both say where they're from. The detected chart
+and part stay in the bundle as `chart.detected.json` and `part.detected.json`.
+`python helper/test_gp.py` checks the tab reader.
+
 ## What the analysis uses
 
 | Step | What does it | Licence |

@@ -96,6 +96,9 @@ fs.mkdirSync(out, { recursive: true });
   const checked = Pt.checkedPart({ source: "detected", detector: "x", bars: [{ pattern: "travis", confidence: 0.4, match: { pattern: "travis", hits: 7, of: 8 } }] });
   eq("part: Mark as checked makes it yours, and drops the guesses", [checked.source, checked.checkedFrom, checked.bars[0]], ["mine", "x", { pattern: "travis" }]);
   eq("part: editing a detected part keeps it detected until checked", Pt.editedPart({ source: "detected", bars: [] }).source, "detected");
+  eq("part: one from a tab says where it's from", [Pt.checkPart({ source: "web", bars: [] }).length, Pt.checkPart({ source: "web", from: "Songsterr", url: "https://example.com/t", bars: [{ steps: "p6@0+m@9 p4@0 i@1o0 -" }] }).length], [1, 0]);
+  const ed = Pt.editedPart({ source: "web", from: "Songsterr", url: "https://example.com/t", bars: [] });
+  eq("part: editing a tab's part makes it yours, saying which tab", [ed.source, ed.editedFrom, ed.from, ed.url], ["mine", "Songsterr", undefined, undefined]);
   const bars = [{ chords: [{ name: "D", spec: "000000" }] }];
   const link = new URL(Pk.pimapeggioLink({ steps: P.parseSteps("pB i3@2h4 pA m - pB i pA"), beats: 4, bars, capo: 0, bpm: 90, name: "Late July · Part A, bar 2",
     tuning: T.tuningFrom({ notes: "D A D F# A D" }) }, "https://example.com/pimapeggio/"));

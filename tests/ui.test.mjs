@@ -529,8 +529,9 @@ await section("analyse", async () => {
   await show(page, "#/song/late-july");
   check("Late July: tuning shown", (await page.textContent(".head .chips")).includes("Open D"));
   check("Late July: tutorial link", (await page.$$eval(".sources a", (a) => a.map((x) => x.href))).includes("https://www.youtube.com/watch?v=H_p4siY3Zc4"));
-  // Its shipped chords came from the owner's recording, and say so.
-  eq("Late July: shipped chords labelled detected", await page.textContent(".topbar .badge"), "Detected · check");
+  // Its shipped chords come from a tab (lined up with the owner's recording), and cite it.
+  eq("Late July: shipped chords labelled web, cited", await page.textContent(".topbar .badge"), "Web · cited");
+  check("Late July: the tab is cited", (await page.textContent(".sources")).includes("Songsterr"));
   await page.click("a.btn[href$='/analyse']");
   await page.waitForTimeout(300);
   eq("analyse screen opens", (await state(page)).mode, "analyse");

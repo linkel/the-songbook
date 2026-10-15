@@ -478,9 +478,12 @@ function partBody(b, pills, plan) {
   const p = barAsPattern(ctx, i);
   const ch = barChord(ctx, i).pima;
   const lab = part.source === "detected" ? "<span class='badge detected'>Detected part · check</span>"
+    : part.source === "web" ? "<span class='badge web'>Tab · cited</span>"
     : part.source === "verified" ? "<span class='badge verified'>Verified part</span>" : "<span class='badge mine'>Your part</span>";
   const prov = part.source === "detected"
     ? `Detected from your recording by ${esc(part.detector || "the PC helper")}. The notes and frets are a best guess; which finger plays each one is inferred, not heard${part.fingers === "inferred" ? "" : ""}. Bars marked ? were unsure. Play it along with the recording, fix what's off, then mark it as checked.`
+    : part.source === "web" ? `From ${esc(part.from)}. The notes and frets are the tab's; which finger picks each one is inferred (a tab doesn't say). Edit a bar and the part becomes yours.`
+    : part.editedFrom ? `Yours, edited from ${esc(part.editedFrom)}.`
     : part.checkedFrom ? `Yours: detected by ${esc(part.checkedFrom)}, then checked by you.`
     : ctx.partFrom === "chart" ? (part.source === "mine" ? "Your description, from the chart." : "From the chart.") : "Yours, written here.";
   const sel = ctx.bars[i];
@@ -509,6 +512,7 @@ function partBody(b, pills, plan) {
       <div class='row-btns' style='flex-wrap:wrap;padding-bottom:10px'>
         <button class='btn outline small' data-act='part-edit'>Edit bar ${i + 1}</button>
         ${part.source === "detected" ? "<button class='btn outline small' data-act='part-check'>Mark as checked</button>" : ""}
+        ${part.source === "web" && part.url ? `<a class='btn outline small' href='${esc(part.url)}' target='_blank' rel='noopener'>Where it's from</a>` : ""}
         ${ctx.partFrom === "device" ? "<button class='btn outline small' data-act='part-delete'>Delete your part</button>" : ""}
       </div>
       ${timedChart() && timedChart().bars && typeof (timedChart().bars[0] || {}).t === "number" && (cur.rec || (cur.chart && cur.chart.audio) || (cur.shipped && cur.shipped.audio)) ? `
@@ -948,7 +952,8 @@ function sectionsHtml(b, disp) {
 
 function boxesHtml(b, disp, width = 76) {
   const vm = voicingMap(b);
-  return uniqueDisplayed(b, disp).map((d) => {
+  // N.C. (no chord) has no box.
+  return uniqueDisplayed(b, disp).filter((d) => !/^N\.?C\.?$/i.test(d)).map((d) => {
     const v = voicingsFor(d, vm, tun())[0];
     const yours = v && cur.prefs.voicings && cur.prefs.voicings[d] === v.spec;
     return `<button class='box${yours ? " yours" : ""}' data-chord='${esc(d)}'>${esc(prettyChord(d))}${yours ? "<span class='yours-tag'>yours</span>" : ""}${v ? chordBoxSvg(v.frets, { width, label: d + " " + v.spec + (yours ? ", your shape" : "") }) : "<span class='nobox'>no shape found</span>"}</button>`;
@@ -1167,7 +1172,7 @@ export async function togglePlay() {
   const plan = playPlan();
   const bars = playBars();
   if (!bars.length) return;
-  if (bars.some((b) => b.chords.some((c) => !c.frets))) toast("Some chords have no shape, so they're silent.");
+  if (bars.some((b) => b.chords.some((c) => !c.frets && !/^N\.?C\.?$/i.test(c.name)))) toast("Some chords have no shape, so they're silent.");
   await p.start({
     bars, bpm: tempo(), time: plan.time, capo: capoNow(),
     strum: plan.strum, pattern: plan.pattern, countIn: false, loop: false, open: tun().open,

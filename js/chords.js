@@ -150,6 +150,8 @@ export function transposeChord(name, n, key) {
   if (!c) return name;
   if (c.nc) return "N.C.";
   const t = { ...c, root: mod12(c.root + n), bass: c.bass === null ? null : mod12(c.bass + n) };
+  // Not moved: spelled as written (B♭ in a D song stays B♭, not A♯).
+  if (n === 0 && /[#b]$/.test(c.rootName)) return chordName(t, c.rootName.endsWith("b") ? "flat" : "sharp");
   return chordName(t, spellingForKey(key));
 }
 
