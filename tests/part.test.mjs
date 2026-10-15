@@ -8,7 +8,7 @@
 // pattern per bar, the step grid with a fret, repeat), Play picking the part
 // with its frets; a detected part's "?" bars and Mark as checked; the part
 // played along with the recording on its clock; parts from a bundle, which
-// never replace yours. Layout at 375×752, 375×630 and 1440×900, both flavours.
+// never replace yours; Late July's tab as the whole song, played and edited. Layout at 375×752, 375×630 and 1440×900, both flavours.
 // node part.test.mjs [shotsDir]
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -202,6 +202,48 @@ await section("late july", async () => {
   check("late july: no page errors", errors.length === 0, errors.join("; "));
   await context.close();
 });
+
+/* ---- Late July's tab, the whole song at once ---- */
+for (const [w, h, scheme] of [[375, 752, "dark"], [1440, 900, "light"]]) {
+  await section(`whole song ${w}`, async () => {
+    const { context, page, errors } = await newPage(w, h, scheme);
+    await context.route("**/songs/audio/**", (r) => r.fulfill({ status: 404, body: "" }));
+    await show(page, "#/song/late-july/picking");
+    await page.waitForSelector("[data-pick-sec='all']");
+    await page.click("[data-pick-sec='all']");
+    await page.waitForSelector(".pick-card.whole");
+    const st = await page.evaluate(async () => {
+      const c = await fetch("songs/late-july.json").then((r) => r.json());
+      const nums = [...document.querySelectorAll(".pick-card.whole .tab-bar .tnum")].map((t) => +t.textContent);
+      return { bars: c.bars.length, form: c.form.length, tabs: document.querySelectorAll(".pick-card.whole .tab-bar svg.tab-svg").length,
+        heads: [...document.querySelectorAll(".whole-sec .sec-name")].map((e) => e.textContent), nums: [nums[0], nums[nums.length - 1]] };
+    });
+    eq(`whole ${w}: every bar of the song, numbered through, a heading per section played`, [st.tabs, st.nums, st.heads.length], [st.bars, [1, st.bars], st.form]);
+    await settled(page, `whole song ${w}x${h} ${scheme}`);
+    await page.screenshot({ path: `${out}/whole-${w}-${scheme}.png` });
+    if (w < 860) {
+      await page.click("[data-pview=notation]");
+      await page.waitForSelector(".pick-card.whole svg.notation");
+      check("whole: notation too", (await page.$$(".pick-card.whole svg.notation")).length > 100);
+      await page.click("[data-pview=tab]");
+      await page.waitForSelector(".pick-card.whole svg.tab-svg");
+      // Play goes through the song, lighting the bar that plays.
+      await page.locator("[data-act=play]:visible").first().click();
+      await page.waitForFunction(() => document.querySelector(".pick-card.whole .tab-bar.on"), null, { timeout: 8000 });
+      const lit = await page.evaluate(() => { const e = document.querySelector(".pick-card.whole .tab-bar.on"); return [e.dataset.form, e.dataset.pbar]; });
+      eq("whole: Play lights the song's first bar", lit, ["0", "0"]);
+      const n = await page.evaluate(() => window.songbook.getPlayer().session.bars.length);
+      eq("whole: Play has every bar of the song", n, st.bars);
+      await page.locator("[data-act=play]:visible").first().click();
+      // A bar opens its section's editor.
+      await page.click(".pick-card.whole .tab-bar[data-form='2'][data-pbar='1']");
+      await page.waitForSelector(".popover .step-grid, .popover");
+      check("whole: tapping a bar edits it", (await page.textContent(".popover")).includes("Bar 2"));
+    }
+    check(`whole ${w}: no page errors`, errors.length === 0, errors.join("; "));
+    await context.close();
+  });
+}
 
 /* ---- The tuning picker, and your own shapes ---- */
 await section("tuning and shapes", async () => {

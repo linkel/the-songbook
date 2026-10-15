@@ -31,7 +31,7 @@ import { loadParts, saveSectionPart, checkedPart } from "./part.js";
 import { helperUrl } from "./helper-client.js";
 import { pcJob, onPcJob, startPcJob, clearPcJob } from "./pcjob.js";
 import { stripHtml, openBarEditor, partPlayBars, barAsPattern, barChord, expanded } from "./partedit.js";
-import { partSheetHtml, defaultPartView, litTabStep, PART_VIEWS } from "./tab.js";
+import { partSheetHtml, partBarsHtml, tabLegend, defaultPartView, litTabStep, PART_VIEWS } from "./tab.js";
 import { bandTimeline } from "./band.js";
 import { checkArrangement } from "./bundle.js";
 
@@ -310,12 +310,12 @@ function modesSeg(mode) {
 
 function pickSection(b) {
   const n = (b && b.sections ? b.sections.length : 0);
-  return Math.max(0, Math.min(cur.pickSec || 0, n - 1));
+  return Math.max(0, Math.min(cur.pickSec === "all" ? 0 : cur.pickSec || 0, n - 1));
 }
 
-function pickPlan() {
+function pickPlan(si = null) {
   const b = base();
-  const si = pickSection(b);
+  if (si === null) si = pickSection(b);
   const sec = b && b.sections ? b.sections[si] : null;
   const pf = patternFor(cur.chart || b, sec, cur.prefs);
   const bars = hasChords(b) ? sectionBars(b, si, makeDisp(b), voicingMap(b), tun()) : [];
@@ -433,14 +433,19 @@ onPlayerFrame((f) => {
   if (!c || !c.bars || typeof (c.bars[0] || {}).t !== "number") return;
   let bi = -1;
   for (let i = 0; i < c.bars.length && c.bars[i].t <= f.pos + 0.02; i++) bi = i;
+  // The whole song: whichever section it's in (the spans are the form, in order).
+  const whole = cur.pickSec === "all";
+  const spans = timedSpans(c);
   const { sec } = pickPlan();
-  const span = sec && timedSpans(c).find((s) => s.name === sec.name && s.bars.includes(bi));
+  const fi = whole ? spans.findIndex((s) => s.bars.includes(bi)) : -1;
+  const span = whole ? spans[fi] : sec && spans.find((s) => s.name === sec.name && s.bars.includes(bi));
   const k = span ? span.bars.indexOf(bi) : -1;
-  if (k !== partLit) {
-    partLit = k;
+  const litKey = whole ? fi + ":" + k : k;
+  if (litKey !== partLit) {
+    partLit = litKey;
     cur.view.querySelectorAll(".pbar.on").forEach((x) => x.classList.remove("on"));
     if (k >= 0) {
-      const el = cur.view.querySelector(`.pbar[data-pbar='${k}']`);
+      const el = cur.view.querySelector(whole ? `.tab-bar[data-form='${fi}'][data-pbar='${k}']` : `.pbar[data-pbar='${k}']`);
       if (el) { el.classList.add("on"); if (el.classList.contains("tab-bar")) follow(el); }
       showPartBar(k);
     }
@@ -484,15 +489,6 @@ function partBody(b, pills, plan) {
   const i = Math.min(cur.partSel || 0, ctx.bars.length - 1);
   const p = barAsPattern(ctx, i);
   const ch = barChord(ctx, i).pima;
-  const lab = part.source === "detected" ? "<span class='badge detected'>Detected part · check</span>"
-    : part.source === "web" ? "<span class='badge web'>Tab · cited</span>"
-    : part.source === "verified" ? "<span class='badge verified'>Verified part</span>" : "<span class='badge mine'>Your part</span>";
-  const prov = part.source === "detected"
-    ? `Detected from your recording by ${esc(part.detector || "the PC helper")}. The notes and frets are a best guess; which finger plays each one is inferred, not heard${part.fingers === "inferred" ? "" : ""}. Bars marked ? were unsure. Play it along with the recording, fix what's off, then mark it as checked.`
-    : part.source === "web" ? `From ${esc(part.from)}. The notes and frets are the tab's; which finger picks each one is inferred (a tab doesn't say). Edit a bar and the part becomes yours.`
-    : part.editedFrom ? `Yours, edited from ${esc(part.editedFrom)}.`
-    : part.checkedFrom ? `Yours: detected by ${esc(part.checkedFrom)}, then checked by you.`
-    : ctx.partFrom === "chart" ? (part.source === "mine" ? "Your description, from the chart." : "From the chart.") : "Yours, written here.";
   const sel = ctx.bars[i];
   const pv = partView(ctx);
   const views = `<div class='seg small-seg part-views' role='group' aria-label='Show the part as'>${PART_VIEWS.map(([id, label]) =>
@@ -510,17 +506,36 @@ function partBody(b, pills, plan) {
     ? pimapeggioLink({ ...pimaArgs, pattern: PATTERN_BY_ID.get(p.id) }) : p ? pimapeggioLink({ ...pimaArgs, steps: p.steps }) : null;
   return `${pills}
     <div class='card pick-card'>
-      <div class='sec-head'><span class='sec-name'>${esc(sec.name)}${pv === "picking" ? ` · <span class='part-bar-name nowrap'>${p ? `Bar ${i + 1}: ${esc(p.name)}` : `Bar ${i + 1}`}</span>` : ""}</span>${lab}</div>
+      <div class='sec-head'><span class='sec-name'>${esc(sec.name)}${pv === "picking" ? ` · <span class='part-bar-name nowrap'>${p ? `Bar ${i + 1}: ${esc(p.name)}` : `Bar ${i + 1}`}</span>` : ""}</span>${partBadge(part)}</div>
       ${views}
       ${body}
     </div>
-    <div class='card set-group'>
+    ${partInfoCard(plan, i, link)}`;
+}
+
+function partBadge(part) {
+  return part.source === "detected" ? "<span class='badge detected'>Detected part · check</span>"
+    : part.source === "web" ? "<span class='badge web'>Tab · cited</span>"
+    : part.source === "verified" ? "<span class='badge verified'>Verified part</span>" : "<span class='badge mine'>Your part</span>";
+}
+
+// Where the part is from, what to do with it, and playing it along with the
+// recording. i: the selected bar (null in the whole-song view).
+function partInfoCard(plan, i, link = null) {
+  const { ctx, part } = plan;
+  const prov = part.source === "detected"
+    ? `Detected from your recording by ${esc(part.detector || "the PC helper")}. The notes and frets are a best guess; which finger plays each one is inferred, not heard. Bars marked ? were unsure. Play it along with the recording, fix what's off, then mark it as checked.`
+    : part.source === "web" ? `From ${esc(part.from)}. The notes and frets are the tab's; which finger picks each one is inferred (a tab doesn't say). Edit a bar and the part becomes yours.`
+    : part.editedFrom ? `Yours, edited from ${esc(part.editedFrom)}.`
+    : part.checkedFrom ? `Yours: detected by ${esc(part.checkedFrom)}, then checked by you.`
+    : ctx.partFrom === "chart" ? (part.source === "mine" ? "Your description, from the chart." : "From the chart.") : "Yours, written here.";
+  return `<div class='card set-group'>
       <div class='set-row'><div><div class='set-label'>Guitar part</div><div class='meta'>${prov}</div></div></div>
       <div class='row-btns' style='flex-wrap:wrap;padding-bottom:10px'>
-        <button class='btn outline small' data-act='part-edit'>Edit bar ${i + 1}</button>
+        ${i !== null ? `<button class='btn outline small' data-act='part-edit'>Edit bar ${i + 1}</button>` : ""}
         ${part.source === "detected" ? "<button class='btn outline small' data-act='part-check'>Mark as checked</button>" : ""}
         ${part.source === "web" && part.url ? `<a class='btn outline small' href='${esc(part.url)}' target='_blank' rel='noopener'>Where it's from</a>` : ""}
-        ${ctx.partFrom === "device" ? "<button class='btn outline small' data-act='part-delete'>Delete your part</button>" : ""}
+        ${i !== null && ctx.partFrom === "device" ? "<button class='btn outline small' data-act='part-delete'>Delete your part</button>" : ""}
       </div>
       ${timedChart() && timedChart().bars && typeof (timedChart().bars[0] || {}).t === "number" && (cur.rec || (cur.chart && cur.chart.audio) || (cur.shipped && cur.shipped.audio)) ? `
       <div class='set-row'><div><div class='set-label'>With the recording</div><div class='meta'>The app plays the part along with your recording, on its beats at any speed${part.source === "detected" ? ": hear where it's off" : ""}. A/B it against the recording's guitar (the guitar stem, if the PC made stems).</div></div>
@@ -532,12 +547,77 @@ function partBody(b, pills, plan) {
     </div>`;
 }
 
+// The whole song in the order it's played (its form, repeats played out):
+// [{ fi, si, plan, start (bars before it) }].
+function wholePlan() {
+  const b = base();
+  const secs = (b && b.sections) || [];
+  const form = b && b.form && b.form.length ? b.form : secs.map((s) => s.name);
+  const out = [];
+  let start = 0;
+  const plans = new Map();
+  for (const name of form) {
+    const si = secs.findIndex((s) => s.name === name);
+    if (si < 0) continue;
+    if (!plans.has(si)) plans.set(si, pickPlan(si));
+    const plan = plans.get(si);
+    for (let r = 0; r < Math.max(1, secs[si].repeat || 1); r++) {
+      out.push({ fi: out.length, si, plan, start });
+      start += plan.bars.length;
+    }
+  }
+  return out;
+}
+
+// What the whole song plays in Picking mode: each section's part, else its
+// picking pattern, else silence over its chords (still lit as it goes by).
+function wholePlayBars() {
+  const b = base();
+  return wholePlan().flatMap(({ fi, si, plan }) => {
+    let ctx = plan.ctx;
+    if (!ctx && plan.pf.pattern && plan.bars.length) ctx = partCtx(b, plan.sec, plan.bars, { source: "mine", bars: [{ pattern: plan.pf.pattern.id }] }, "chart");
+    const bars = ctx ? partPlayBars(ctx) : plan.bars.map((x) => ({ ...x, part: { steps: Array.from({ length: 8 }, () => []) } }));
+    return bars.map((x) => ({ ...x, form: fi, sec: si }));
+  });
+}
+
+// The whole song's tab (or notation), section after section.
+function wholeBody(b, pills) {
+  const entries = wholePlan();
+  const first = entries.find((e) => e.plan.ctx);
+  const pv = cur.prefs.partView === "notation" ? "notation" : "tab";
+  const views = `<div class='seg small-seg part-views' role='group' aria-label='Show the part as'>${PART_VIEWS.filter(([id]) => id !== "picking").map(([id, label]) =>
+    `<button data-pview='${id}' class='${id === pv ? "on" : ""}' aria-pressed='${id === pv}'>${label}</button>`).join("")}</div>`;
+  const total = entries.reduce((n, e) => n + e.plan.bars.length, 0);
+  const secHtml = entries.map(({ fi, si, plan, start }) => {
+    const head = `<div class='whole-sec'><span class='sec-name'>${esc(plan.sec.name)}</span><span class='meta'>bars ${start + 1}–${start + plan.bars.length}</span></div>`;
+    if (plan.ctx) return `${head}<div class='tab-sheet pv-${pv}'>${partBarsHtml(plan.ctx, pv, -1, { start, form: fi, sec: si })}</div>`;
+    // No part: its chords, a bar each; tapping one goes to the section.
+    return `${head}<div class='tab-sheet pv-${pv}'>${plan.bars.map((x, k) => `<button class='pbar tab-bar empty' data-pbar='${k}' data-form='${fi}' data-sec='${si}' aria-label='Bar ${start + k + 1}: ${esc(x.chords.map((c) => c.name).join(" "))}, no part'><span class='meta'>${start + k + 1} · ${esc(x.chords.map((c) => prettyChord(c.name)).join(" "))}</span></button>`).join("")}</div>`;
+  }).join("");
+  return `${pills}
+    <div class='card pick-card whole'>
+      <div class='sec-head'><span class='sec-name'>Whole song</span><span class='meta'>${total} bars</span></div>
+      ${views}
+      ${first ? tabLegend(first.plan.ctx, pv) : ""}
+      ${secHtml}
+      <p class='note' style='margin:8px 0 0'>Tap a bar to edit it. Play goes through the whole song.</p>
+    </div>
+    ${first ? partInfoCard(first.plan, null) : ""}`;
+}
+
 function pickingBody(b, disp) {
   const plan = pickPlan();
   const { si, sec, pf, bars } = plan;
   const secs = (b && b.sections) || [];
-  const pills = secs.length > 1 ? `<div class='pills' role='group' aria-label='Section'>${secs.map((x, i) =>
-    `<button class='pill ${i === si ? "on" : ""}' data-pick-sec='${i}' aria-pressed='${i === si}'>${esc(x.name)}${(cur.parts && cur.parts[x.name]) || x.part ? " ·" : ""}</button>`).join("")}</div>` : "";
+  const hasPart = (x) => (cur.parts && cur.parts[x.name]) || x.part;
+  const anyPart = secs.some(hasPart);
+  // A song written out all through (a tab) opens on the whole song.
+  if (cur.pickSec === undefined && secs.length > 1 && secs.every(hasPart) && cur.prefs.partView !== "picking") cur.pickSec = "all";
+  const all = cur.pickSec === "all";
+  const pills = secs.length > 1 ? `<div class='pills' role='group' aria-label='Section'>${anyPart ? `<button class='pill ${all ? "on" : ""}' data-pick-sec='all' aria-pressed='${all}'>Whole song</button>` : ""}${secs.map((x, i) =>
+    `<button class='pill ${!all && i === si ? "on" : ""}' data-pick-sec='${i}' aria-pressed='${!all && i === si}'>${esc(x.name)}${(cur.parts && cur.parts[x.name]) || x.part ? " ·" : ""}</button>`).join("")}</div>` : "";
+  if (all && anyPart) return wholeBody(b, pills);
   if (plan.ctx) return partBody(b, pills, plan);
   if (!pf.pattern) {
     return `${pills}<div class='card empty'><b>No picking pattern for this song.</b><br>Nothing is guessed: choose a pattern to try over ${sec ? esc(sec.name) : "its chords"}, and it's labelled as your pick.
@@ -1103,7 +1183,8 @@ function highlight(i) {
     lit = [c, line];
     follow(line);
   } else {
-    const el = v.querySelector(`.bar[data-sec='${bar.sec}'][data-bar='${bar.bar}']`) || v.querySelector(`.pbar[data-pbar='${bar.bar}']`);
+    const el = (bar.form !== undefined && v.querySelector(`.tab-bar[data-form='${bar.form}'][data-pbar='${bar.bar}']`))
+      || v.querySelector(`.bar[data-sec='${bar.sec}'][data-bar='${bar.bar}']`) || v.querySelector(`.pbar[data-pbar='${bar.bar}']`);
     if (!el) return;
     el.classList.add("on");
     lit = [el];
@@ -1209,6 +1290,11 @@ export async function togglePlay() {
   if (cur.mode === "picking") {
     const p = getPlayer();
     if (p.playing) { p.stop(); return; }
+    if (cur.pickSec === "all") {
+      const b = base();
+      await p.start({ bars: wholePlayBars(), parts: true, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), countIn: false, loop: false, open: tun().open });
+      return;
+    }
     const { pf, bars, b, ctx } = pickPlan();
     if (ctx) {
       await p.start({ bars: partPlayBars(ctx), parts: true, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), countIn: false, loop: true, open: tun().open });
@@ -1265,7 +1351,7 @@ function wire(view) {
   view.querySelectorAll("[data-sync]").forEach((b) => b.addEventListener("click", () => syncAct(b.dataset.sync)));
   view.querySelectorAll("[data-pick-sec]").forEach((b) => b.addEventListener("click", () => {
     if (player && player.playing) player.stop();
-    cur.pickSec = +b.dataset.pickSec;
+    cur.pickSec = b.dataset.pickSec === "all" ? "all" : +b.dataset.pickSec;
     cur.partSel = 0;
     render();
   }));
@@ -1283,6 +1369,13 @@ function wire(view) {
   if (cur.mode === "picking") updatePartAlong();
   view.querySelectorAll(".pbar[data-pbar]").forEach((b) => b.addEventListener("click", () => {
     const i = +b.dataset.pbar;
+    if (b.dataset.form !== undefined) {
+      // The whole song: edit the bar in its section (a section with no part opens on its own).
+      const pl = pickPlan(+b.dataset.sec);
+      if (pl.ctx) openBarEditor(pl.ctx, i);
+      else { cur.pickSec = +b.dataset.sec; cur.partSel = 0; render(); }
+      return;
+    }
     const pl = pickPlan();
     if (!pl.ctx) return;
     if (cur.partSel === i) { openBarEditor(pl.ctx, i); return; }

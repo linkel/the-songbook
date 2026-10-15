@@ -663,6 +663,8 @@ button.pick.on { border-color: var(--mauve); background: color-mix(in srgb, var(
 .part-views { margin: 4px 0 8px; }
 .tab-legend { margin: 0 0 8px; }
 .tab-sheet { display: flex; flex-wrap: wrap; gap: 6px; }
+.pick-card.whole .whole-sec { display: flex; align-items: baseline; justify-content: space-between; margin: 14px 0 6px; }
+.pick-card.whole .whole-sec .sec-name { font-size: 15px; }
 .pbar.tab-bar { display: block; min-height: 44px; padding: 2px 0; flex: 0 0 auto; max-width: 100%; overflow-x: auto; }
 .pbar.tab-bar.empty { display: flex; min-width: 88px; padding: 0 10px; }
 .pbar.tab-bar.pv-notation { padding: 4px 6px; text-align: left; }

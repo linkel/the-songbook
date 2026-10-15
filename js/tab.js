@@ -42,7 +42,7 @@ function fretText(x) {
 // Which of the bar's chords a step falls under.
 const chordAt = (bar, k, n) => Math.min(bar.chords.length - 1, Math.floor(k * bar.chords.length / n));
 
-function tabBarSvg(ctx, i, e) {
+function tabBarSvg(ctx, i, e, num = i + 1) {
   const n = e.steps.length;
   const COL = n > 16 ? Math.max(12, Math.round(288 / n)) : COLW;
   const bar = ctx.bars[i];
@@ -58,7 +58,7 @@ function tabBarSvg(ctx, i, e) {
   svg += `<line class='tbar' x1='${left + 0.5}' x2='${left + 0.5}' y1='${y(1)}' y2='${y(6)}'/><line class='tbar' x1='${w - 0.5}' x2='${w - 0.5}' y1='${y(1)}' y2='${y(6)}'/>`;
   // The open strings' names by the first bar, high string on top.
   if (names) for (let s = 1; s <= 6; s++) svg += `<text class='tstr' x='6' y='${y(s) + 4}'>${esc(names[6 - s].replace("#", "♯"))}</text>`;
-  svg += `<text class='tnum' x='${left + 2}' y='10'>${i + 1}</text>`;
+  svg += `<text class='tnum' x='${left + 2}' y='10'>${num}</text>`;
   bar.chords.forEach((c, k) => {
     svg += `<text class='tchord' x='${x0 + Math.round(k * n / bar.chords.length) * COL + (k ? 0 : 12)}' y='11'>${esc(prettyChord(c.name))}</text>`;
   });
@@ -85,23 +85,36 @@ function notationBarSvg(ctx, i, e) {
   return notationSvg(e.steps, ch.pima, HOME, npb, ctx.tuning.open);
 }
 
-// The section as tab or notation: a legend, then one button per bar.
-export function partSheetHtml(ctx, view, sel = -1) {
-  const ex = expanded(ctx);
+// The tab's legend: how to read it, in the song's tuning.
+export function tabLegend(ctx, view) {
   const names = stringNames(ctx.tuning).map((x) => x.replace("#", "♯"));
   const capo = ctx.capo ? `, counted from the capo at ${ctx.capo}` : "";
   const legend = view === "tab"
     ? `Top line is the high string (${esc(names.slice().reverse().join(" "))}, ${esc(ctx.tuning.name)}); numbers are frets${capo}. h hammer-on, p pull-off, / \\ slide, x muted. The colours are the picking fingers.`
     : "Written an octave above how it sounds, as guitar music is. The letters are the picking fingers.";
-  const bars = ex.map((e, i) => {
+  return `<p class='note tab-legend'>${legend}</p>`;
+}
+
+// One section's bars as tab or notation, a button each. start: the bar
+// number before the first (the whole song numbers its bars on); form: which
+// play of the song's form this is (data-form, for lighting the bar that plays).
+export function partBarsHtml(ctx, view, sel = -1, { start = 0, form = null, sec = null } = {}) {
+  const ex = expanded(ctx);
+  const at = (form !== null ? ` data-form='${form}'` : "") + (sec !== null ? ` data-sec='${sec}'` : "");
+  return ex.map((e, i) => {
     const chords = ctx.bars[i].chords.map((c) => c.name).join(" ");
     const cls = `pbar tab-bar pv-${view}${i === sel ? " sel" : ""}${e.confidence !== null && e.confidence < LOW ? " unsure" : ""}`;
-    if (!e.steps) return `<button class='${cls} empty' data-pbar='${i}' aria-label='Bar ${i + 1}, ${esc(chords)}: nothing written yet'><span class='meta'>${i + 1} · ${esc(prettyChord(ctx.bars[i].chords[0].name))}</span></button>`;
-    const inner = view === "tab" ? tabBarSvg(ctx, i, e)
-      : `<span class='tchord-label'>${i + 1} · ${esc(ctx.bars[i].chords.map((c) => prettyChord(c.name)).join(" "))}</span>${notationBarSvg(ctx, i, e)}`;
-    return `<button class='${cls}' data-pbar='${i}' aria-label='Bar ${i + 1}, ${esc(chords)}'>${inner}</button>`;
+    const num = start + i + 1;
+    if (!e.steps) return `<button class='${cls} empty' data-pbar='${i}'${at} aria-label='Bar ${num}, ${esc(chords)}: nothing written yet'><span class='meta'>${num} · ${esc(prettyChord(ctx.bars[i].chords[0].name))}</span></button>`;
+    const inner = view === "tab" ? tabBarSvg(ctx, i, e, num)
+      : `<span class='tchord-label'>${num} · ${esc(ctx.bars[i].chords.map((c) => prettyChord(c.name)).join(" "))}</span>${notationBarSvg(ctx, i, e)}`;
+    return `<button class='${cls}' data-pbar='${i}'${at} aria-label='Bar ${num}, ${esc(chords)}'>${inner}</button>`;
   }).join("");
-  return `<p class='note tab-legend'>${legend}</p><div class='tab-sheet pv-${view}'>${bars}</div>`;
+}
+
+// The section as tab or notation: a legend, then one button per bar.
+export function partSheetHtml(ctx, view, sel = -1) {
+  return `${tabLegend(ctx, view)}<div class='tab-sheet pv-${view}'>${partBarsHtml(ctx, view, sel)}</div>`;
 }
 
 // Light step k of the playing bar (-1: none).
