@@ -47,6 +47,7 @@ export const PLAYER_DEFAULTS = {
   source: null,          // "file" | "youtube"
   youtube: null,         // { id, title }
   speed: 1, semis: 0, cents: 0, formant: false,
+  matchTuning: true,     // fine-tune the recording to a guitar at A440, as soon as it loads
   a: null, b: null, loopOn: false, loopId: null, snap: true,
   stems: true,           // play the stems (when the helper made some) rather than the recording
   countIn: 0,            // bars
@@ -380,6 +381,7 @@ async function loadFile(direct = null, directMeta = null) {
       // First time: start where the analysed bars start (after a spoken intro, say).
       const first = s.timed && s.timed.bars[0].t > 15 ? s.timed.bars[0].t : 0;
       engine.pausedAt = clamp(at ?? (s.set.position || first), 0, dec.duration);
+      if (s.set.matchTuning) autoMatch();
       applyAll();
       if (was) engine.play();
     });
@@ -1054,7 +1056,7 @@ function render() {
   view.innerHTML = `
     <div class='topbar'>
       <a class='back' href='#/songs' aria-label='Back to songs'>${ICONS.back}</a>
-      <div class='topbar-title'><div class='t'>${esc(ctx.title)}</div><div class='meta'>${esc(ctx.artist || "")}</div></div>
+      <div class='topbar-title'><div class='t'>${esc(ctx.title)}</div><div class='meta'>${ctx.subtitle || esc(ctx.artist || "")}</div></div>
       ${sourceBadge()}
     </div>
     <div class='song-body'>
@@ -1222,7 +1224,7 @@ function stageHtml() {
       <div class='ctl ${file ? "" : "off"}'><span class='k'>Tune</span><button class='btn outline round' data-hold='cents-' aria-label='Tune down' ${file ? "" : "disabled"}>−</button>
         <div class='val'><span class='v-cents'></span><small class='tune-note'>fine tune</small></div>
         <button class='btn outline round' data-hold='cents+' aria-label='Tune up' ${file ? "" : "disabled"}>+</button></div>
-      ${file ? `<div class='ctl-row'><button class='btn outline small' data-act='match'>Match my tuning</button>
+      ${file ? `<div class='ctl-row'><button class='tool match-tool ${s.matchTuning ? "on" : ""}' data-act='match' aria-pressed='${!!s.matchTuning}'>${s.matchTuning ? "✓ Matched to A440" : "Match my tuning"}</button>
         <button class='tool ${s.formant ? "on" : ""}' data-act='formant' aria-pressed='${s.formant}'>Natural voice</button>
         <button class='tool' data-act='reset-pitch'>Reset</button></div>` : ""}
     </div>
@@ -1490,8 +1492,9 @@ function hold(what) {
   else if (what === "speed+") setSpeed(S.set.speed + 0.05);
   else if (what === "pitch-") setPitch(S.set.semis - 1);
   else if (what === "pitch+") setPitch(S.set.semis + 1);
-  else if (what === "cents-") setCents(S.set.cents - 1);
-  else if (what === "cents+") setCents(S.set.cents + 1);
+  // Tuning by hand: it's yours now, not matched.
+  else if (what === "cents-") { S.set.matchTuning = false; setCents(S.set.cents - 1); syncMatch(); }
+  else if (what === "cents+") { S.set.matchTuning = false; setCents(S.set.cents + 1); syncMatch(); }
 }
 
 function act(a, el) {
@@ -1509,28 +1512,64 @@ function act(a, el) {
   else if (a === "loop-sec") loopSection();
   else if (a === "loop-bars") loopBars(4);
   else if (a === "save-loop") saveLoopDialog();
-  else if (a === "match") matchTuning();
+  else if (a === "match") toggleMatch();
   else if (a === "shipped") loadShipped();
   else if (a === "band") { resumeAudio(); loadBand(); }
   else if (a === "to-file") toRecording();
   else if (a === "formant") { S.set.formant = !S.set.formant; applyPitch(); }
-  else if (a === "reset-pitch") { S.set.semis = 0; S.set.cents = 0; S.note = ""; applyPitch(); if (S.ctx.onPitch) S.ctx.onPitch(); }
+  else if (a === "reset-pitch") { S.set.semis = 0; S.set.cents = 0; S.set.matchTuning = false; S.note = ""; applyPitch(); syncMatch(); if (S.ctx.onPitch) S.ctx.onPitch(); }
   kick();
 }
 
-function matchTuning() {
-  if (!S.an || !S.engine) return;
-  const s = S.set, dur = S.duration;
-  let t0, t1;
-  if (s.a !== null && s.b !== null && s.b - s.a >= 3) { t0 = s.a; t1 = s.b; }
-  else { const p = S.engine.position; t0 = Math.max(0, p - 15); t1 = Math.min(dur, t0 + 30); t0 = Math.max(0, t1 - 30); }
-  const est = estimateTuning(S.an, t0, t1);
-  if (!est) { S.note = "no clear notes there"; syncControls(); toast("Couldn't hear clear notes there. Try a part with sustained notes."); return; }
+// How far the recording is from A440, over the whole song: the median of a few
+// stretches with clear notes. -> { cents, confidence } or null.
+function recordingTuning() {
+  if (!S.an || !S.duration) return null;
+  const ests = [];
+  for (const f of [0.2, 0.35, 0.5, 0.65, 0.8]) {
+    const t0 = Math.max(0, S.duration * f - 15), t1 = Math.min(S.duration, t0 + 30);
+    const e = estimateTuning(S.an, t0, t1);
+    if (e && e.confidence >= 0.25) ests.push(e);
+  }
+  if (!ests.length) return null;
+  ests.sort((a, b) => a.cents - b.cents);
+  return ests[Math.floor(ests.length / 2)];
+}
+
+// Matched as it loads: the fine tune undoes the recording's offset.
+function autoMatch() {
+  const est = recordingTuning();
+  if (!est) { S.note = "no clear notes to match"; return; }
   const c = Math.round(est.cents);
-  setCents(-c);
-  S.note = c === 0 ? "recording at A440" : `recording ${Math.abs(c)}¢ ${c > 0 ? "sharp" : "flat"}${est.confidence < 0.25 ? " (unsure)" : ""}`;
-  syncControls();
-  toast(c === 0 ? "The recording is right at A440." : `The recording is ${Math.abs(c)}¢ ${c > 0 ? "sharp" : "flat"}; fine tune set to ${fmtCents(-c)}, so it matches a guitar at A440.`, 4000);
+  S.set.cents = clamp(-c, -50, 50);
+  S.note = c === 0 ? "recording at A440" : `matched: recording ${Math.abs(c)}¢ ${c > 0 ? "sharp" : "flat"}`;
+}
+
+// The Match my tuning switch: on matches (and keeps matching each time it
+// loads), off goes back to the recording as it is.
+function toggleMatch() {
+  if (S.set.matchTuning) {
+    S.set.matchTuning = false;
+    S.set.cents = 0;
+    S.note = "";
+    applyPitch();
+    syncMatch();
+    return;
+  }
+  S.set.matchTuning = true;
+  autoMatch();
+  applyPitch();
+  syncMatch();
+  toast(S.note.startsWith("matched") ? `The recording was ${S.note.slice(18)}; it now sounds at A440, matching your guitar.` : S.note === "recording at A440" ? "The recording is right at A440." : "Couldn't hear clear enough notes to match.", 4000);
+}
+
+function syncMatch() {
+  if (!S.view) return;
+  S.view.querySelectorAll("[data-act=match]").forEach((b) => {
+    b.classList.toggle("on", !!S.set.matchTuning);
+    b.setAttribute("aria-pressed", !!S.set.matchTuning);
+    b.innerHTML = S.set.matchTuning ? "✓ Matched to A440" : "Match my tuning";
+  });
 }
 
 async function download(link) {

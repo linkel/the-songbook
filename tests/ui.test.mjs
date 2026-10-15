@@ -87,9 +87,9 @@ for (const [w, h] of SIZES) {
         ["songs", "#/songs", false],
         ["sheet", `#/song/${id}/sheet`, true],
         ["editor", `#/song/${id}/edit`, false],
-        ["landslide", "#/song/landslide", true],
-        ["rising-sun", "#/song/the-house-of-the-rising-sun", true],
-        ["no-chords", `#/song/${bare}`, true],
+        ["landslide", "#/song/landslide/chords", true],
+        ["rising-sun", "#/song/the-house-of-the-rising-sun/chords", true],
+        ["no-chords", `#/song/${bare}/chords`, true],
         ["picking", "#/song/landslide/picking", true],
         ["picking-six", "#/song/the-house-of-the-rising-sun/picking", true],
         ["practice", "#/practice", false],
@@ -165,7 +165,7 @@ for (const [w, h] of SIZES) {
       await layout(page, `${tag} batch`, { transport: true });
 
       // Chord popover and capo sheet on a chart.
-      await show(page, "#/song/landslide");
+      await show(page, "#/song/landslide/chords");
       await page.click(".box[data-chord]:visible");
       await page.waitForTimeout(200);
       await shot(page, `${out}/${w}x${h}-${theme}-popover.png`);
@@ -223,6 +223,8 @@ await section("library", async () => {
   await page.waitForTimeout(500);
   check("adding a song opens it", /^#\/song\/s[0-9a-z]+/.test(await page.evaluate(() => location.hash)));
   eq("its title", await page.textContent(".topbar .t"), "My Own Tune");
+  check("it opens on its Player, asking for a recording", (await state(page)).mode === "player" && (await page.textContent(".player")).includes("Your recording"));
+  await show(page, (await page.evaluate(() => location.hash)) + "/sheet");
   check("no chords yet, Paste a sheet offered", (await page.$$("a.btn[href$='/edit']")).length >= 1);
   await show(page, "#/songs");
   check("Added by hand list", (await page.$$eval("#song-list-pick option", (o) => o.map((x) => x.textContent))).includes("Added by hand (1)"));
@@ -238,7 +240,7 @@ await section("sheet", async () => {
     await L.addManualSong("Example song", "Nobody");
   });
   const id = await page.evaluate(async () => (await import("/js/library.js")).songIdFor("Example song", "Nobody"));
-  await show(page, `#/song/${id}`);
+  await show(page, `#/song/${id}/sheet`);
   await page.click("a.btn[href$='/edit']");
   await page.waitForTimeout(300);
   eq("editor opens", await page.textContent(".topbar .t"), "Paste a sheet");
@@ -383,7 +385,7 @@ await section("sheet", async () => {
 /* ---- Charts, playing, mixer (from Phase 0) ---- */
 await section("charts", async () => {
   const { context, page, errors } = await newPage(375, 752, "dark");
-  await show(page, "#/song/landslide");
+  await show(page, "#/song/landslide/chords");
   const bars = () => page.$$eval(".bars .bar", (b) => b.map((x) => x.textContent.trim()));
   eq("Landslide as charted", await bars(), ["C", "G/B", "Am7", "G/B"]);
   await page.click("[data-act=transpose]");
@@ -391,7 +393,7 @@ await section("charts", async () => {
   await page.click(".popover [data-step='1']");
   await page.keyboard.press("Escape");
   eq("transpose +2", await bars(), ["D", "A/C♯", "Bm7", "A/C♯"]);
-  check("key chip follows", (await page.textContent(".head .chips")).includes("Key D (sounds F)"), await page.textContent(".head .chips"));
+  check("key under the title follows", (await page.textContent(".topbar-title .meta")).includes("Key D (sounds F)"), await page.textContent(".topbar-title .meta"));
   await page.click("[data-act=simple]");
   eq("simple", await bars(), ["D", "A", "Bm", "A"]);
   await page.click("[data-act=simple]");
@@ -470,7 +472,7 @@ await section("charts", async () => {
   check("other tracks are untouched", strumRun.clickGain > 0.5 || !strumRun.tracks.includes("click"));
 
   // Rising Sun picks p-i-m-a-m-i in 6/8: six notes a bar.
-  await show(page, "#/song/the-house-of-the-rising-sun");
+  await show(page, "#/song/the-house-of-the-rising-sun/chords");
   await page.click(".transport.mobile .play");
   await page.waitForTimeout(2500);
   const rs = await page.evaluate(() => { const p = window.songbook.getPlayer(); const l = p.log.slice(); p.stop(); return l; });
@@ -478,7 +480,7 @@ await section("charts", async () => {
   check("first bar is Am", rs.filter((e) => e.bar === 0).every((e) => e.chord === "Am" && e.midis.every((m) => [9, 0, 4].includes(m % 12))));
 
   // A chord popover: choosing a shape saves it for the song.
-  await show(page, "#/song/landslide");
+  await show(page, "#/song/landslide/chords");
   await page.click(".box[data-chord='Bm7']");
   await page.waitForTimeout(200);
   const specs = await page.$$eval(".popover .box[data-spec]", (b) => b.map((x) => x.dataset.spec));
@@ -487,7 +489,7 @@ await section("charts", async () => {
   await page.keyboard.press("Escape");
   eq("chosen shape saved", (await state(page)).prefs.voicings.Bm7, specs[1]);
 
-  await show(page, `#/song/${await bareSong(page)}`);
+  await show(page, `#/song/${await bareSong(page)}/chords`);
   check("no-chords song: Play disabled", await page.$eval(".transport.mobile .play", (b) => b.disabled));
   check("no-chords song: says nothing is invented", (await page.textContent(".song-scroll")).includes("Nothing here is invented"));
 
@@ -501,7 +503,7 @@ await section("charts", async () => {
   await page.click("[data-theme-pref=auto]");
   eq("Auto follows the system again", await page.evaluate(() => document.documentElement.dataset.theme), "mocha");
 
-  await show(page, "#/song/landslide");
+  await show(page, "#/song/landslide/chords");
   await page.click(".topbar .back");
   await page.waitForTimeout(300);
   check("back goes to Songs", await page.evaluate(() => location.hash === "#/songs" && !document.getElementById("view-songs").classList.contains("hidden")));
@@ -592,8 +594,8 @@ await section("bpm and drop", async () => {
 /* ---- Chords from audio: Late July ---- */
 await section("analyse", async () => {
   const { context, page, errors } = await newPage(375, 752, "dark");
-  await show(page, "#/song/late-july");
-  check("Late July: tuning shown", (await page.textContent(".head .chips")).includes("Open D"));
+  await show(page, "#/song/late-july/chords");
+  check("Late July: tuning shown", (await page.textContent(".toolbar [data-act=tuning]")).includes("Open D"));
   check("Late July: tutorial link", (await page.$$eval(".sources a", (a) => a.map((x) => x.href))).includes("https://www.youtube.com/watch?v=H_p4siY3Zc4"));
   // Its shipped chords come from a tab (lined up with the owner's recording), and cite it.
   eq("Late July: shipped chords labelled web, cited", await page.textContent(".topbar .badge"), "Web · cited");
@@ -666,7 +668,7 @@ await section("analyse", async () => {
   eq("saved: back in Chords", (await state(page)).mode, "chords");
   eq("badge: detected", await page.textContent(".topbar .badge"), "Detected · check");
   check("detector named", (await page.textContent(".sources")).includes("essentia.js"));
-  check("tuning and link kept on your chart", (await page.textContent(".head .chips")).includes("Open D") &&
+  check("tuning and link kept on your chart", (await page.textContent(".toolbar [data-act=tuning]")).includes("Open D") &&
     (await page.$$eval(".sources a", (a) => a.map((x) => x.href))).includes("https://www.youtube.com/watch?v=H_p4siY3Zc4"));
   check("recording card", (await page.textContent(".song-scroll")).includes("late-july-take.wav"));
   check("edits saved", (await state(page)).displayed.includes("Cmaj7"));
@@ -756,7 +758,7 @@ await section("batch", async () => {
 /* ---- Desktop shortcuts ---- */
 await section("desktop", async () => {
   const { context, page, errors } = await newPage(1440, 900, "dark");
-  await show(page, "#/song/dust-in-the-wind");
+  await show(page, "#/song/dust-in-the-wind/chords");
   const side = await page.evaluate(() => { const m = document.querySelector(".song-main-col").getBoundingClientRect(), s = document.querySelector(".song-side").getBoundingClientRect(); return [m.right <= s.left, s.right <= innerWidth]; });
   check("desktop: side panel beside the chart", side[0] && side[1], JSON.stringify(side));
   await page.keyboard.press("ArrowRight");
@@ -838,7 +840,7 @@ await section("offline", async () => {
   await page.evaluate(async () => { await navigator.serviceWorker.ready; });
   await page.reload();   // now under the service worker's control
   await page.waitForSelector("html[data-ready]");
-  await show(page, "#/song/landslide");
+  await show(page, "#/song/landslide/chords");
   await page.waitForTimeout(500);
   await context.setOffline(true);
   await page.reload();

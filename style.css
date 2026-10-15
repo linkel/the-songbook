@@ -433,6 +433,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .small-seg button { padding: 0 12px; white-space: nowrap; }
 .toolbar .play-source { padding: 2px; }
 .toolbar .play-source button { flex: 0 0 auto; }
+/* Matched tuning is a mode: shown as on. */
+.tool.match-tool.on { background: color-mix(in srgb, var(--green) 22%, var(--base)); border-color: var(--green); color: var(--text); }
 .bar { position: relative; }
 .bar.editbar { border-style: dashed; border-color: var(--surface2); }
 .bar .q { color: var(--meta); font-weight: 800; font-size: 15px; }
@@ -483,7 +485,9 @@ button.pick.on { border-color: var(--mauve); background: color-mix(in srgb, var(
   }
   .song-side .boxes { flex-wrap: wrap; overflow: visible; padding: 0; }
   .song-view .transport.mobile { display: none; }
-  .song-side .transport { border: none; padding: 0; background: none; }
+  /* Play and the tempo first, and kept in view as the chords scroll. */
+  .song-side .transport { border: none; padding: 0 0 4px; background: var(--base); order: -2; position: sticky; top: -16px; z-index: 2; }
+  .song-side .note.plays { order: -1; }
   .song-scroll .boxes-card { display: none; }
   .chordstrip { display: none; }
   .sheet .sw .w { font-size: calc(19px * var(--scale)); line-height: calc(27px * var(--scale)); }

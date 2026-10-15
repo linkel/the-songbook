@@ -173,8 +173,8 @@ await section("late july", async () => {
   const { context, page, errors } = await newPage();
   await context.route("**/songs/audio/**", (r) => r.fulfill({ status: 404, body: "" }));
   await show(page, "#/song/late-july/chords");
-  await page.waitForSelector(".tuning-chip");
-  check("late july: the tuning shows: Open D", (await page.textContent(".tuning-chip")).includes("Open D"));
+  await page.waitForSelector(".toolbar [data-act=tuning]");
+  check("late july: the tuning shows: Open D", (await page.textContent(".toolbar [data-act=tuning]")).includes("Open D"));
   const shapes = await page.evaluate(async () => {
     const C = await import("/js/chords.js"), T = await import("/js/tuning.js");
     const t = T.tuningFrom({ notes: "D A D F# A D" });
@@ -233,6 +233,11 @@ for (const [w, h, scheme] of [[375, 752, "dark"], [1440, 900, "light"]]) {
     });
     eq(`whole ${w}: every bar of the song, numbered through, a heading per section played`, [st.tabs, st.nums, st.heads.length], [st.bars, [1, st.bars], st.form]);
     await settled(page, `whole song ${w}x${h} ${scheme}`);
+    if (w >= 860) {
+      // On a computer, Play is at the top of the side panel and stays there as you scroll.
+      const tr = await page.evaluate(() => { const b = document.querySelector(".song-side .play").getBoundingClientRect(); return [Math.round(b.top), innerHeight]; });
+      check(`whole ${w}: Play in view at the top of the side panel`, tr[0] > 0 && tr[0] < 200, JSON.stringify(tr));
+    }
     await page.screenshot({ path: `${out}/whole-${w}-${scheme}.png` });
     if (w < 860) {
       await page.click("[data-pview=notation]");
@@ -264,6 +269,14 @@ for (const [w, h, scheme] of [[375, 752, "dark"], [1440, 900, "light"]]) {
       await page.waitForFunction(() => !window.songbook.playerState().engine.playing, null, { timeout: 5000 });
       const paused = await page.evaluate(() => ({ text: document.querySelector(".transport.mobile .play").textContent, synth: window.songbook.getPlayer().playing, pos: window.songbook.playerState().engine.position }));
       check("whole: and pauses it from here, without starting the synth", /Recording/.test(paused.text) && !paused.synth && paused.pos > 0, JSON.stringify(paused));
+      // Space does the same from the keyboard: plays on from there, then pauses.
+      await page.evaluate(() => document.activeElement && document.activeElement.blur());
+      await page.keyboard.press("Space");
+      await page.waitForFunction(() => window.songbook.playerState().engine.playing, null, { timeout: 5000 });
+      const from = await page.evaluate(() => window.songbook.playerState().engine.position);
+      await page.keyboard.press("Space");
+      await page.waitForFunction(() => !window.songbook.playerState().engine.playing, null, { timeout: 5000 });
+      check("whole: Space plays on from where it stopped, and pauses", from >= paused.pos - 0.2 && !(await page.evaluate(() => window.songbook.getPlayer().playing)), `${from} ${paused.pos}`);
       // Lyrics under the bars: LRCLIB's words (a stand-in), at this song's own times.
       await page.click("[data-act=tab-lyrics]");
       await page.waitForSelector("[data-act=lrclib-here]");
@@ -302,7 +315,7 @@ await section("tuning and shapes", async () => {
   const prefs = await page.evaluate((id) => import("/js/library.js").then((L) => L.loadPrefs(id, null)), id);
   eq("tuning: Drop D kept as yours for this song", prefs.tuning, { name: "Drop D", notes: "D A D G B E", source: "mine" });
   await page.click(".popover [data-close]");
-  check("tuning: the chip says Drop D", (await page.textContent(".tuning-chip")).includes("Drop D"));
+  check("tuning: the toolbar says Drop D", (await page.textContent(".toolbar [data-act=tuning]")).includes("Drop D"));
   const gBox = await page.$eval(".boxes .box[data-chord='G'] svg", (s) => s.getAttribute("aria-label"));
   check("tuning: G in Drop D uses a Drop-D shape (low string at fret 5)", /\b5/.test(gBox) && !gBox.includes("320003"), gBox);
   // Your own shape for D, typed.

@@ -336,7 +336,7 @@ document.addEventListener("keydown", (e) => {
   if (e.target.closest && e.target.closest("input, textarea, select")) return;
   if (e.key === "Escape") {
     if (popoverOpen()) closePopover();
-    else if (route.name === "song" && songMode() === "edit") location.hash = `#/song/${encodeURIComponent(route.id)}`;
+    else if (route.name === "song" && songMode() === "edit") location.hash = `#/song/${encodeURIComponent(route.id)}/sheet`;
     else if (route.name === "song" && songMode() === "analyse") location.hash = `#/song/${encodeURIComponent(route.id)}/chords`;
     else if (route.name === "batch" || route.name === "import") location.hash = "#/settings";
     else if (route.name === "song") location.hash = "#/songs";

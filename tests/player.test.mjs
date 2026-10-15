@@ -443,6 +443,33 @@ await section("bundled audio", async () => {
   await context.close();
 });
 
+/* ---- Matched to A440 as it loads (a recording 30 cents flat) ---- */
+await section("match tuning", async () => {
+  const { context, page, errors } = await newPage();
+  // The same song written as if sampled faster: it plays 30 cents flat.
+  const wav = await page.evaluate(async () => {
+    const g = await import("/tests/gen-song.js");
+    const { signal } = await g.renderSong({ bpm: 100, bars: ["G", "C", "D", "G"], repeat: 4 });
+    return Array.from(g.wavBytes(signal, Math.round(44100 * 2 ** (-30 / 1200))));
+  });
+  await show(page, "#/song/landslide/player");
+  await page.setInputFiles(".p-file >> nth=0", { name: "flat take.wav", mimeType: "audio/wav", buffer: Buffer.from(wav) });
+  await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "file" && s.duration > 0; }, null, { timeout: 20000 });
+  await page.waitForTimeout(300);
+  const st = await P(page);
+  check("match: a flat recording is matched as it loads (+30 cents)", Math.abs(st.set.cents - 30) <= 3 && st.set.matchTuning, `${st.set.cents} ${st.set.matchTuning}`);
+  eq("match: shown as on", [await page.textContent("[data-act=match]"), await page.getAttribute("[data-act=match]", "aria-pressed")], ["✓ Matched to A440", "true"]);
+  await layout(page, "matched tuning");
+  await page.click("[data-act=match]");
+  eq("match: off goes back to the recording as it is", [(await P(page)).set.cents, await page.textContent("[data-act=match]")], [0, "Match my tuning"]);
+  await page.click("[data-act=match]");
+  check("match: on again", Math.abs((await P(page)).set.cents - 30) <= 3);
+  await page.evaluate(() => { const b = document.querySelector("[data-hold='cents+']"); b.dispatchEvent(new PointerEvent("pointerdown")); b.dispatchEvent(new PointerEvent("pointerup")); });
+  eq("match: tuning by hand turns matching off", [(await P(page)).set.matchTuning, await page.textContent("[data-act=match]")], [false, "Match my tuning"]);
+  check("match tuning: no page errors", errors.length === 0, errors.join("; "));
+  await context.close();
+});
+
 /* ---- A recording dropped from the computer onto a song ---- */
 await section("drop a recording", async () => {
   const { context, page, errors } = await newPage(1440, 900);

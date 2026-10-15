@@ -35,7 +35,7 @@ import { partSheetHtml, partBarsHtml, tabLegend, defaultPartView, litTabStep, PA
 import { bandTimeline } from "./band.js";
 import { checkArrangement } from "./bundle.js";
 
-const MODES = [["sheet", "Sheet"], ["chords", "Chords"], ["picking", "Picking"], ["player", "Player"]];
+const MODES = [["player", "Player"], ["picking", "Picking"], ["chords", "Chords"], ["sheet", "Sheet"]];
 const READY = new Set(["sheet", "chords", "picking", "edit", "analyse", "player"]);
 const MIN_BPM = 30, MAX_BPM = 220, DEFAULT_BPM = 80;
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
@@ -152,8 +152,11 @@ function playBars() {
 
 // What Play will play, said plainly.
 function playPlan() {
+  if (playSource() === "recording") return { text: "Plays your recording; the chords and the tab follow it. Synth plays the app's guitar instead." };
   if (cur.mode === "picking") {
-    const { pf } = pickPlan();
+    if (cur.pickSec === "all") return { text: "Plays the whole song's part on the app's guitar." };
+    const { pf, ctx } = pickPlan();
+    if (ctx) return { text: "Plays this section's part on the app's guitar, looped." };
     return { text: pf.pattern ? `Picking ${pf.pattern.name} over this section, looped${pf.mine ? " (your pick)" : ""}` : "Choose a pattern to hear it" };
   }
   const c = cur.chart;
@@ -201,7 +204,8 @@ export async function openSong(view, id, mode, arg = null) {
   cur.view = view;
   cur.startLoop = mode === "player" ? arg : null;
   const prevMode = cur.mode;
-  cur.mode = READY.has(mode) ? mode : cur.doc ? "sheet" : "chords";
+  // A song opens on its Player (the screen used most).
+  cur.mode = READY.has(mode) ? mode : "player";
   if (prevMode === "analyse" && cur.mode !== "analyse") cur.rec = await recordingMeta(id);
   if (prevMode === "player" && cur.mode !== "player") { cur.rec = await recordingMeta(id); leavePlayerView(); }
   if (cur.mode !== "sheet") cur.sync = null;
@@ -275,12 +279,11 @@ function render() {
   view.innerHTML = `
     <div class='topbar'>
       <a class='back' href='#/songs' aria-label='Back to songs'>${ICONS.back}</a>
-      <div class='topbar-title'><div class='t'>${esc(songTitle())}</div><div class='meta'>${esc(songArtist())}</div></div>
+      <div class='topbar-title'><div class='t'>${esc(songTitle())}</div><div class='meta'>${songSubtitle(b)}</div></div>
       ${sourceBadge(badgeOf)}
     </div>
     <div class='song-body'>
       <div class='song-scroll' id='song-scroll'><div class='song-main-col'>
-        ${mode === "chords" ? headCard(b) : ""}
         ${modesSeg(mode)}
         ${chords || (mode === "sheet" && cur.doc) ? toolbar(mode, chords) : ""}
         ${mode === "sheet" ? sheetBody(b, disp) : mode === "picking" ? pickingBody(b, disp) : chordsBody(b, disp)}
@@ -780,6 +783,7 @@ function playerCtx() {
     chart: { ...(c || {}), links, audio: (cur.chart && cur.chart.audio) || (cur.shipped && cur.shipped.audio) || null,
       stems: (cur.chart && cur.chart.stems) || (cur.shipped && cur.shipped.stems) || null }, disp,
     modesHtml: modesSeg("player"),
+    subtitle: songSubtitle(c && hasChords(c) ? c : base()),
     sideHtml: c && hasChords(c) ? `<div class='h2'>Chords</div><div class='boxes'>${boxesHtml(c, disp)}</div>` : "",
     wireSide: (v) => v.querySelectorAll(".box[data-chord]").forEach((b) => b.addEventListener("click", () => openChord([b.dataset.chord]))),
     lyrics: cur.doc ? { lines: lyricLines(cur.doc).map((x) => x.text), timing: cur.timing ? cur.timing.lines : [] } : null,
@@ -1051,27 +1055,18 @@ function keyText(b) {
     : `Key <b>${prettyChord(k.key)}</b>${est}`;
 }
 
-function headCard(b) {
-  const c = cur.chart || {};
-  const chips = [];
-  if (hasChords(b)) {
-    if (capoNow()) chips.push(`<span class='chip'>Capo <b>${capoNow()}</b></span>`);
-    const k = keyText(b);
-    if (k) chips.push(`<span class='chip'>${k}</span>`);
-    const t = b.tempo || c.tempo;
-    chips.push(`<span class='chip'>${t ? `<b>${t}</b> bpm` : "Tempo <span class='meta'>not set</span>"}</span>`);
-    if (b.time) chips.push(`<span class='chip'>${esc(b.time)}</span>`);
+// Under the title, in every mode: the artist, then the key, tempo and time
+// (the tuning and capo are in the toolbar).
+function songSubtitle(b) {
+  const parts = [esc(songArtist())];
+  if (b && hasChords(b)) {
+    const k = keyText(b).replace(/<[^>]+>/g, "").replace(/\s+est\.$/, "?");
+    if (k) parts.push(k);
+    const t = b.tempo || (cur.chart && cur.chart.tempo);
+    if (t) parts.push(`${t} bpm`);
+    if (b.time && b.time !== "4/4") parts.push(esc(b.time));
   }
-  // The tuning: tap to change it (standard shows only once you've changed something).
-  const tt = tun();
-  if (!tt.standard || cur.prefs.tuning || (c.tuning && c.tuning.notes)) {
-    chips.push(`<button class='chip tuning-chip' data-act='tuning' title='${esc(stringNames(tt).join(" "))}'>Tuning <b>${esc(tt.name)}</b></button>`);
-  }
-  const style = [c.style, c.type === "piece" ? "piece" : null].filter(Boolean).join(" · ");
-  const album = cur.entry && cur.entry.album && ![songTitle(), songArtist()].includes(cur.entry.album) ? cur.entry.album : "";
-  return `<div class='card head'><h1 class='song-title'>${esc(songTitle())}</h1>
-    <div class='meta'>${esc([songArtist(), style, album].filter(Boolean).join(" · "))}</div>
-    ${chips.length ? `<div class='chips'>${chips.join("")}</div>` : ""}</div>`;
+  return parts.filter(Boolean).join(" · ");
 }
 
 function toolbar(mode, chords = true) {

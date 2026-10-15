@@ -191,6 +191,8 @@ async function importOne(r) {
   const player = { ...structuredClone(PLAYER_DEFAULTS), ...(prefs.player || {}) };
   Object.assign(player, {
     speed: s.speed ?? player.speed, semis: s.semis ?? player.semis, cents: s.cents ?? player.cents, formant: !!s.formant,
+    // A fine tune set in speedy-pitcher is kept, not matched over.
+    ...(s.cents ? { matchTuning: false } : {}),
     a: s.a ?? null, b: s.b ?? null, loopOn: !!s.loopOn, position: s.position || 0,
     countIn: s.countIn || 0, trainer: { ...player.trainer, ...(s.trainer || {}) },
   });
