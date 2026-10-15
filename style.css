@@ -279,6 +279,10 @@ body.in-song .tabbar { display: none; }
 }
 .tempo { min-width: 64px; text-align: center; font-weight: 800; font-size: 22px; font-variant-numeric: tabular-nums; line-height: 1.05; }
 .tempo small { display: block; font-size: 11px; color: var(--meta); font-weight: 600; }
+.bpm-input { display: block; width: 64px; height: 30px; margin: 0 auto; padding: 0; border: 0; border-bottom: 2px dashed var(--surface1); border-radius: 0;
+  background: transparent; color: var(--text); font: inherit; font-size: 22px; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; }
+.bpm-input:focus { outline: none; border-bottom-color: var(--mauve); }
+label.tempo { display: block; min-height: 44px; cursor: text; }
 
 /* ---------- chord popover ---------- */
 
@@ -711,3 +715,8 @@ button.pick.on { border-color: var(--mauve); background: color-mix(in srgb, var(
 /* A tall popover scrolls as a whole: its parts (shape boxes, the step grid) keep their size. */
 .popover > * { flex-shrink: 0; }
 .fret-picker .fp-nav .btn { min-width: 44px; }
+
+/* Drag and drop from the computer (js/drop.js). */
+.drop-overlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; pointer-events: none;
+  background: color-mix(in srgb, var(--base) 70%, transparent); border: 3px dashed var(--mauve); }
+.drop-overlay > div { padding: 14px 22px; border-radius: 12px; background: var(--mauve); color: var(--on-accent); font-weight: 800; font-size: 18px; }

@@ -534,6 +534,61 @@ await section("import", async () => {
   await context.close();
 });
 
+/* ---- Typing a tempo, and files dropped from the computer ---- */
+// Drop files on the page the way a browser does: dragenter, dragover, drop.
+const dropFiles = (page, files, at = null) => page.evaluate(({ files, at }) => {
+  const dt = new DataTransfer();
+  for (const f of files) dt.items.add(new File([f.text], f.name, { type: f.type }));
+  const target = at ? document.querySelector(at) : document.body;
+  const r = target.getBoundingClientRect();
+  const o = { bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+  target.dispatchEvent(new DragEvent("dragenter", o));
+  target.dispatchEvent(new DragEvent("dragover", o));
+  const shown = !document.querySelector(".drop-overlay").classList.contains("hidden");
+  target.dispatchEvent(new DragEvent("drop", o));
+  return shown;
+}, { files, at });
+
+await section("bpm and drop", async () => {
+  const { context, page, errors } = await newPage(375, 752, "dark", { library: null });
+  // The tempo next to Play takes a typed number.
+  await show(page, "#/song/landslide/picking");
+  const bpm = page.locator(".transport.mobile .bpm-input");
+  await bpm.click();
+  await bpm.fill("95");
+  await bpm.press("Enter");
+  eq("tempo: typed 95", (await state(page)).prefs.tempo, 95);
+  await bpm.click();
+  await bpm.fill("999");
+  await bpm.press("Enter");
+  eq("tempo: out of range is clamped", [(await state(page)).prefs.tempo, await bpm.inputValue()], [220, "220"]);
+  await bpm.fill("abc");
+  await bpm.press("Enter");
+  eq("tempo: not a number leaves it", await bpm.inputValue(), "220");
+  await page.click(".transport.mobile [data-act='bpm-']");
+  eq("tempo: − still works, and the field follows", await bpm.inputValue(), "219");
+  await layout(page, "tempo field 375");
+  // A library export dropped on Settings.
+  await show(page, "#/settings");
+  const overlay = await dropFiles(page, [{ name: "library.json", type: "application/json", text: JSON.stringify(fixtureLibrary("2026-03-03")) }]);
+  await page.waitForTimeout(600);
+  check("drop: shows where it'll go while dragging", overlay);
+  check("drop: a library file imports in Settings", (await page.textContent("#toast")).includes("Imported 958 liked songs"), await page.textContent("#toast"));
+  check("drop: the overlay is gone after", await page.$eval(".drop-overlay", (e) => e.classList.contains("hidden")));
+  // A sheet as text, dropped on the editor.
+  const id = await seedSheet(page);
+  await show(page, `#/song/${id}/edit`);
+  await dropFiles(page, [{ name: "song.txt", type: "text/plain", text: "[Verse]\nG          C\nMade-up words to sing" }], "#sheet-text");
+  check("drop: a text file fills the sheet editor", (await page.inputValue("#sheet-text")).includes("Made-up words to sing"));
+  // Something nothing takes.
+  await show(page, "#/practice");
+  await dropFiles(page, [{ name: "photo.png", type: "image/png", text: "x" }]);
+  await page.waitForTimeout(200);
+  check("drop: says when nothing takes it", (await page.textContent("#toast")).includes("Nothing here takes photo.png"));
+  check("bpm and drop: no page errors", errors.length === 0, errors.join("; "));
+  await context.close();
+});
+
 /* ---- Chords from audio: Late July ---- */
 await section("analyse", async () => {
   const { context, page, errors } = await newPage(375, 752, "dark");

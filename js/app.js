@@ -20,6 +20,7 @@ import { helperUrl, setHelperUrl, pingHelper } from "./helper-client.js";
 import { lrclibOn, setLrclib } from "./prefs.js";
 import { speedyPitcherHere, loadFromHere, loadFromZip, startImport, renderImport, importState } from "./spimport.js";
 import { pcJobs } from "./pcjob.js";
+import { initDrop } from "./drop.js";
 
 export const VERSION = "0.6.0";
 
@@ -95,9 +96,10 @@ async function renderSettings() {
   const pref = themePref();
   const lib = await loadLibrary();
   const m = lib.meta;
-  const when = (t) => new Date(t).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  // A day alone ("2026-10-13") is that day wherever you are.
+  const when = (t) => new Date(/^\d{4}-\d{2}-\d{2}$/.test(t) ? t + "T12:00:00" : t).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   const libText = m
-    ? `${m.liked.toLocaleString()} liked songs and ${m.playlists} playlists${m.fetched ? ", exported " + when(m.fetched) : ""}. ${m.from === "local file" ? "Read from private/ on this computer." : "Imported " + when(m.importedAt) + "."}`
+    ? `${m.liked.toLocaleString()} liked songs${m.playlists ? ` and ${m.playlists} playlists` : ""}${m.fetched ? ", exported " + when(m.fetched) : ""}. ${m.from === "local file" ? "Read from private/ on this computer." : "Imported " + when(m.importedAt) + "."}`
     : "Not imported yet. Run <code>node tools/spotify-import.mjs</code> on the PC, then import the file it saves.";
   views.settings.innerHTML = `<div class='view-inner'>
     <h1 class='page-title'>Settings</h1>
@@ -163,7 +165,7 @@ async function renderSettings() {
     try {
       const v = await importLibraryText(await f.text(), "file");
       invalidateSongs();
-      toast(`Imported ${v.liked.length.toLocaleString()} liked songs and ${v.playlists.length} playlists.`);
+      toast(`Imported ${v.liked.length.toLocaleString()} liked songs${v.playlists.length ? ` and ${v.playlists.length} playlists` : ""}.`);
       renderSettings();
     } catch (err) {
       toast(err.message, 4000);
@@ -387,6 +389,7 @@ async function init() {
 window.songbook = { songState, getPlayer, playerState, playerNow, importState, pcJobs, VERSION };
 
 init();
+initDrop({ playerHash: () => (route.name === "song" ? `#/song/${encodeURIComponent(route.id)}/player` : null) });
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));

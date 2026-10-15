@@ -91,7 +91,7 @@ This file is the brief for the agent building it. Read all of it, plus `CLAUDE.m
 | `CLAUDE.md` | The short version of the ground rules. |
 | `docs/songbook-plan.md` | This plan. |
 | `docs/design/songbook-mockup.html` | The visual direction (§5), seven screens: library, chords view, audio analysis, picking (Latte), **sheet (UG style)**, **play song with mixer**, and **speed, pitch and loops on the real recording**. Its tab bar predates the split from Pimapeggio; use the tabs in §4. |
-| `private/spotify-library.json` (gitignored) | **The owner's saved song list:** 958 liked songs and 46 playlists (about 830 playlist entries; 7 followed playlists couldn't be read). Fields: `title`, `artist`, `album`, `added`. This first export has no Spotify ids or durations. |
+| `private/spotify-library.json` (gitignored) | **The owner's saved song list:** 958 liked songs, newest first. Fields: `title`, `artist`, `album` (`duration_ms` in new exports); no timestamps, and no playlists unless `tools/spotify-import.mjs --playlists`. |
 | `tools/spotify-import.mjs` | Refreshes that file. It now also saves `id`, `uri` and `duration_ms`. Run `node tools/spotify-import.mjs e7ead542a58d4196a534c1a2622cf096` from the repo root; it opens a browser login. The client ID isn't a secret (PKCE). |
 | `.gitignore` | `private/`, `node_modules/`, `tests/shots/`, Python caches, `.venv/`. |
 

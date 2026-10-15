@@ -443,6 +443,28 @@ await section("bundled audio", async () => {
   await context.close();
 });
 
+/* ---- A recording dropped from the computer onto a song ---- */
+await section("drop a recording", async () => {
+  const { context, page, errors } = await newPage(1440, 900);
+  const wav = await page.evaluate(async () => {
+    const g = await import("/tests/gen-song.js");
+    const { signal } = await g.renderSong({ bpm: 100, bars: ["G", "C"], repeat: 1 });
+    return Array.from(g.wavBytes(signal));
+  });
+  await show(page, "#/song/landslide/chords");
+  await page.evaluate((bytes) => {
+    const dt = new DataTransfer();
+    dt.items.add(new File([new Uint8Array(bytes)], "my take.wav", { type: "audio/wav" }));
+    const o = { bubbles: true, cancelable: true, dataTransfer: dt, clientX: 300, clientY: 300 };
+    for (const t of ["dragenter", "dragover", "drop"]) document.body.dispatchEvent(new DragEvent(t, o));
+  }, wav);
+  await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "file" && s.duration > 0; }, null, { timeout: 20000 });
+  eq("drop: a recording dropped on a song opens in its Player, kept", [await page.evaluate(() => location.hash), (await page.evaluate(() => import("/js/recordings.js").then((m) => m.recordingMeta("landslide")))).name],
+    ["#/song/landslide/player", "my take.wav"]);
+  check("drop a recording: no page errors", errors.length === 0, errors.join("; "));
+  await context.close();
+});
+
 /* ---- The synth band (Phase 6): a chart with no recording, then Late July's bar times ---- */
 const bandSched = (page) => page.evaluate(() => window.songbook.playerState().band.scheduled);
 const tap = (page, sel) => page.evaluate((s) => { const el = document.querySelector(s); el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true })); el.click(); }, sel);

@@ -1,6 +1,8 @@
-// Reads your Spotify Liked Songs and your own playlists into songs.json.
+// Reads your Spotify Liked Songs into private/spotify-library.json: title,
+// artist, album and length, newest first, with no timestamps (when you liked
+// each song stays with Spotify). --playlists adds your own playlists too.
 // PKCE login (no client secret). The token stays in memory and is never written.
-// node tools/spotify-import.mjs <client id> [out.json]   (run from the-songbook)
+// node tools/spotify-import.mjs <client id> [out.json] [--playlists]   (run from the-songbook)
 // Output defaults to private/spotify-library.json (gitignored: it is your listening data).
 import http from "http";
 import crypto from "crypto";
@@ -9,12 +11,14 @@ import path from "path";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 
-const CLIENT_ID = process.argv[2];
+const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const WITH_PLAYLISTS = process.argv.includes("--playlists");
+const CLIENT_ID = args[0];
 if (!CLIENT_ID) { console.error("usage: node tools/spotify-import.mjs <client id> [out.json]"); process.exit(1); }
 const PORT = 8319;
 const REDIRECT = `http://127.0.0.1:${PORT}/callback`;
-const SCOPES = "user-library-read playlist-read-private playlist-read-collaborative";
-const OUT = process.argv[3] || path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "private", "spotify-library.json");
+const SCOPES = "user-library-read" + (WITH_PLAYLISTS ? " playlist-read-private playlist-read-collaborative" : "");
+const OUT = args[1] || path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "private", "spotify-library.json");
 
 const b64url = (buf) => buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const verifier = b64url(crypto.randomBytes(64));
@@ -57,20 +61,19 @@ async function all(url) {
 
 const song = (t) => t && t.type !== "episode" && t.name
   ? { title: t.name, artist: (t.artists || []).map((a) => a.name).join(", "), album: t.album ? t.album.name : "",
-      id: t.id, uri: t.uri, duration_ms: t.duration_ms }
+      duration_ms: t.duration_ms }
   : null;
 
 async function collect() {
   const me = await api("/me");
   console.log("logged in as", me.display_name || me.id);
 
-  const liked = (await all("/me/tracks?limit=50"))
-    .map((it) => { const s = song(it.track || it.item); return s && { ...s, added: it.added_at }; })
-    .filter(Boolean);
+  // Spotify lists them newest first; the order is all that's kept of when.
+  const liked = (await all("/me/tracks?limit=50")).map((it) => song(it.track || it.item)).filter(Boolean);
   console.log("liked songs:", liked.length);
 
   const playlists = [];
-  for (const pl of await all("/me/playlists?limit=50")) {
+  for (const pl of WITH_PLAYLISTS ? await all("/me/playlists?limit=50") : []) {
     const owned = pl.owner && pl.owner.id === me.id;
     const entry = { name: pl.name, owned, collaborative: !!pl.collaborative, songs: [] };
     if (owned || pl.collaborative) {
@@ -88,7 +91,7 @@ async function collect() {
   }
 
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
-  fs.writeFileSync(OUT, JSON.stringify({ fetched: new Date().toISOString(), liked, playlists }, null, 1));
+  fs.writeFileSync(OUT, JSON.stringify({ fetched: new Date().toISOString().slice(0, 10), liked, ...(WITH_PLAYLISTS ? { playlists } : {}) }, null, 1));
   console.log("wrote", OUT);
 }
 

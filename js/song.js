@@ -1136,7 +1136,7 @@ function transportInner(chords) {
       <button class='btn primary play' data-act='play' style='flex:1' ${chords || cur.rec ? "" : "disabled"}>▶ ${cur.rec ? "Recording" : "Play song"}</button>`;
   }
   return `<button class='btn outline round' data-act='bpm-' aria-label='Slower'>−</button>
-    <div class='tempo' aria-live='polite'><span class='bpm'>${tempo()}</span><small>BPM</small></div>
+    <label class='tempo'><input class='bpm-input' type='text' inputmode='numeric' pattern='[0-9]*' maxlength='3' value='${tempo()}' aria-label='Tempo in BPM' autocomplete='off'><small>BPM</small></label>
     <button class='btn outline round' data-act='bpm+' aria-label='Faster'>+</button>
     <button class='btn primary play' data-act='play' style='flex:1' ${chords ? "" : "disabled"}>▶ Play</button>`;
 }
@@ -1152,6 +1152,7 @@ function updateTransport() {
     b.classList.toggle("stop", !!playing);
   });
   cur.view.querySelectorAll(".bpm").forEach((el) => { el.textContent = tempo(); });
+  cur.view.querySelectorAll(".bpm-input").forEach((el) => { if (document.activeElement !== el) el.value = tempo(); });
   cur.view.querySelectorAll(".scroll-btn").forEach((b) => {
     b.textContent = `Scroll ${SPEEDS[scroll.idx]}×`;
     b.classList.toggle("on", scroll.on);
@@ -1320,6 +1321,21 @@ export async function togglePlay() {
 }
 
 function wire(view) {
+  // Type a tempo: it's set when you leave the field or press Enter (out of range, it's clamped).
+  view.querySelectorAll(".bpm-input").forEach((inp) => {
+    inp.addEventListener("focus", () => inp.select());
+    const commit = () => {
+      const n = parseInt(inp.value, 10);
+      if (Number.isFinite(n) && n !== tempo()) setTempo(n);
+      inp.value = tempo();
+    };
+    inp.addEventListener("change", commit);
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { commit(); inp.blur(); }
+      else if (e.key === "Escape") { inp.value = tempo(); inp.blur(); }
+      else if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); tempoBy(e.key === "ArrowUp" ? 1 : -1); inp.value = tempo(); }
+    });
+  });
   view.querySelectorAll("[data-act]").forEach((b) => {
     const act = b.dataset.act;
     if (act === "bpm-" || act === "bpm+") { holdable(b, () => tempoBy(act === "bpm+" ? 1 : -1)); return; }
