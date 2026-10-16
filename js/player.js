@@ -1086,6 +1086,7 @@ function render() {
         applyLoop();
         kick();
       },
+      changed: kick,
     });
     S.wave.setSong(S.an, S.duration, S.set.view);
     refreshLanes();
@@ -1194,8 +1195,8 @@ function stageHtml() {
   const s = S.set;
   return `
     <div class='card wave-card ${file ? "" : "timeline-only"}'>
-      <canvas class='wave-main' aria-label='Waveform: tap to jump, drag A and B to set the loop'></canvas>
-      <canvas class='wave-over' aria-label='Whole song'></canvas>
+      <canvas class='wave-main' aria-label='Waveform: tap to jump, drag A and B to set the loop, arrow keys scroll and zoom'></canvas>
+      <canvas class='wave-over' aria-label='Whole song: drag to scroll, arrow keys scroll and zoom'></canvas>
       <div class='countin hidden' aria-live='assertive'></div>
     </div>
     <div class='wave-tools'>

@@ -17,7 +17,7 @@ export class WaveView {
   constructor(canvas, overview, handlers) {
     this.cv = canvas;
     this.ov = overview;
-    this.h = handlers;      // { seek(t), setA(t), setB(t), loopChanged() }
+    this.h = handlers;      // { seek(t), setA(t), setB(t), loopChanged(), changed() }
     this.an = null;
     this.duration = 0;
     this.view = { start: 0, end: 1 };
@@ -29,6 +29,7 @@ export class WaveView {
     this.pointers = new Map();
     this.bindMain();
     this.bindOverview();
+    this.bindKeys();
     new ResizeObserver(() => { this.resize(); }).observe(canvas);
     this.resize();
   }
@@ -113,6 +114,16 @@ export class WaveView {
   showAll() { this.view = { start: 0, end: this.duration }; this.clampView(); this.dirty = true; }
 
   holdFollow(ms = 2500) { this.followPausedUntil = performance.now() + ms; }
+
+  // The view moved by hand: redraw, even while paused.
+  moved() { this.dirty = true; this.holdFollow(4000); if (this.h.changed) this.h.changed(); }
+
+  pan(frac) {
+    const dt = frac * this.span;
+    this.view = { start: this.view.start + dt, end: this.view.end + dt };
+    this.clampView();
+    this.moved();
+  }
 
   update(state) {
     const s = this.state;
@@ -368,7 +379,7 @@ export class WaveView {
       this.gesture = handle
         ? { kind: "handle", handle, x0: e.offsetX, t0: t, orig: handle === "a" ? a : b }
         : { kind: "tap", x0: e.offsetX, view: { ...this.view }, moved: false };
-      this.holdFollow(4000);
+      this.moved();
     });
     cv.addEventListener("pointermove", (e) => {
       if (!this.pointers.has(e.pointerId) || !this.gesture) return;
@@ -415,26 +426,54 @@ export class WaveView {
       if (!this.duration) return;
       e.preventDefault();
       if (e.ctrlKey || Math.abs(e.deltaY) > Math.abs(e.deltaX)) this.zoom(Math.exp(-e.deltaY * 0.01), this.xToT(e.offsetX));
-      else { const dt = e.deltaX / this.cv.clientWidth * this.span; this.view.start += dt; this.view.end += dt; this.clampView(); this.dirty = true; }
-      this.holdFollow();
+      else this.pan(e.deltaX / this.cv.clientWidth);
+      this.moved();
     }, { passive: false });
   }
 
   bindOverview() {
     const ov = this.ov;
+    const tAt = (e) => clamp(e.offsetX / ov.clientWidth, 0, 1) * this.duration;
+    // Grab the view window where it was clicked, or centre it on a click outside it.
     const move = (e) => {
-      if (!this.duration) return;
-      const t = clamp(e.offsetX / ov.clientWidth, 0, 1) * this.duration;
-      const span = this.span;
-      this.view = { start: t - span / 2, end: t + span / 2 };
+      const start = tAt(e) - this.ovGrab;
+      this.view = { start, end: start + this.span };
       this.clampView();
-      this.dirty = true;
-      this.holdFollow(4000);
+      this.moved();
     };
-    ov.addEventListener("pointerdown", (e) => { ov.setPointerCapture(e.pointerId); this.ovDrag = true; move(e); });
+    ov.addEventListener("pointerdown", (e) => {
+      if (!this.duration) return;
+      ov.setPointerCapture(e.pointerId);
+      const t = tAt(e);
+      this.ovGrab = t >= this.view.start && t <= this.view.end ? t - this.view.start : this.span / 2;
+      this.ovDrag = true;
+      move(e);
+    });
     ov.addEventListener("pointermove", (e) => { if (this.ovDrag) move(e); });
-    ov.addEventListener("pointerup", () => { this.ovDrag = false; });
-    ov.addEventListener("pointercancel", () => { this.ovDrag = false; });
+    const end = () => { this.ovDrag = false; };
+    ov.addEventListener("pointerup", end);
+    ov.addEventListener("pointercancel", end);
+  }
+
+  // With either strip focused: ←/→ scroll (Shift a whole view), ↑/↓ or +/− zoom,
+  // Home/End jump to the ends. Other keys (Space) go on to the app's shortcuts.
+  bindKeys() {
+    const key = (e) => {
+      if (!this.duration || e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key;
+      if (k === "ArrowLeft" || k === "ArrowRight") this.pan((k === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 0.9 : 0.25));
+      else if (k === "ArrowUp" || k === "+" || k === "=") { this.zoom(1.5); this.moved(); }
+      else if (k === "ArrowDown" || k === "-" || k === "_") { this.zoom(1 / 1.5); this.moved(); }
+      else if (k === "Home") this.pan(-this.duration / this.span);
+      else if (k === "End") this.pan(this.duration / this.span);
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    for (const c of [this.cv, this.ov]) {
+      c.tabIndex = 0;
+      c.addEventListener("keydown", key);
+    }
   }
 }
 

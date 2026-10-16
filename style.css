@@ -513,7 +513,9 @@ button.pick.on { border-color: var(--mauve); background: color-mix(in srgb, var(
 .wave-card { padding: 0; overflow: hidden; position: relative; }
 .wave-main { display: block; width: 100%; height: 156px; touch-action: none; cursor: pointer; }
 .wave-card.timeline-only .wave-main { height: 64px; }
-.wave-over { display: block; width: 100%; height: 30px; border-top: 1px solid var(--surface0); touch-action: none; cursor: pointer; }
+.wave-over { display: block; width: 100%; height: 30px; border-top: 1px solid var(--surface0); touch-action: none; cursor: grab; }
+.wave-over:active { cursor: grabbing; }
+.wave-card canvas:focus-visible { outline-offset: -2px; }
 .wave-tools { display: flex; align-items: center; gap: 6px; margin-top: -4px; }
 .wave-tools .p-time { font-variant-numeric: tabular-nums; font-weight: 700; }
 .countin {
