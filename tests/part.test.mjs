@@ -359,6 +359,37 @@ await section("shipped sheet", async () => {
   await context.close();
 });
 
+/* ---- Times kept from a sheet since deleted: the tab still shows the words ---- */
+await section("stale times", async () => {
+  const { context, page, errors } = await newPage();
+  await context.route("**/songs/audio/**", (r) => r.fulfill({ status: 404, body: "" }));
+  // Your LRCLIB sheet was deleted (or replaced) but its times stayed: they point past the shipped sheet's lines.
+  await page.evaluate(async () => {
+    const L = await import("/js/lyrics.js");
+    await L.saveTiming("late-july", Array.from({ length: 40 }, (_, k) => ({ index: 60 + k, t: 64 + k * 4 })), "lrclib");
+  });
+  await show(page, "#/song/late-july/picking");
+  await page.waitForSelector("[data-act=tab-lyrics]");
+  await page.click("[data-act=tab-lyrics]");
+  await page.waitForSelector(".pick-card.whole .tab-bar.sung", { timeout: 10000 });
+  const st = await page.evaluate(() => ({ sung: document.querySelectorAll(".pick-card.whole .tab-bar.sung").length, words: [...document.querySelectorAll(".tab-lyric")].filter((x) => x.textContent.trim()).length }));
+  check("stale times: the shipped ones are used, words under the bars", st.sung > 20 && st.words === st.sung, JSON.stringify(st));
+  // With none to place, no empty rows.
+  await page.evaluate(async () => {
+    const L = await import("/js/library.js");
+    await L.saveSheet({ id: "late-july", chordpro: "{title: Late July}\n[D]Only words of my own here", source: "mine", sources: [] });
+    const Ly = await import("/js/lyrics.js");
+    await Ly.saveTiming("late-july", [{ index: 5, t: 70 }], "tap");
+  });
+  await page.reload();
+  await page.waitForSelector("html[data-ready]");
+  await show(page, "#/song/late-july/picking");
+  await page.waitForSelector("[data-act=tab-lyrics]");
+  eq("stale times: nothing to place, no empty rows under the bars", await page.$$eval(".tab-lyric", (xs) => xs.length), 0);
+  check("stale times: no page errors", errors.length === 0, errors.join("; "));
+  await context.close();
+});
+
 /* ---- The tuning picker, and your own shapes ---- */
 await section("tuning and shapes", async () => {
   const { context, page, errors } = await newPage();

@@ -95,6 +95,14 @@ export function alignToSheet(timed, sheetLines, minScore = 0.5) {
   return out;
 }
 
+// Whether saved times were made for these lines: almost all of them land on
+// a line with words (times kept from a sheet since deleted or replaced don't).
+export function timingFits(timed, sheetLines) {
+  if (!timed || !timed.length) return false;
+  const hits = timed.filter((x) => sheetLines[x.index] && sheetLines[x.index].text).length;
+  return hits >= Math.max(1, timed.length * 0.8);
+}
+
 // The bar a line is sung in (bars: [{ t }], sorted): a line that starts well
 // into a bar is a pickup into the next one, so it goes under that one, where
 // its downbeat is. -1 before the song.

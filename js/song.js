@@ -24,7 +24,7 @@ import { invalidateSongs } from "./songs.js";
 import { openPlayer, leavePlayerView, closePlayer, pitchShift, playerNow, onPlayerFrame, togglePlayer as toggleRecording, playRecording,
   setPartLayer, setPartAB, partAB, seekTo } from "./player.js";
 import { findSections } from "./detect.js";
-import { lyricLines, getTiming, saveTiming, lineAt, findSyncedLyrics, alignToSheet, sheetFromTiming, retime, sungBar } from "./lyrics.js";
+import { lyricLines, getTiming, saveTiming, deleteTiming, lineAt, findSyncedLyrics, alignToSheet, sheetFromTiming, retime, sungBar, timingFits } from "./lyrics.js";
 import { lrclibOn, followOn, setFollow } from "./prefs.js";
 import { patternFor, patternBadge, sectionBars, fingersHtml, diagramSvg, notationHtml, patternListHtml, pimapeggioLink, pimapeggioAvailable, HOME } from "./picking.js";
 import { loadParts, saveSectionPart, checkedPart } from "./part.js";
@@ -189,6 +189,10 @@ export async function openSong(view, id, mode, arg = null) {
     let [entry, device, shipped, sheet, rec, timing, parts] = await Promise.all([
       getEntry(id), get("charts", id).catch(() => null), shippedChart(id).catch(() => null), getSheet(id), recordingMeta(id), getTiming(id), loadParts(id)]);
     const chart = device || shipped;
+    // Saved times that don't fit the sheet (kept from one since deleted or
+    // replaced) would put no words anywhere: they're left out.
+    const fits = (sh) => timingFits(timing.lines, lyricLines(parseChordPro(sh.chordpro)));
+    if (timing && sheet && !fits(sheet)) timing = null;
     // A song can come with your own sheet (tools/ship-sheet.mjs): it's the
     // default until you edit one here, and its times follow the recording.
     if ((!sheet || !timing) && shipped && shipped.sheetFile) {
@@ -196,6 +200,7 @@ export async function openSong(view, id, mode, arg = null) {
       const times = d && d.timing && Array.isArray(d.timing.lines) ? d.timing.lines : null;
       if (d && d.chordpro && !sheet) {
         sheet = { id, chordpro: d.chordpro, source: d.source || "mine", chordsFrom: d.chordsFrom || null, label: d.label || null, shipped: true };
+        if (timing && !fits(sheet)) timing = null;
         if (!timing && times) timing = { id, lines: times, source: d.timing.source || "aligned", shipped: true };
       } else if (d && d.chordpro && times) {
         // Your copy of it (edited here) has no times of its own: the shipped
@@ -635,7 +640,8 @@ function wholeLyrics(entries) {
     const m = out.get(fi);
     m.set(k, m.has(k) ? m.get(k) + " / " + text : text);
   }
-  return out;
+  // None placed: no empty rows under the bars, the note says why instead.
+  return out.size ? out : null;
 }
 
 const shippedLyricTimes = () => (cur.chart && cur.chart.lyricTiming) || (cur.shipped && cur.shipped.lyricTiming) || null;
@@ -1890,6 +1896,8 @@ function renderEditor() {
   if (del) del.addEventListener("click", async () => {
     if (!del.classList.contains("armed")) { del.classList.add("armed"); del.textContent = "Tap again to delete"; return; }
     await deleteSheet(cur.id);
+    // Its line times go with it.
+    if (cur.timing && !cur.timing.shipped) await deleteTiming(cur.id);
     const id = await reload();
     location.hash = `#/song/${encodeURIComponent(id)}/chords`;
   });
@@ -1910,6 +1918,13 @@ async function saveEditor(source) {
   const doc = parseChordPro(chordpro);
   if (!docChords(doc).length) toast("No chords found in that text; saved as lyrics only.", 3500);
   await saveSheet({ id: cur.id, chordpro, source, sources });
+  // Your line times follow the words to where they are now.
+  if (cur.timing && !cur.timing.shipped && cur.doc) {
+    const old = lyricLines(cur.doc);
+    const timed = cur.timing.lines.filter((x) => old[x.index] && old[x.index].text).map((x) => ({ t: x.t, text: old[x.index].text })).sort((a, b) => a.t - b.t);
+    const lines = alignToSheet(timed, lyricLines(doc));
+    if (lines.length) await saveTiming(cur.id, lines, cur.timing.source); else await deleteTiming(cur.id);
+  }
   const id = await reload();
   location.hash = `#/song/${encodeURIComponent(id)}/sheet`;
 }
