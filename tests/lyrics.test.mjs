@@ -81,4 +81,13 @@ check("zip: not a zip is a readable error", /isn't a zip/.test(bad || ""), bad);
   check("retime: never goes backwards", r.every((x, k) => !k || x.t >= r[k - 1].t));
 }
 
+/* ---- The bar a line is sung in ---- */
+{
+  const bars = [0, 2, 4, 6].map((t) => ({ t }));
+  eq("sung bar: on the downbeat, or just after", [Ly.sungBar(bars, 2), Ly.sungBar(bars, 2.5)], [1, 1]);
+  eq("sung bar: a pickup goes under the bar it leads into", [Ly.sungBar(bars, 3.2), Ly.sungBar(bars, 3.9)], [2, 2]);
+  eq("sung bar: a pickup before the first bar", Ly.sungBar(bars, -0.5), 0);
+  eq("sung bar: before the song, and in the last bar", [Ly.sungBar(bars, -3), Ly.sungBar(bars, 7.5)], [-1, 3]);
+}
+
 report("lyrics");

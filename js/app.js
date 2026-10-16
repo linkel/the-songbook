@@ -17,7 +17,7 @@ import { esc, toast, hideToast, popoverOpen, closePopover } from "./ui.js";
 import { renderPractice } from "./practice.js";
 import { playerState, speedBy, pitchBy, loopCurrentSection, focusMixer, playerNow } from "./player.js";
 import { helperUrl, setHelperUrl, pingHelper } from "./helper-client.js";
-import { lrclibOn, setLrclib } from "./prefs.js";
+import { lrclibOn, setLrclib, followOn, setFollow } from "./prefs.js";
 import { speedyPitcherHere, loadFromHere, loadFromZip, startImport, renderImport, importState } from "./spimport.js";
 import { pcJobs } from "./pcjob.js";
 import { initDrop } from "./drop.js";
@@ -116,6 +116,8 @@ async function renderSettings() {
       <div class='set-row'><div><div class='set-label'>Theme</div><div class='meta'>Auto follows your phone: Mocha when dark, Latte when light.</div></div></div>
       <div class='seg' role='group' aria-label='Theme' style='margin-bottom:12px'>${[["auto", "Auto"], ["mocha", "Mocha"], ["latte", "Latte"]].map(([v, l]) =>
         `<button data-theme-pref='${v}' class='${v === pref ? "on" : ""}' aria-pressed='${v === pref}'>${l}</button>`).join("")}</div>
+      <div class='set-row'><div><div class='set-label'>Follow the music</div><div class='meta'>While a song plays, the tab and the sheet scroll to where it is. Also Follow next to the tab, and Scroll on the sheet.</div></div>
+        <button class='switch ${followOn() ? "on" : ""}' role='switch' aria-checked='${followOn()}' id='follow-switch' aria-label='Follow the music'></button></div>
       <div class='set-row'><div><div class='set-label'>Sound check</div><div class='meta'>Strums a G chord on the app guitar.</div></div>
         <button class='btn outline small' id='sound-check'>▶ Strum</button></div>
     </div>
@@ -244,6 +246,7 @@ function wirePlayerCard() {
     }
   });
   v.querySelector("#lrclib-switch").addEventListener("click", () => { setLrclib(!lrclibOn()); renderSettings(); });
+  v.querySelector("#follow-switch").addEventListener("click", () => { setFollow(!followOn()); renderSettings(); });
   v.querySelector("#bundle-file").addEventListener("change", async (e) => {
     const f = e.target.files[0];
     e.target.value = "";

@@ -155,7 +155,8 @@ export async function openPlayer(view, ctx) {
 }
 
 // For Play in Sheet mode: play the song's recording without opening the Player.
-export async function playRecording(ctx) {
+// at: where to start, in seconds (else where it was left).
+export async function playRecording(ctx, at) {
   if (!S || S.id !== ctx.id) { closePlayer(); S = newSession(ctx); }
   S.ctx = ctx;
   prepareBars();
@@ -167,7 +168,13 @@ export async function playRecording(ctx) {
     if (S !== s) return;
     if (!meta && !s.stems && s.ctx.chart && s.ctx.chart.audio) await loadShipped(); else await loadFile();
   }
-  if (S && S.kind === "file") await togglePlayer();
+  if (S && S.kind === "file") {
+    if (at !== undefined) {
+      if (S.enginePromise) await S.enginePromise;
+      S.engine.seek(at);
+    }
+    await togglePlayer();
+  }
 }
 
 // The mixer's rows: the recording, or one per stem; then the app guitar and
@@ -233,6 +240,7 @@ export async function togglePlayer() {
 export function speedBy(d) { if (S) setSpeed(S.set.speed + d); }
 // Loop song time a..b (seconds), e.g. from Practice or a shortcut.
 export function loopTo(a, b, id = null) { if (S) setLoop(a, b, true, id); }
+export function seekTo(t) { if (S && S.engine) { S.engine.seek(t); kick(); } }
 export function pitchBy(d) { if (S && clocked()) setPitch(S.set.semis + d); }
 export function loopCurrentSection() { if (S) loopSection(); }
 export function focusMixer() {

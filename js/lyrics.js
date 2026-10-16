@@ -95,6 +95,18 @@ export function alignToSheet(timed, sheetLines, minScore = 0.5) {
   return out;
 }
 
+// The bar a line is sung in (bars: [{ t }], sorted): a line that starts well
+// into a bar is a pickup into the next one, so it goes under that one, where
+// its downbeat is. -1 before the song.
+export function sungBar(bars, t) {
+  let bi = -1;
+  for (let i = 0; i < bars.length && bars[i].t <= t; i++) bi = i;
+  if (bi < 0) return bars.length && t > bars[0].t - 1 ? 0 : -1;
+  const next = bars[bi + 1];
+  return next && (t - bars[bi].t) / (next.t - bars[bi].t) >= PICKUP ? bi + 1 : bi;
+}
+const PICKUP = 0.4;   // of a bar
+
 // A ChordPro sheet from timed lines and timed bars: each line gets the chords
 // that change during it, placed at the word nearest their time across the
 // line. bars: [{ t, t1, chords }] (sounding names). Returns ChordPro text.

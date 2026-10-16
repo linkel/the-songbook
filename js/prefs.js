@@ -11,3 +11,14 @@ export function lrclibOn() {
 export function setLrclib(on) {
   try { localStorage.setItem(LRCLIB_KEY, on ? "on" : "off"); } catch (e) { /* blocked */ }
 }
+
+const FOLLOW_KEY = "songbook-follow";
+
+// The tab or sheet scrolls to what's playing: off unless you turn it on.
+export function followOn() {
+  try { return localStorage.getItem(FOLLOW_KEY) === "on"; } catch (e) { return false; }
+}
+
+export function setFollow(on) {
+  try { localStorage.setItem(FOLLOW_KEY, on ? "on" : "off"); } catch (e) { /* blocked */ }
+}

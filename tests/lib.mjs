@@ -88,6 +88,8 @@ export async function newPage(browser, { w = 375, h = 752, scheme = "dark", libr
     : r.fulfill({ status: 404, body: "" })));
   // Late July's bundled clip (songs/audio/): absent unless a test serves a stand-in.
   if (audio404) await context.route("**/songs/audio/**", (r) => r.fulfill({ status: 404, body: "" }));
+  // Pimapeggio's local copy (port 8318) answers, so its links stay links without it running.
+  await context.route("http://localhost:8318/manifest.json", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));

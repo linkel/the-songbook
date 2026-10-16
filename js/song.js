@@ -22,10 +22,10 @@ import { PATTERN_BY_ID, noteSound } from "./patterns.js";
 import { esc, sourceBadge, sourceSentence, pickingLabel, patternName, ICONS, toast, showPopover, closePopover } from "./ui.js";
 import { invalidateSongs } from "./songs.js";
 import { openPlayer, leavePlayerView, closePlayer, pitchShift, playerNow, onPlayerFrame, togglePlayer as toggleRecording, playRecording,
-  setPartLayer, setPartAB, partAB } from "./player.js";
+  setPartLayer, setPartAB, partAB, seekTo } from "./player.js";
 import { findSections } from "./detect.js";
-import { lyricLines, getTiming, saveTiming, lineAt, findSyncedLyrics, alignToSheet, sheetFromTiming, retime } from "./lyrics.js";
-import { lrclibOn } from "./prefs.js";
+import { lyricLines, getTiming, saveTiming, lineAt, findSyncedLyrics, alignToSheet, sheetFromTiming, retime, sungBar } from "./lyrics.js";
+import { lrclibOn, followOn, setFollow } from "./prefs.js";
 import { patternFor, patternBadge, sectionBars, fingersHtml, diagramSvg, notationHtml, patternListHtml, pimapeggioLink, pimapeggioAvailable, HOME } from "./picking.js";
 import { loadParts, saveSectionPart, checkedPart } from "./part.js";
 import { helperUrl, alignOnPc } from "./helper-client.js";
@@ -191,11 +191,19 @@ export async function openSong(view, id, mode, arg = null) {
     const chart = device || shipped;
     // A song can come with your own sheet (tools/ship-sheet.mjs): it's the
     // default until you edit one here, and its times follow the recording.
-    if (!sheet && shipped && shipped.sheetFile) {
+    if ((!sheet || !timing) && shipped && shipped.sheetFile) {
       const d = await fetch(shipped.sheetFile.split("/").map(encodeURIComponent).join("/")).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-      if (d && d.chordpro) {
+      const times = d && d.timing && Array.isArray(d.timing.lines) ? d.timing.lines : null;
+      if (d && d.chordpro && !sheet) {
         sheet = { id, chordpro: d.chordpro, source: d.source || "mine", chordsFrom: d.chordsFrom || null, label: d.label || null, shipped: true };
-        if (!timing && d.timing && Array.isArray(d.timing.lines)) timing = { id, lines: d.timing.lines, source: d.timing.source || "aligned", shipped: true };
+        if (!timing && times) timing = { id, lines: times, source: d.timing.source || "aligned", shipped: true };
+      } else if (d && d.chordpro && times) {
+        // Your copy of it (edited here) has no times of its own: the shipped
+        // ones carry over to the lines whose words still match.
+        const words = lyricLines(parseChordPro(d.chordpro));
+        const timed = times.filter((x) => words[x.index]).map((x) => ({ t: x.t, text: words[x.index].text })).sort((a, b) => a.t - b.t);
+        const lines = alignToSheet(timed, lyricLines(parseChordPro(sheet.chordpro)));
+        if (lines.length) timing = { id, lines, source: d.timing.source || "aligned", shipped: true };
       }
     }
     if (!entry && !chart && !sheet) {
@@ -471,7 +479,7 @@ onPlayerFrame((f) => {
     cur.view.querySelectorAll(".pbar.on").forEach((x) => x.classList.remove("on"));
     if (k >= 0) {
       const el = cur.view.querySelector(whole ? `.tab-bar[data-form='${fi}'][data-pbar='${k}']` : `.pbar[data-pbar='${k}']`);
-      if (el) { el.classList.add("on"); if (el.classList.contains("tab-bar")) follow(el); }
+      if (el) { el.classList.add("on"); if (el.classList.contains("tab-bar") && f.playing) follow(el); }
       showPartBar(k);
     }
   }
@@ -532,7 +540,7 @@ function partBody(b, pills, plan) {
   return `${pills}
     <div class='card pick-card'>
       <div class='sec-head'><span class='sec-name'>${esc(sec.name)}${pv === "picking" ? ` · <span class='part-bar-name nowrap'>${p ? `Bar ${i + 1}: ${esc(p.name)}` : `Bar ${i + 1}`}</span>` : ""}</span>${partBadge(part)}</div>
-      ${views}
+      ${pv === "picking" ? views : `<div class='views-row'>${views}${followBtn()}</div>`}
       ${body}
     </div>
     ${partInfoCard(plan, i, link)}`;
@@ -619,8 +627,7 @@ function wholeLyrics(entries) {
   for (const x of [...cur.timing.lines].sort((a, b) => a.t - b.t)) {
     const text = lines[x.index] && lines[x.index].text;
     if (!text) continue;
-    let bi = -1;
-    for (let i = 0; i < c.bars.length && c.bars[i].t <= x.t + 0.25; i++) bi = i;
+    const bi = sungBar(c.bars, x.t);
     const fi = spans.findIndex((s) => s.bars.includes(bi));
     if (fi < 0) continue;
     const k = spans[fi].bars.indexOf(bi);
@@ -643,7 +650,7 @@ function wholeBody(b, pills) {
     `<button data-pview='${id}' class='${id === pv ? "on" : ""}' aria-pressed='${id === pv}'>${label}</button>`).join("")}</div>`;
   const total = entries.reduce((n, e) => n + e.plan.bars.length, 0);
   const secHtml = entries.map(({ fi, si, plan, start }) => {
-    const head = `<div class='whole-sec'><span class='sec-name'>${esc(plan.sec.name)}</span><span class='meta'>bars ${start + 1}–${start + plan.bars.length}</span></div>`;
+    const head = `<button class='whole-sec' data-jump='${fi}' aria-label='Play from ${esc(plan.sec.name)}, bar ${start + 1}'><span class='sec-name'><span class='jump' aria-hidden='true'>▶</span>${esc(plan.sec.name)}</span><span class='meta'>bars ${start + 1}–${start + plan.bars.length}</span></button>`;
     if (plan.ctx) return `${head}<div class='tab-sheet pv-${pv}'>${partBarsHtml(plan.ctx, pv, -1, { start, form: fi, sec: si, lyrics: lyr ? lyr.get(fi) || new Map() : null })}</div>`;
     // No part: its chords, a bar each; tapping one goes to the section.
     return `${head}<div class='tab-sheet pv-${pv}'>${plan.bars.map((x, k) => `<button class='pbar tab-bar empty' data-pbar='${k}' data-form='${fi}' data-sec='${si}' aria-label='Bar ${start + k + 1}: ${esc(x.chords.map((c) => c.name).join(" "))}, no part'><span class='meta'>${start + k + 1} · ${esc(x.chords.map((c) => prettyChord(c.name)).join(" "))}</span></button>`).join("")}</div>`;
@@ -653,15 +660,44 @@ function wholeBody(b, pills) {
   return `${pills}
     <div class='card pick-card whole'>
       <div class='sec-head'><span class='sec-name'>Whole song</span><span class='meta'>${total} bars</span></div>
-      <div class='views-row'>${views}${lyrBtn}</div>
+      <div class='views-row'>${views}${lyrBtn}${followBtn()}</div>
       ${cur.prefs.tabLyrics && !canLyrics ? (shippedLyricTimes() && lrclibOn() && !cur.doc
         ? `<div class='set-row'><div class='meta'>This song's words are lined up with its recording; LRCLIB has them (it sends the title and artist to lrclib.net).</div><button class='btn outline small' data-act='lrclib-here'>Get lyrics</button></div>`
         : `<p class='note'>No lyrics timed to the recording yet. In Sheet, Find on LRCLIB gets the words; then Sync lines them up with your recording${helperUrl() ? " (Line up on my PC)" : ""}.</p>`) : ""}
       ${first ? tabLegend(first.plan.ctx, pv) : ""}
       ${secHtml}
-      <p class='note' style='margin:8px 0 0'>Tap a bar to edit it. Play goes through the whole song.</p>
+      <p class='note' style='margin:8px 0 0'>Tap a bar to edit it, or a section's name to play from there. Play goes through the whole song.</p>
     </div>
     ${first ? partInfoCard(first.plan, null) : ""}`;
+}
+
+const followBtn = () => `<button class='tool ${followOn() ? "on" : ""}' data-act='follow' aria-pressed='${followOn()}' title='Scroll to what is playing'>Follow</button>`;
+
+// Play the whole song from a section (fi: its place in the form). The
+// recording jumps there and plays on; the synth starts again from there.
+async function playFrom(fi) {
+  const entry = wholePlan()[fi];
+  if (!entry) return;
+  if (playSource() === "recording") {
+    const c = timedChart();
+    const span = c ? timedSpans(c)[fi] : null;
+    const bar = span && c.bars[span.bars[0]];
+    if (!bar) { toast("The chart's bars need times for that: analyse your recording first."); return; }
+    const pn = playerNow();
+    if (pn && pn.id === cur.id && pn.kind === "file") {
+      seekTo(bar.t);
+      if (!pn.playing) await toggleRecording();
+    } else await playRecording(playerCtx(), bar.t);
+    updateTransport();
+    return;
+  }
+  if (recPlayingHere()) await toggleRecording();
+  await playWhole(entry.start);
+}
+
+async function playWhole(startBar = 0) {
+  const b = base();
+  await getPlayer().start({ bars: wholePlayBars(), parts: true, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), countIn: false, loop: false, open: tun().open, startBar });
 }
 
 function pickingBody(b, disp) {
@@ -939,7 +975,7 @@ async function syncAct(what) {
     // Follow the line being timed.
     const ln = lines[Math.min(sy.next, lines.length - 1)];
     const el = ln && cur.view.querySelector(`.sheet .line[data-s='${ln.s}'][data-l='${ln.l}']`);
-    if (el) follow(el);
+    if (el) follow(el, true);
   } else if (what === "earlier" || what === "later") {
     const i = sy.last ?? (sy.next > 0 ? sy.next - 1 : null);
     if (i === null || !sy.have.has(i)) { toast("Tap a line first."); return; }
@@ -1282,8 +1318,11 @@ function highlight(i) {
   }
 }
 
-// Keep what's playing about a third of the way down the screen.
-function follow(el) {
+// Keep what's playing about a third of the way down the screen: only with
+// Follow on (or the sheet's Scroll), and not while you're scrolling yourself.
+function follow(el, force = false) {
+  if (!force && !(followOn() || (cur.mode === "sheet" && scroll.on))) return;
+  if (!force && performance.now() < (cur.handScroll || 0)) return;
   const sc = cur.view.querySelector("#song-scroll");
   const r = el.getBoundingClientRect(), sr = sc.getBoundingClientRect();
   if (r.top < sr.top + sr.height * 0.12 || r.bottom > sr.top + sr.height * 0.7) {
@@ -1380,11 +1419,7 @@ export async function togglePlay() {
   }
   if (cur.mode === "picking") {
     const p = getPlayer();
-    if (cur.pickSec === "all") {
-      const b = base();
-      await p.start({ bars: wholePlayBars(), parts: true, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), countIn: false, loop: false, open: tun().open });
-      return;
-    }
+    if (cur.pickSec === "all") { await playWhole(); return; }
     const { pf, bars, b, ctx } = pickPlan();
     if (ctx) {
       await p.start({ bars: partPlayBars(ctx), parts: true, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), countIn: false, loop: true, open: tun().open });
@@ -1452,6 +1487,10 @@ function wire(view) {
       else if (act === "lrclib-new") lrclibNewSheet(b);
       else if (act === "lrclib-here") lrclibNewSheet(b, true);
       else if (act === "tab-lyrics") setPrefs({ tabLyrics: !cur.prefs.tabLyrics });
+      else if (act === "follow") {
+        setFollow(!followOn());
+        view.querySelectorAll("[data-act=follow]").forEach((x) => { x.classList.toggle("on", followOn()); x.setAttribute("aria-pressed", followOn()); });
+      }
       else if (act === "pick-pattern") openPatternChooser();
       else if (act === "pick-reset") setPrefs({ pickPattern: null });
       else if (act === "part-new") newPart();
@@ -1463,6 +1502,10 @@ function wire(view) {
     });
   });
   view.querySelectorAll("[data-sync]").forEach((b) => b.addEventListener("click", () => syncAct(b.dataset.sync)));
+  view.querySelectorAll("[data-jump]").forEach((b) => b.addEventListener("click", () => playFrom(+b.dataset.jump)));
+  // Scrolling by hand holds Follow off for a few seconds.
+  const sc = view.querySelector("#song-scroll");
+  if (sc) for (const type of ["wheel", "touchmove"]) sc.addEventListener(type, () => { if (cur) cur.handScroll = performance.now() + 3000; }, { passive: true });
   view.querySelectorAll("[data-pick-sec]").forEach((b) => b.addEventListener("click", () => {
     if (player && player.playing) player.stop();
     cur.pickSec = b.dataset.pickSec === "all" ? "all" : +b.dataset.pickSec;

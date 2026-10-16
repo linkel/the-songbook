@@ -113,6 +113,8 @@ async function newPage(w = 375, h = 752, scheme = "dark") {
   const context = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: phone ? 2 : 1, hasTouch: phone, isMobile: phone, colorScheme: scheme });
   const lib = fixtureLibrary();
   await context.route("**/private/**", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(lib) }));
+  // Pimapeggio's local copy (port 8318) answers, so its links stay links without it running.
+  await context.route("http://localhost:8318/manifest.json", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -287,8 +289,10 @@ for (const [w, h, scheme] of [[375, 752, "dark"], [1440, 900, "light"]]) {
       const ly = await page.evaluate(async () => {
         const c = await fetch("songs/late-july.json").then((r) => r.json());
         const first = c.lyricTiming.times.find((x) => x.j === 0).t;
+        // Under the bar it leads into, when it comes in late in the bar before.
         let bi = 0;
-        for (let i = 0; i < c.bars.length && c.bars[i].t <= first + 0.25; i++) bi = i;
+        for (let i = 0; i < c.bars.length && c.bars[i].t <= first; i++) bi = i;
+        if ((first - c.bars[bi].t) / (c.bars[bi + 1].t - c.bars[bi].t) >= 0.4) bi++;
         const sung = [...document.querySelectorAll(".pick-card.whole .tab-bar.sung")];
         const el = sung.find((b) => b.querySelector(".tab-lyric").textContent.includes("Invented line 1 "));
         const num = el && +el.querySelector(".tnum").textContent;
@@ -324,13 +328,33 @@ await section("shipped sheet", async () => {
     const c = await fetch("songs/late-july.json").then((r) => r.json());
     const s = await fetch("songs/sheets/late-july.json").then((r) => r.json());
     const first = Math.min(...s.timing.lines.map((x) => x.t));
+    // Under the bar it leads into: Late July's lines come in late in the bar before.
     let bi = 0;
-    for (let i = 0; i < c.bars.length && c.bars[i].t <= first + 0.25; i++) bi = i;
+    for (let i = 0; i < c.bars.length && c.bars[i].t <= first; i++) bi = i;
+    if ((first - c.bars[bi].t) / (c.bars[bi + 1].t - c.bars[bi].t) >= 0.4) bi++;
     const sung = [...document.querySelectorAll(".pick-card.whole .tab-bar.sung")].map((b) => +b.querySelector(".tnum").textContent);
     return { first: sung[0], want: bi + 1, n: sung.length };
   });
   eq("shipped sheet: the first sung line under its bar", ly.first, ly.want);
   check("shipped sheet: words under many bars", ly.n > 20, String(ly.n));
+  // Edit it (a word changed, a line added) and save: your copy keeps the words' times.
+  await show(page, "#/song/late-july/edit");
+  await page.waitForSelector("#sheet-text");
+  await page.evaluate(() => {
+    const t = document.querySelector("#sheet-text");
+    const lines = t.value.split("\n");
+    const i = lines.findIndex((l) => !l.startsWith("{") && /[a-z]{4}/i.test(l.replace(/\[[^\]]*\]/g, "")));
+    lines[i] = lines[i].replace(/([a-z]{4,})/i, "$1s");
+    t.value = lines.join("\n") + "\nAn extra line of my own";
+  });
+  await page.click("[data-act=save]");
+  await page.waitForSelector(".sheet .line");
+  const ed = await page.evaluate(() => { const s = window.songbook.songState(); return { n: s.timing ? s.timing.lines.length : 0, badge: document.querySelector(".topbar .badge").textContent }; });
+  check("edited sheet: the shipped times carry over", ed.n >= ly.n && ed.n >= 30, JSON.stringify(ed));
+  await show(page, "#/song/late-july/picking");
+  await page.waitForSelector(".pick-card.whole .tab-bar.sung");
+  const n2 = await page.$$eval(".pick-card.whole .tab-bar.sung", (xs) => xs.length);
+  check("edited sheet: the tab's Lyrics still show", n2 > 20, String(n2));
   check("shipped sheet: no page errors", errors.length === 0, errors.join("; "));
   await context.close();
 });
@@ -453,7 +477,7 @@ for (const [w, h, scheme] of [[375, 752, "dark"], [375, 630, "light"], [1440, 90
     eq(`${tag}: Play: bar 2's steps, with i on fret 2 (A3) and its rest`, bar2.slice(0, 4).map((e) => e.midis), [[48], [], [57], []]);
     check(`${tag}: Play: bar 1 is Travis on G`, log.filter((e) => e.bar === 0).slice(0, 4).map((e) => e.midis.join("+")).join(" ") === "43 55 50 59", JSON.stringify(log.filter((e) => e.bar === 0).slice(0, 4)));
     const link = new URL(await page.getAttribute("#pima-link", "href"), "http://x/");
-    check(`${tag}: Pimapeggio opens on the bar shown`, link.searchParams.has("pattern") || link.searchParams.has("steps"), link.search);
+    check(`${tag}: Pimapeggio opens on the bar shown`, link.searchParams.has("pattern") || link.searchParams.has("steps"), link.href);
     check(`${tag}: no page errors`, errors.length === 0, errors.join("; "));
     await context.close();
   });

@@ -110,3 +110,86 @@ export function showPopover(html, label, onClose = null) {
   popOnClose = onClose;
   return pop;
 }
+
+/* ---- Toggles slide ----
+   A switch or a segmented control is usually drawn again with its new state,
+   so its CSS transition has nothing to run from. A click notes where it was;
+   once the new one is up, it slides from there. */
+
+const reduceMotion = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// How to find the same control after the view is drawn again.
+function toggleKey(el) {
+  if (el.id) return "#" + CSS.escape(el.id);
+  const attr = [...el.attributes].find((a) => a.name.startsWith("data-") || a.name === "aria-label");
+  return attr ? `[${attr.name}="${CSS.escape(attr.value)}"]` : null;
+}
+
+// The control now on screen: the same element, else the nearest one with the same key.
+function findAgain(el, sel, near) {
+  if (el.isConnected) return el;
+  let best = null, bestD = Infinity;
+  for (const x of document.querySelectorAll(sel)) {
+    const r = x.getBoundingClientRect();
+    if (!r.width) continue;
+    const d = Math.abs(r.left - near.left) + Math.abs(r.top - near.top);
+    if (d < bestD) { best = x; bestD = d; }
+  }
+  return best;
+}
+
+// Check over the next few frames (a mode change draws the view a little later).
+function watch(test, frames = 24) {
+  const step = () => { if (!test() && --frames > 0) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+
+function slideSwitch(sw) {
+  const key = toggleKey(sw);
+  if (!key) return;
+  const was = sw.classList.contains("on"), at = sw.getBoundingClientRect();
+  watch(() => {
+    const now = findAgain(sw, ".switch" + key, at);
+    if (!now || now.classList.contains("on") === was) return false;
+    // Flipped in place: its own transition runs.
+    if (now === sw) return true;
+    now.classList.add(was ? "was-on" : "was-off");
+    getComputedStyle(now, "::after").transform;
+    requestAnimationFrame(() => now.classList.remove("was-on", "was-off"));
+    return true;
+  });
+}
+
+function slideSeg(seg) {
+  const from = seg.querySelector(":scope > button.on");
+  const key = toggleKey(seg);
+  if (!from || !key) return;
+  const box = seg.getBoundingClientRect(), r0 = from.getBoundingClientRect();
+  const old = { left: r0.left - box.left, top: r0.top - box.top, width: r0.width, height: r0.height, label: from.textContent };
+  watch(() => {
+    const g = findAgain(seg, ".seg" + key, box);
+    const to = g && g.querySelector(":scope > button.on");
+    if (!to) return false;
+    const b = g.getBoundingClientRect(), r = to.getBoundingClientRect();
+    const now = { left: r.left - b.left, top: r.top - b.top, width: r.width, height: r.height };
+    if (Math.abs(now.left - old.left) < 1 && Math.abs(now.top - old.top) < 1) return g !== seg || to.textContent !== old.label;
+    const glide = document.createElement("span");
+    glide.className = "seg-glide";
+    g.prepend(glide);
+    g.classList.add("gliding");
+    const px = (o) => ({ left: o.left + "px", top: o.top + "px", width: o.width + "px", height: o.height + "px" });
+    const anim = glide.animate([px(old), px(now)], { duration: 220, easing: "cubic-bezier(.3,.7,.4,1)", fill: "forwards" });
+    const done = () => { glide.remove(); g.classList.remove("gliding"); };
+    anim.onfinish = done;
+    anim.oncancel = done;
+    return true;
+  });
+}
+
+if (typeof document !== "undefined") document.addEventListener("click", (e) => {
+  if (reduceMotion() || !e.target.closest) return;
+  const sw = e.target.closest(".switch");
+  if (sw) { slideSwitch(sw); return; }
+  const b = e.target.closest(".seg > button");
+  if (b && !b.disabled && !b.classList.contains("on")) slideSeg(b.parentElement);
+}, true);
