@@ -8,4 +8,5 @@ For easier access to some songs I might want to play on the guitar.
 - [x] Phase 4: picking guide
 - [x] Phase 5a: better analysis on the PC's GPU: stems, chords, sections, lyric timing
 - [x] Phase 5b: guitar parts: open tunings, my own fingerings, picking patterns that change, and parts detected from recordings
-- [ ] Phase 6: synth band (next)
+- [x] Phase 6: synth band
+- [ ] Phase 7 (optional): cited chord charts from the web (four so far); LRCLIB lyrics came in with Phase 3
