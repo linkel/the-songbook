@@ -22,6 +22,11 @@ const NT = {
   bottomLine: 30,   // diatonic number of E4, the bottom line
 };
 
+// Where step i's notes sit across the staff (their centre, in the SVG's
+// units), and how wide a step is: for the playhead in js/tab.js.
+export const notationStepX = (i, npb) => NT.clefW + 10 + i * NT.colW + Math.floor(i / npb) * NT.beatGap;
+export const NOTATION_COLW = NT.colW;
+
 function diatonic(midiWritten) {
   const [letter, acc] = SPELL[midiWritten % 12];
   return { d: (Math.floor(midiWritten / 12) - 1) * 7 + letter, acc };

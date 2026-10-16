@@ -22,7 +22,7 @@ import { PATTERN_BY_ID, noteSound } from "./patterns.js";
 import { esc, sourceBadge, sourceSentence, pickingLabel, patternName, ICONS, toast, showPopover, closePopover } from "./ui.js";
 import { invalidateSongs } from "./songs.js";
 import { openPlayer, leavePlayerView, closePlayer, pitchShift, playerNow, onPlayerFrame, togglePlayer as toggleRecording, playRecording,
-  setPartLayer, setPartAB, partAB, seekTo } from "./player.js";
+  setPartLayer, setPartAB, partAB, seekTo, preloadRecording, recordingLoading, recordingSpeed, setRecordingSpeed } from "./player.js";
 import { findSections } from "./detect.js";
 import { lyricLines, getTiming, saveTiming, deleteTiming, lineAt, findSyncedLyrics, alignToSheet, sheetFromTiming, retime, sungBar, timingFits } from "./lyrics.js";
 import { lrclibOn, followOn, setFollow } from "./prefs.js";
@@ -31,7 +31,7 @@ import { loadParts, saveSectionPart, checkedPart } from "./part.js";
 import { helperUrl, alignOnPc } from "./helper-client.js";
 import { pcJob, onPcJob, startPcJob, clearPcJob } from "./pcjob.js";
 import { stripHtml, openBarEditor, partPlayBars, barAsPattern, barChord, expanded } from "./partedit.js";
-import { partSheetHtml, partBarsHtml, tabLegend, defaultPartView, litTabStep, PART_VIEWS } from "./tab.js";
+import { partSheetHtml, partBarsHtml, tabLegend, defaultPartView, litTabStep, PART_VIEWS, barEditHtml, stepAtX, barSteps, showPlayhead } from "./tab.js";
 import { bandTimeline } from "./band.js";
 import { checkArrangement } from "./bundle.js";
 
@@ -232,6 +232,8 @@ export async function openSong(view, id, mode, arg = null) {
   if (prevMode === "player" && cur.mode !== "player") { cur.rec = await recordingMeta(id); leavePlayerView(); }
   if (cur.mode !== "sheet") cur.sync = null;
   render();
+  // Play here plays the recording: it starts loading now, so it's ready.
+  if (cur && ["sheet", "chords", "picking"].includes(cur.mode) && playSource() === "recording") preloadRecording(playerCtx());
 }
 
 async function reload() {
@@ -329,7 +331,13 @@ function render() {
   wire(view);
   updateTransport();
   litLine = null;
-  if (mode === "picking") checkPimapeggio();
+  if (mode === "picking") {
+    checkPimapeggio();
+    partLit = null;
+    // On the tab, where the recording is (paused too): the line, ready to play on.
+    const pn = playerNow();
+    if (pn && pn.id === cur.id && pn.kind === "file" && playSource() === "recording" && view.querySelector(".tab-bar")) followPicking(pn);
+  }
 }
 
 function modesSeg(mode) {
@@ -462,15 +470,22 @@ onPlayerFrame((f) => {
   if (f.playing !== cur.recState) { cur.recState = f.playing; updateTransport(); }
 });
 
-// While the recording plays, the strip lights the bar it's in (when it's in this section).
+// Which of the recording's bars pos (seconds) is in: -1 before the first.
+function barAt(bars, pos) {
+  let bi = -1;
+  for (let i = 0; i < bars.length && bars[i].t <= pos + 0.02; i++) bi = i;
+  return bi;
+}
+
+// Where the recording is, on the strip or the tab: its bar lit (when it's in
+// this section, or anywhere in the whole song) and, on the tab, a line at
+// the exact place. Each frame while it plays, and once after drawing.
 let partLit = null;
-onPlayerFrame((f) => {
+function followPicking(f) {
   if (!cur || f.id !== cur.id || cur.mode !== "picking" || !cur.view) return;
-  if (f.playing !== cur.alongPlaying) { cur.alongPlaying = f.playing; updatePartAlong(); }
   const c = timedChart();
   if (!c || !c.bars || typeof (c.bars[0] || {}).t !== "number") return;
-  let bi = -1;
-  for (let i = 0; i < c.bars.length && c.bars[i].t <= f.pos + 0.02; i++) bi = i;
+  const bi = barAt(c.bars, f.pos);
   // The whole song: whichever section it's in (the spans are the form, in order).
   const whole = cur.pickSec === "all";
   const spans = timedSpans(c);
@@ -479,23 +494,83 @@ onPlayerFrame((f) => {
   const span = whole ? spans[fi] : sec && spans.find((s) => s.name === sec.name && s.bars.includes(bi));
   const k = span ? span.bars.indexOf(bi) : -1;
   const litKey = whole ? fi + ":" + k : k;
+  const sel = k >= 0 ? (whole ? `.tab-bar[data-form='${fi}'][data-pbar='${k}']` : `.pbar[data-pbar='${k}']`) : null;
   if (litKey !== partLit) {
     partLit = litKey;
     cur.view.querySelectorAll(".pbar.on").forEach((x) => x.classList.remove("on"));
     if (k >= 0) {
-      const el = cur.view.querySelector(whole ? `.tab-bar[data-form='${fi}'][data-pbar='${k}']` : `.pbar[data-pbar='${k}']`);
+      const el = cur.view.querySelector(sel);
       if (el) { el.classList.add("on"); if (el.classList.contains("tab-bar") && f.playing) follow(el); }
       showPartBar(k);
     }
   }
-  // On the tab, the step too.
-  if (k >= 0 && cur.view.querySelector(".tab-bar.on")) {
-    const { ctx } = pickPlan();
-    const e = ctx && expanded(ctx)[k];
-    const t0 = c.bars[bi].t, t1 = c.bars[bi + 1] ? c.bars[bi + 1].t : t0 + 2;
-    litTabStep(cur.view, e && e.steps ? Math.min(e.steps.length - 1, Math.floor((f.pos - t0) / (t1 - t0) * e.steps.length)) : -1);
-  }
+  // On the tab, the step and the line.
+  const el = sel && cur.view.querySelector(sel + ".tab-bar");
+  if (!el) { showPlayhead(cur.view, null); litTabStep(cur.view, -1); return; }
+  const t0 = c.bars[bi].t, t1 = c.bars[bi + 1] ? c.bars[bi + 1].t : t0 + 2;
+  const n = barSteps(el), p = Math.max(0, Math.min(n, (f.pos - t0) / (t1 - t0) * n));
+  litTabStep(cur.view, el.querySelector(".tcol") ? Math.min(n - 1, Math.floor(p)) : -1);
+  showPlayhead(cur.view, el, p);
+}
+onPlayerFrame((f) => {
+  if (!cur || f.id !== cur.id || cur.mode !== "picking" || !cur.view) return;
+  if (f.playing !== cur.alongPlaying) { cur.alongPlaying = f.playing; updatePartAlong(); }
+  followPicking(f);
 });
+
+// A tap on the tab: the music goes there and the line shows where. The
+// recording moves to that step (playing on if it was, else waiting there);
+// the synth starts again from that bar, or Play starts it there.
+async function tapTab(el, clientX) {
+  const k = +el.dataset.pbar;
+  const whole = el.dataset.form !== undefined;
+  const fi = whole ? +el.dataset.form : null;
+  const n = barSteps(el), step = stepAtX(el, clientX);
+  if (!whole) {
+    cur.partSel = k;
+    cur.view.querySelectorAll(".pbar.sel").forEach((x) => x.classList.remove("sel"));
+    el.classList.add("sel");
+    const eb = cur.view.querySelector("[data-act=part-edit]");
+    if (eb) eb.textContent = `Edit bar ${k + 1}`;
+  }
+  const mark = () => {
+    partLit = null;
+    cur.view.querySelectorAll(".pbar.on").forEach((x) => x.classList.remove("on"));
+    el.classList.add("on");
+    litTabStep(cur.view, el.querySelector(".tcol") ? step : -1);
+    showPlayhead(cur.view, el, step);
+  };
+  if (playSource() === "recording") {
+    const c = timedChart();
+    const spans = c && Array.isArray(c.bars) && typeof (c.bars[0] || {}).t === "number" ? timedSpans(c) : null;
+    let span = null;
+    if (spans && whole) span = spans[fi];
+    else if (spans) {
+      // This section's play that the recording is in (or was last), else its first.
+      const { sec } = pickPlan();
+      const pn = playerNow();
+      const now = pn && pn.id === cur.id ? barAt(c.bars, pn.pos) : -1;
+      const mine = spans.filter((x) => sec && x.name === sec.name);
+      span = mine.find((x) => x.bars.includes(now)) || mine[0] || null;
+    }
+    const bi = span ? span.bars[k] : undefined;
+    if (bi === undefined || !c.bars[bi]) { toast("The chart's bars need times for that: analyse your recording first."); return; }
+    const t0 = c.bars[bi].t, t1 = c.bars[bi + 1] ? c.bars[bi + 1].t : t0 + 2;
+    const t = t0 + (t1 - t0) * step / n;
+    mark();
+    const pn = playerNow();
+    if (pn && pn.id === cur.id && pn.kind === "file") seekTo(t);
+    else await playRecording(playerCtx(), t, false);
+    return;
+  }
+  if (whole) {
+    const entry = wholePlan()[fi];
+    if (!entry) return;
+    cur.cue = { whole: true, bar: entry.start + k };
+  } else cur.cue = { whole: false, sec: pickSection(base()), bar: k };
+  mark();
+  if (player && player.playing) await playSynth();
+}
 
 // How the part shows: as tab, notation, or the picking stage: yours, else
 // what suits the part when you opened it (so it doesn't switch as you write).
@@ -538,7 +613,7 @@ function partBody(b, pills, plan) {
       ${stripHtml(ctx, i)}
       <p class='note' style='margin:8px 0 0'>Tap a bar to choose its pattern, write it out or give it a shape of its own.</p>`
     : `${partSheetHtml(ctx, pv, i)}
-      <p class='note' style='margin:8px 0 0'>Tap a bar to edit it.</p>`;
+      <p class='note' style='margin:8px 0 0'>Tap a bar to play from there, its ✎ to edit it.</p>`;
   const pimaArgs = { bars: [sel], capo: capoNow(), bpm: tempo(), name: `${songTitle()} · ${sec.name}, bar ${i + 1}`, tuning: tun(), beats: ctx.beats };
   const link = p && p.id && !p.steps.some((st) => st.some((n) => n.fret !== undefined || n.tech || n.mute)) && PATTERN_BY_ID.has(p.id)
     ? pimapeggioLink({ ...pimaArgs, pattern: PATTERN_BY_ID.get(p.id) }) : p ? pimapeggioLink({ ...pimaArgs, steps: p.steps }) : null;
@@ -659,7 +734,7 @@ function wholeBody(b, pills) {
     const head = `<button class='whole-sec' data-jump='${fi}' aria-label='Play from ${esc(plan.sec.name)}, bar ${start + 1}'><span class='sec-name'><span class='jump' aria-hidden='true'>▶</span>${esc(plan.sec.name)}</span><span class='meta'>bars ${start + 1}–${start + plan.bars.length}</span></button>`;
     if (plan.ctx) return `${head}<div class='tab-sheet pv-${pv}'>${partBarsHtml(plan.ctx, pv, -1, { start, form: fi, sec: si, lyrics: lyr ? lyr.get(fi) || new Map() : null })}</div>`;
     // No part: its chords, a bar each; tapping one goes to the section.
-    return `${head}<div class='tab-sheet pv-${pv}'>${plan.bars.map((x, k) => `<button class='pbar tab-bar empty' data-pbar='${k}' data-form='${fi}' data-sec='${si}' aria-label='Bar ${start + k + 1}: ${esc(x.chords.map((c) => c.name).join(" "))}, no part'><span class='meta'>${start + k + 1} · ${esc(x.chords.map((c) => prettyChord(c.name)).join(" "))}</span></button>`).join("")}</div>`;
+    return `${head}<div class='tab-sheet pv-${pv}'>${plan.bars.map((x, k) => `<div class='tab-cell'><button class='pbar tab-bar empty' data-pbar='${k}' data-form='${fi}' data-sec='${si}' aria-label='Bar ${start + k + 1}: ${esc(x.chords.map((c) => c.name).join(" "))}, no part'><span class='meta'>${start + k + 1} · ${esc(x.chords.map((c) => prettyChord(c.name)).join(" "))}</span></button>${barEditHtml(k, ` data-form='${fi}' data-sec='${si}'`, `${plan.sec.name}: write a part`)}</div>`).join("")}</div>`;
   }).join("");
   const canLyrics = !!wholeLyrics(entries);
   const lyrBtn = `<button class='tool ${cur.prefs.tabLyrics && canLyrics ? "on" : ""}' data-act='tab-lyrics' aria-pressed='${!!(cur.prefs.tabLyrics && canLyrics)}'>Lyrics</button>`;
@@ -672,7 +747,7 @@ function wholeBody(b, pills) {
         : `<p class='note'>No lyrics timed to the recording yet. In Sheet, Find on LRCLIB gets the words; then Sync lines them up with your recording${helperUrl() ? " (Line up on my PC)" : ""}.</p>`) : ""}
       ${first ? tabLegend(first.plan.ctx, pv) : ""}
       ${secHtml}
-      <p class='note' style='margin:8px 0 0'>Tap a bar to edit it, or a section's name to play from there. Play goes through the whole song.</p>
+      <p class='note' style='margin:8px 0 0'>Tap a bar to play from there, its ✎ to edit it, or a section's name to play from its start. Play goes through the whole song.</p>
     </div>
     ${first ? partInfoCard(first.plan, null) : ""}`;
 }
@@ -699,6 +774,26 @@ async function playFrom(fi) {
   }
   if (recPlayingHere()) await toggleRecording();
   await playWhole(entry.start);
+}
+
+// The synth in Picking: the whole song or the section, from the bar you
+// tapped (once), else from the top.
+async function playSynth() {
+  const cue = cur.cue;
+  cur.cue = null;
+  const whole = cur.pickSec === "all";
+  const from = cue && cue.whole === whole && (whole || cue.sec === pickSection(base())) ? cue.bar : 0;
+  if (whole) { await playWhole(from); return; }
+  const { pf, bars, b, ctx } = pickPlan();
+  const p = getPlayer();
+  if (ctx) {
+    await p.start({ bars: partPlayBars(ctx), parts: true, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), countIn: false, loop: true, open: tun().open, startBar: Math.min(from, ctx.bars.length - 1) });
+    return;
+  }
+  if (!pf.pattern) { openPatternChooser(); return; }
+  const c0 = pimaChord("C", null, tun());
+  const playable = bars.length ? bars : [{ sec: 0, bar: 0, chords: [{ name: "C", frets: c0.frets, pima: c0 }] }];
+  await p.start({ bars: playable, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), pattern: pf.pattern, countIn: false, loop: true, open: tun().open });
 }
 
 async function playWhole(startBar = 0) {
@@ -789,6 +884,8 @@ function pickStep(i) {
   v.querySelectorAll(".fcell.cur, .dg-col.cur").forEach((e) => e.classList.remove("cur"));
   litStep = i;
   litTabStep(v, i);
+  const on = v.querySelector(".tab-bar.on");
+  if (on && i >= 0 && player && player.session) showPlayhead(v, on, i * barSteps(on) / player.session.slots);
   if (i < 0) return;
   const a = v.querySelector(`.fcell[data-i='${i}']`), c = v.querySelector(`.dg-col[data-i='${i}']`);
   if (a) a.classList.add("cur");
@@ -1257,14 +1354,27 @@ function provenanceCard(b) {
   return parts.length ? `<div class='card sources'>${parts.join("")}</div>` : "";
 }
 
+// The transport's −/+ and number: the recording's speed (%, the Player's
+// own setting) when Play plays the recording, else the synth's tempo (BPM).
+const bySpeed = () => playSource() === "recording";
+const speedPct = () => Math.round(recordingSpeed(cur.id, cur.prefs) * 100);
+const paceValue = () => (bySpeed() ? speedPct() : tempo());
+const paceText = () => (bySpeed() ? speedPct() + "%" : String(tempo()));
+// The recording's tempo, for saying what a speed comes to.
+const recTempo = () => { const c = timedChart(); return (c && (c.tempo || (c.analysis && c.analysis.bpm))) || null; };
+function paceTitle() {
+  const t = recTempo();
+  return bySpeed() ? `Speed of the recording${t ? `: about ${Math.round(t * speedPct() / 100)} BPM` : ""}` : "Tempo of the app's guitar";
+}
+
 function transportInner(chords) {
   if (cur.mode === "sheet") {
     return `<button class='btn outline scroll-btn' data-act='scroll' aria-pressed='${scroll.on}' ${cur.doc ? "" : "disabled"}>Scroll ${SPEEDS[scroll.idx]}×</button>
-      <button class='btn outline tempo-btn' data-act='tempo' aria-label='Tempo'><span class='bpm'>${tempo()}</span><small>BPM</small></button>
+      <button class='btn outline tempo-btn' data-act='tempo' aria-label='${bySpeed() ? "Speed" : "Tempo"}' title='${esc(paceTitle())}'><span class='bpm'>${paceText()}</span><small>${bySpeed() ? "Speed" : "BPM"}</small></button>
       <button class='btn primary play' data-act='play' style='flex:1' ${chords || hasRecording() ? "" : "disabled"}>▶ ${playSource() === "recording" ? "Recording" : "Play song"}</button>`;
   }
   return `<button class='btn outline round' data-act='bpm-' aria-label='Slower'>−</button>
-    <label class='tempo'><input class='bpm-input' type='text' inputmode='numeric' pattern='[0-9]*' maxlength='3' value='${tempo()}' aria-label='Tempo in BPM' autocomplete='off'><small>BPM</small></label>
+    <label class='tempo' title='${esc(paceTitle())}'><input class='bpm-input' type='text' inputmode='numeric' pattern='[0-9]*' maxlength='3' value='${paceValue()}' aria-label='${bySpeed() ? "Speed of the recording, in percent" : "Tempo in BPM"}' autocomplete='off'><small>${bySpeed() ? "% speed" : "BPM"}</small></label>
     <button class='btn outline round' data-act='bpm+' aria-label='Faster'>+</button>
     <button class='btn primary play' data-act='play' style='flex:1' ${chords || hasRecording() ? "" : "disabled"}>▶ ${playSource() === "recording" ? "Recording" : "Play"}</button>`;
 }
@@ -1276,13 +1386,15 @@ function updateTransport() {
   const playing = recNow || !!(player && player.playing);
   const rec = playSource() === "recording";
   const label = rec ? "Recording" : cur.mode === "sheet" ? "Play song" : "Play";
+  const waiting = !playing && rec && cur.recWaiting && recordingLoading(cur.id);
   cur.view.querySelectorAll(".play").forEach((b) => {
-    b.textContent = playing ? (recNow ? "❚❚ Pause" : "■ Stop") : "▶ " + label;
+    b.textContent = playing ? (recNow ? "❚❚ Pause" : "■ Stop") : waiting ? "Loading…" : "▶ " + label;
     b.classList.toggle("stop", !!playing);
   });
   cur.view.querySelectorAll("[data-play-source]").forEach((b) => { const on = b.dataset.playSource === playSource(); b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); });
-  cur.view.querySelectorAll(".bpm").forEach((el) => { el.textContent = tempo(); });
-  cur.view.querySelectorAll(".bpm-input").forEach((el) => { if (document.activeElement !== el) el.value = tempo(); });
+  cur.view.querySelectorAll(".bpm").forEach((el) => { el.textContent = paceText(); });
+  cur.view.querySelectorAll(".bpm-input").forEach((el) => { if (document.activeElement !== el) el.value = paceValue(); });
+  cur.view.querySelectorAll("label.tempo, .tempo-btn").forEach((el) => { el.title = paceTitle(); });
   cur.view.querySelectorAll(".scroll-btn").forEach((b) => {
     b.textContent = `Scroll ${SPEEDS[scroll.idx]}×`;
     b.classList.toggle("on", scroll.on);
@@ -1409,7 +1521,20 @@ export function setTempo(bpm) {
   document.querySelectorAll(".popover .bpm").forEach((el) => { el.textContent = tempo(); });
 }
 
-export function tempoBy(n) { if (cur) setTempo(tempo() + n); }
+// −/+ (and ↑/↓): 5% of the recording's speed a step, or the synth's BPM.
+export function tempoBy(n) {
+  if (!cur) return;
+  if (bySpeed()) setSpeedPct(speedPct() + Math.sign(n) * 5);
+  else setTempo(tempo() + n);
+}
+
+function setSpeedPct(pct) {
+  setRecordingSpeed(cur.id, cur.prefs, pct / 100);
+  updateTransport();
+  document.querySelectorAll(".popover .bpm").forEach((el) => { el.textContent = paceText(); });
+  const note = document.querySelector(".popover .pace-note");
+  if (note) note.textContent = speedNote();
+}
 
 export async function togglePlay() {
   if (!cur || cur.mode === "edit") return;
@@ -1419,24 +1544,20 @@ export async function togglePlay() {
   if (player && player.playing) { player.stop(); return; }
   if (playSource() === "recording") {
     const pn = playerNow();
-    if (pn && pn.id === cur.id && pn.kind === "file") await toggleRecording(); else await playRecording(playerCtx());
+    if (pn && pn.id === cur.id && pn.kind === "file") await toggleRecording();
+    else {
+      // Still loading (it started when the song opened): Play says so, and
+      // plays once it's there; another tap meanwhile does nothing.
+      if (cur.recWaiting) return;
+      const c = cur;
+      c.recWaiting = true;
+      updateTransport();
+      try { await playRecording(playerCtx()); } finally { c.recWaiting = false; }
+    }
     updateTransport();
     return;
   }
-  if (cur.mode === "picking") {
-    const p = getPlayer();
-    if (cur.pickSec === "all") { await playWhole(); return; }
-    const { pf, bars, b, ctx } = pickPlan();
-    if (ctx) {
-      await p.start({ bars: partPlayBars(ctx), parts: true, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), countIn: false, loop: true, open: tun().open });
-      return;
-    }
-    if (!pf.pattern) { openPatternChooser(); return; }
-    const c0 = pimaChord("C", null, tun());
-    const playable = bars.length ? bars : [{ sec: 0, bar: 0, chords: [{ name: "C", frets: c0.frets, pima: c0 }] }];
-    await p.start({ bars: playable, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), pattern: pf.pattern, countIn: false, loop: true, open: tun().open });
-    return;
-  }
+  if (cur.mode === "picking") { await playSynth(); return; }
   if (!hasChords(base())) return;
   const p = getPlayer();
   if (p.playing) { p.stop(); return; }
@@ -1457,20 +1578,21 @@ function wire(view) {
     if (recPlayingHere()) await toggleRecording();
     if (player && player.playing) player.stop();
     setPrefs({ playSource: b.dataset.playSource });
+    if (playSource() === "recording") preloadRecording(playerCtx());
   }));
   // Type a tempo: it's set when you leave the field or press Enter (out of range, it's clamped).
   view.querySelectorAll(".bpm-input").forEach((inp) => {
     inp.addEventListener("focus", () => inp.select());
     const commit = () => {
       const n = parseInt(inp.value, 10);
-      if (Number.isFinite(n) && n !== tempo()) setTempo(n);
-      inp.value = tempo();
+      if (Number.isFinite(n) && n !== paceValue()) { if (bySpeed()) setSpeedPct(n); else setTempo(n); }
+      inp.value = paceValue();
     };
     inp.addEventListener("change", commit);
     inp.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { commit(); inp.blur(); }
-      else if (e.key === "Escape") { inp.value = tempo(); inp.blur(); }
-      else if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); tempoBy(e.key === "ArrowUp" ? 1 : -1); inp.value = tempo(); }
+      else if (e.key === "Escape") { inp.value = paceValue(); inp.blur(); }
+      else if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); tempoBy(e.key === "ArrowUp" ? 1 : -1); inp.value = paceValue(); }
     });
   });
   view.querySelectorAll("[data-act]").forEach((b) => {
@@ -1516,6 +1638,7 @@ function wire(view) {
     if (player && player.playing) player.stop();
     cur.pickSec = b.dataset.pickSec === "all" ? "all" : +b.dataset.pickSec;
     cur.partSel = 0;
+    cur.cue = null;
     render();
   }));
   view.querySelectorAll("[data-pview]").forEach((b) => b.addEventListener("click", () => {
@@ -1530,8 +1653,10 @@ function wire(view) {
     updatePartAlong();
   }));
   if (cur.mode === "picking") updatePartAlong();
-  view.querySelectorAll(".pbar[data-pbar]").forEach((b) => b.addEventListener("click", () => {
-    const i = +b.dataset.pbar;
+  // The tab: a tap plays from there; a bar's pencil edits it.
+  view.querySelectorAll(".pbar.tab-bar[data-pbar]").forEach((b) => b.addEventListener("click", (e) => tapTab(b, e.clientX)));
+  view.querySelectorAll(".bar-edit[data-edit]").forEach((b) => b.addEventListener("click", () => {
+    const i = +b.dataset.edit;
     if (b.dataset.form !== undefined) {
       // The whole song: edit the bar in its section (a section with no part opens on its own).
       const pl = pickPlan(+b.dataset.sec);
@@ -1539,6 +1664,12 @@ function wire(view) {
       else { cur.pickSec = +b.dataset.sec; cur.partSel = 0; render(); }
       return;
     }
+    const pl = pickPlan();
+    if (pl.ctx) openBarEditor(pl.ctx, i);
+  }));
+  // The pattern stage's strip: a tap shows the bar (and edits it when nothing's playing).
+  view.querySelectorAll(".part-strip .pbar[data-pbar]").forEach((b) => b.addEventListener("click", () => {
+    const i = +b.dataset.pbar;
     const pl = pickPlan();
     if (!pl.ctx) return;
     if (cur.partSel === i) { openBarEditor(pl.ctx, i); return; }
@@ -1826,7 +1957,22 @@ function openFont() {
     (d) => { setPrefs({ font: d === 0 ? 0 : Math.max(-2, Math.min(5, f + d)) }); openFont(); });
 }
 
+// What the recording's speed comes to (Sheet's Speed popover).
+function speedNote() {
+  const t = recTempo();
+  return `The recording's speed, the same as in Player: pitch stays put.${t ? ` About ${Math.round(t * speedPct() / 100)} BPM at this speed (the recording is about ${Math.round(t)}).` : ""}`;
+}
+
 function openTempo() {
+  if (bySpeed()) {
+    const p = stepper("Speed", `<span class='bpm'>${paceText()}</span>`, "of the recording", (d) => { if (d === 0) setSpeedPct(100); }, `<p class='note pace-note'>${esc(speedNote())}</p>`);
+    p.querySelectorAll("[data-step]").forEach((b) => {
+      const nb = b.cloneNode(true);
+      b.replaceWith(nb);
+      holdable(nb, () => tempoBy(+nb.dataset.step));
+    });
+    return;
+  }
   const p = stepper("Tempo", `<span class='bpm'>${tempo()}</span>`, "BPM", (d) => {
     if (d === 0) { cur.prefs.tempo = null; savePrefs(cur.id, cur.prefs); updateTransport(); openTempo(); }
   }, `<p class='note'>For Play song. ${cur.chart && cur.chart.tempo ? "" : "This song's tempo isn't known yet, so it starts at " + DEFAULT_BPM + "."}</p>`);

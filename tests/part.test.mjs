@@ -226,6 +226,9 @@ for (const [w, h, scheme] of [[375, 752, "dark"], [1440, 900, "light"]]) {
     await context.route("https://lrclib.net/api/**", (r) => r.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" },
       body: JSON.stringify({ id: 34374191, trackName: "Late July", artistName: "Shakey Graves", duration: 368, syncedLyrics: lrc, plainLyrics: "" }) }));
     await show(page, "#/song/late-july/picking");
+    // Its recording loads on opening the song, without going to the Player or pressing Play.
+    const pre = await page.waitForFunction(() => { const s = window.songbook.playerState(); return s && s.kind === "file" && !s.loading && !s.engine.playing; }, null, { timeout: 20000 }).then(() => true, () => false);
+    check(`whole ${w}: the recording loads on opening, ready to play`, pre);
     await page.waitForSelector("[data-pick-sec='all']");
     await page.click("[data-pick-sec='all']");
     await page.waitForSelector(".pick-card.whole");
@@ -258,11 +261,19 @@ for (const [w, h, scheme] of [[375, 752, "dark"], [1440, 900, "light"]]) {
       const n = await page.evaluate(() => window.songbook.getPlayer().session.bars.length);
       eq("whole: Play has every bar of the song", n, st.bars);
       await page.locator("[data-act=play]:visible").first().click();
-      // A bar opens its section's editor.
-      await page.click(".pick-card.whole .tab-bar[data-form='2'][data-pbar='1']");
+      // A bar's pencil opens its section's editor.
+      await page.click(".pick-card.whole .bar-edit[data-form='2'][data-edit='1']");
       await page.waitForSelector(".popover .step-grid, .popover");
-      check("whole: tapping a bar edits it", (await page.textContent(".popover")).includes("Bar 2"));
+      check("whole: a bar's pencil edits it", (await page.textContent(".popover")).includes("Bar 2"));
       await page.keyboard.press("Escape");
+      // The synth: a tapped bar is where Play starts.
+      await page.click(".pick-card.whole .tab-bar[data-form='2'][data-pbar='1']");
+      check("whole: tapping a bar doesn't edit it", !(await page.$(".popover")));
+      await page.locator("[data-act=play]:visible").first().click();
+      await page.waitForFunction(() => window.songbook.getPlayer().playing, null, { timeout: 8000 });
+      const cue = await page.evaluate(() => { const e = document.querySelector(".pick-card.whole .tab-bar.on"); return [e && e.dataset.form, e && e.dataset.pbar]; });
+      eq("whole: the synth plays from the tapped bar", cue, ["2", "1"]);
+      await page.locator("[data-act=play]:visible").first().click();
       // The recording instead: Play plays it here, and pauses it here, the tab following.
       await page.click("[data-play-source='recording']");
       await page.locator("[data-act=play]:visible").first().click();
@@ -281,6 +292,50 @@ for (const [w, h, scheme] of [[375, 752, "dark"], [1440, 900, "light"]]) {
       await page.keyboard.press("Space");
       await page.waitForFunction(() => !window.songbook.playerState().engine.playing, null, { timeout: 5000 });
       check("whole: Space plays on from where it stopped, and pauses", from >= paused.pos - 0.2 && !(await page.evaluate(() => window.songbook.getPlayer().playing)), `${from} ${paused.pos}`);
+      // Tapping the tab moves the recording to that bar (paused: it waits
+      // there), with the line in that bar; Play goes on from there. (The
+      // stand-in recording is 19 s long: the Start section's bars.)
+      const tapAt = async (sel, frac) => {
+        const el = page.locator(sel);
+        await el.scrollIntoViewIfNeeded();
+        const bb = await el.boundingBox();
+        await page.mouse.click(bb.x + bb.width * frac, bb.y + bb.height * 0.6);
+        await page.waitForTimeout(300);
+      };
+      const barTime = (fi, k) => page.evaluate(async ([fi, k]) => {
+        const c = await fetch("songs/late-july.json").then((r) => r.json());
+        const seg = c.analysis.segments[fi];
+        const bi = seg.bars[0] + k;
+        return [c.bars[bi].t, c.bars[bi + 1].t];
+      }, [fi, k]);
+      await tapAt(".pick-card.whole .tab-bar[data-form='0'][data-pbar='2']", 0.05);
+      const [a3, b3] = await barTime(0, 2);
+      const tp = await page.evaluate(() => { const s = window.songbook.playerState(); const ph = document.querySelector(".playhead"); return { pos: s.engine.position, playing: s.engine.playing, ph: ph && [ph.parentElement.dataset.form, ph.parentElement.dataset.pbar], popover: !!document.querySelector(".popover") }; });
+      check("whole: a tap (paused) moves the recording to the start of that bar, and waits", Math.abs(tp.pos - a3) < 0.05 && !tp.playing && !tp.popover, JSON.stringify([tp, a3]));
+      eq("whole: the line is in the tapped bar", tp.ph, ["0", "2"]);
+      // Further along the bar: further into it.
+      await tapAt(".pick-card.whole .tab-bar[data-form='0'][data-pbar='2']", 0.9);
+      const tp2 = await page.evaluate(() => window.songbook.playerState().engine.position);
+      check("whole: a tap near the bar's end is near its end", tp2 > a3 + (b3 - a3) * 0.6 && tp2 < b3, `${tp2} in ${a3}..${b3}`);
+      await page.locator("[data-act=play]:visible").first().click();
+      await page.waitForFunction(() => window.songbook.playerState().engine.playing, null, { timeout: 5000 });
+      // While playing: a tap jumps and plays on.
+      await tapAt(".pick-card.whole .tab-bar[data-form='0'][data-pbar='5']", 0.05);
+      const [a1] = await barTime(0, 5);
+      const tp3 = await page.evaluate(() => ({ pos: window.songbook.playerState().engine.position, playing: window.songbook.playerState().engine.playing }));
+      check("whole: a tap while playing jumps there and plays on", tp3.playing && tp3.pos >= a1 - 0.05 && tp3.pos < a1 + 1.5, JSON.stringify([tp3, a1]));
+      await page.waitForTimeout(400);
+      const moving = await page.evaluate(() => { const ph = document.querySelector(".playhead"); return ph && ph.style.transform; });
+      await page.waitForTimeout(400);
+      check("whole: the line moves as it plays", moving !== await page.evaluate(() => { const ph = document.querySelector(".playhead"); return ph && ph.style.transform; }));
+      // The transport's −/+ is the recording's speed (the Player's own), not the synth's BPM.
+      const pace = await page.evaluate(() => { const l = document.querySelector(".transport.mobile label.tempo"); return [l.querySelector("small").textContent, l.querySelector("input").value]; });
+      eq("whole: the transport shows the recording's speed", pace, ["% speed", "100"]);
+      await page.locator(".transport.mobile [data-act='bpm-']").click();
+      eq("whole: − slows the recording by 5%", await page.evaluate(() => [window.songbook.playerState().set.speed, document.querySelector(".transport.mobile .bpm-input").value]), [0.95, "95"]);
+      await page.locator(".transport.mobile [data-act='bpm+']").click();
+      await page.locator("[data-act=play]:visible").first().click();
+      await page.waitForFunction(() => !window.songbook.playerState().engine.playing, null, { timeout: 5000 });
       // Lyrics under the bars: LRCLIB's words (a stand-in), at this song's own times.
       await page.click("[data-act=tab-lyrics]");
       await page.waitForSelector("[data-act=lrclib-here]");

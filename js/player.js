@@ -154,27 +154,64 @@ export async function openPlayer(view, ctx) {
   if (!S.kind && !S.loading) autoLoad();
 }
 
-// For Play in Sheet mode: play the song's recording without opening the Player.
-// at: where to start, in seconds (else where it was left).
-export async function playRecording(ctx, at) {
+// The song's recording, ready to play from another mode (Sheet, Chords,
+// Picking) without opening the Player: yours on this device (or its stems),
+// else the one that comes with the app. Loaded once; asking again while it
+// loads waits for the same load. -> true when it's ready.
+export function loadRecording(ctx) {
   if (!S || S.id !== ctx.id) { closePlayer(); S = newSession(ctx); }
   S.ctx = ctx;
   prepareBars();
-  if (S.kind !== "file") {
-    // Yours on this device (or its stems), else the one that comes with the app.
-    const s = S;
-    const meta = await recordingMeta(s.id);
-    if (s.stems === undefined) s.stems = await findStems(s);
-    if (S !== s) return;
-    if (!meta && !s.stems && s.ctx.chart && s.ctx.chart.audio) await loadShipped(); else await loadFile();
+  const s = S;
+  if (s.kind === "file") return Promise.resolve(true);
+  if (!s.fileLoad) {
+    s.loading = s.loading || "Reading the recording…";
+    s.fileLoad = (async () => {
+      const meta = await recordingMeta(s.id);
+      if (s.stems === undefined) s.stems = await findStems(s);
+      if (S !== s) return false;
+      if (!meta && !s.stems && shippedAudio(s)) await loadShipped(); else await loadFile();
+      return S === s && s.kind === "file";
+    })().catch(() => false).finally(() => { s.fileLoad = null; });
   }
-  if (S && S.kind === "file") {
-    if (at !== undefined) {
-      if (S.enginePromise) await S.enginePromise;
-      S.engine.seek(at);
-    }
-    await togglePlayer();
+  return s.fileLoad;
+}
+
+// Opening a song in another mode starts loading its recording, so Play
+// there starts at once. Not when the Player was left on the band or YouTube.
+export function preloadRecording(ctx) {
+  if (S && S.id === ctx.id && (S.kind || S.loading || S.fileLoad)) return;
+  const was = ctx.prefs && ctx.prefs.player && ctx.prefs.player.source;
+  if (was === "band" || was === "youtube") return;
+  loadRecording(ctx);
+}
+
+// Is the song's recording still loading?
+export const recordingLoading = (id) => !!(S && S.id === id && (S.fileLoad || S.loading));
+
+// For Play in Sheet mode: play the song's recording without opening the Player.
+// at: where to start, in seconds (else where it was left); play: false only
+// moves there.
+export async function playRecording(ctx, at, play = true) {
+  if (!(await loadRecording(ctx)) || !S) return;
+  if (at !== undefined) {
+    if (S.enginePromise) await S.enginePromise;
+    S.engine.seek(at);
+    kick();
   }
+  if (play) await togglePlayer();
+}
+
+// The recording's speed from another mode (the Player's own setting): the
+// session's, else the one saved with the song.
+export function recordingSpeed(id, prefs) {
+  if (S && S.id === id) return S.set.speed;
+  return (prefs && prefs.player && prefs.player.speed) || 1;
+}
+export function setRecordingSpeed(id, prefs, r) {
+  if (S && S.id === id) { setSpeed(r); return; }
+  prefs.player = { ...(prefs.player || {}), speed: Math.round(clamp(r, SPEED_MIN, SPEED_MAX) * 100) / 100 };
+  savePrefs(id, prefs);
 }
 
 // The mixer's rows: the recording, or one per stem; then the app guitar and
