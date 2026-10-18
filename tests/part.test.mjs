@@ -513,44 +513,59 @@ for (const [w, h, scheme] of [[375, 752, "dark"], [375, 630, "light"], [1440, 90
     await page.click(".popover .lib-list summary");
     await page.click(".popover .lib-list [data-pattern='travis']");
     await page.waitForTimeout(300);
-    // Bar 2: written out, with a fret and a hammer-on.
+    // Bar 2: written out, with frets and a hammer-on.
     await page.click(".popover [data-next]");
     await page.waitForSelector(".popover [data-view='steps']");
     await page.click(".popover [data-view='steps']");
     await page.waitForSelector(".popover .sg-c");
     await settled(page, `step grid ${tag}`);
     // It starts from what the bar plays now (Travis, repeated): clear it to write it afresh.
-    eq(`${tag}: written out from what the bar played`, await page.evaluate((id) => import("/js/part.js").then((P) => P.loadParts(id)).then((x) => x.Verse.bars[1].steps), id), "pB i pA m pB i pA m");
+    eq(`${tag}: written out from what the bar played`, await page.$$eval(".popover .sg-c .sg-f", (els) => els.map((e) => e.textContent).join("")), "mmiipppp");   // row by row: m on 2, i on 3, p on 4 and 5
     await page.click(".popover [data-grid='clear']");
-    await page.waitForTimeout(200);
-    await page.click(".popover .sg-c[data-st='0'][data-s='5']");     // p on the C shape's bass (string 5)
-    await page.click(".popover .sg-c[data-st='2'][data-s='3']");     // i on string 3
-    await page.click(".popover .sg-c[data-st='4'][data-s='4']");     // p on string 4: the alternate bass
-    await page.click(".popover .sg-c[data-st='6'][data-s='2']");     // m on string 2
-    await page.click(".popover .sg-c[data-st='6'][data-s='2']");     // tap again: a
-    await page.click(".popover .sg-c[data-st='2'][data-s='3']");     // select i again... (cycles to m)
-    await page.click(".popover .sg-c[data-st='2'][data-s='3']");     // ...a
-    await page.click(".popover .sg-c[data-st='2'][data-s='3']");     // ...gone
-    await page.click(".popover .sg-c[data-st='2'][data-s='3']");     // i again, selected
-    await page.waitForSelector(".popover .note-detail");
-    await page.click(".popover .note-detail [data-fret='1']");      // shape's fret 0 -> 1? (C shape: string 3 open) -> @1
-    await page.click(".popover .note-detail [data-fret='1']");      // @2
-    await page.click(".popover .note-detail [data-tech='h']");      // hammer to 4
+    const key = (k) => page.click(`.popover [data-key='${k}']`);
+    const cell = (st, s) => page.click(`.popover .sg-c[data-st='${st}'][data-s='${s}']`);
+    check(`${tag}: the pad waits for a spot`, await page.$eval(".popover [data-key='3']", (b) => b.disabled));
+    await cell(0, 5); await key(3);                                  // p on string 5, fret 3
+    await cell(2, 3); await key(0);                                  // i on string 3, open
+    await cell(4, 4); await key(2);                                  // p on string 4, fret 2
+    await cell(6, 2); await key(1);                                  // m on string 2, fret 1...
+    await page.click(".popover [data-finger='a']");                  // ...played with a
+    await cell(1, 1); await key(1); await key(2);                    // two digits quickly: fret 12
+    eq(`${tag}: 1 then 2 is fret 12`, await page.$eval(".popover .sg-c[data-st='1'][data-s='1']", (c) => c.firstChild.textContent), "12");
+    await key("del");                                                // and gone
+    await cell(2, 3); await key(2);                                  // string 3 to fret 2
+    await page.click(".popover [data-tech='h']");                    // hammer (to 4)...
+    await key(5);                                                    // ...to 5
     await page.screenshot({ path: `${out}/step-grid-${w}x${h}-${scheme}.png` });
+    eq(`${tag}: the cell shows the fret, the hammer-on and the finger`, await page.$eval(".popover .sg-c[data-st='2'][data-s='3']", (c) => c.textContent), "2h5i");
     let parts = await page.evaluate((id) => import("/js/part.js").then((P) => P.loadParts(id)), id);
-    eq(`${tag}: bar 1 plays Travis`, parts.Verse.bars[0], { pattern: "travis" });
-    eq(`${tag}: bar 2 written out, with the fret and the hammer-on`, parts.Verse.bars[1].steps, "pB - i@2h4 - pA - a2 -");
+    eq(`${tag}: nothing is kept before Save`, parts.Verse.bars, [{ steps: "- - - - - - - -" }]);
+    // Tapping outside doesn't lose the changes.
+    await page.mouse.click(5, 5);
+    check(`${tag}: tapping outside keeps the editor open while there are changes`, !!(await page.$(".popover [data-save]")));
     // Repeat bar 2 over the next bar, then copy it to bar 4.
     await page.click(".popover [data-repeat='1']");
-    await page.waitForTimeout(300);
     await page.click(".popover [data-copy]");
     await page.click(".popover [data-next]");
     await page.click(".popover [data-next]");
     await page.click(".popover [data-paste]");
+    await page.click(".popover [data-save]");
     await page.waitForTimeout(300);
-    await page.click(".popover [data-close]");
+    check(`${tag}: Save closes the editor`, !(await page.$(".popover")));
     parts = await page.evaluate((id) => import("/js/part.js").then((P) => P.loadParts(id)), id);
-    eq(`${tag}: repeat and paste`, [parts.Verse.bars[2], parts.Verse.bars[3]], [{}, { steps: "pB - i@2h4 - pA - a2 -" }]);
+    eq(`${tag}: bar 1 plays Travis`, parts.Verse.bars[0], { pattern: "travis" });
+    eq(`${tag}: bar 2 written out, with the frets and the hammer-on`, parts.Verse.bars[1].steps, "p5@3 - i@2h5 - p4@2 - a2@1 -");
+    eq(`${tag}: repeat and paste`, [parts.Verse.bars[2], parts.Verse.bars[3]], [{}, { steps: "p5@3 - i@2h5 - p4@2 - a2@1 -" }]);
+    // Cancel puts it back.
+    await page.click(".pbar[data-pbar='0']");
+    await page.waitForSelector(".popover [data-view]");
+    if (!(await page.$(".popover .lib-list [data-pattern='travis']"))) await page.click(".popover [data-view='pattern']");
+    await page.click(".popover .lib-list summary");
+    await page.locator(".popover .lib-list [data-pattern]:not([data-pattern='travis'])").first().click();
+    await page.click(".popover [data-cancel]");
+    await page.waitForTimeout(200);
+    parts = await page.evaluate((id) => import("/js/part.js").then((P) => P.loadParts(id)), id);
+    eq(`${tag}: Cancel keeps bar 1 as it was`, parts.Verse.bars[0], { pattern: "travis" });
     const strip = await page.$$eval(".pbar .pl", (els) => els.map((e) => e.textContent.trim()));
     eq(`${tag}: the strip shows each bar's pattern`, strip, ["travis", "written", "″", "written"]);
     check(`${tag}: and where it changes`, await page.$eval(".pbar[data-pbar='1']", (e) => e.classList.contains("change")));
@@ -568,6 +583,46 @@ for (const [w, h, scheme] of [[375, 752, "dark"], [375, 630, "light"], [1440, 90
     await context.close();
   });
 }
+
+/* ---- A bar back to the tab's version ---- */
+await section("back to the tab", async () => {
+  const { context, page, errors } = await newPage();
+  await context.route("**/songs/audio/**", (r) => r.fulfill({ status: 404, body: "" }));
+  await show(page, "#/song/late-july/chords");
+  // Part B, edited on this device, with bar 5 gone wrong.
+  const want = await page.evaluate(async () => {
+    const c = await fetch("songs/late-july.json").then((r) => r.json());
+    const P = await import("/js/part.js");
+    const part = P.editedPart(c.sections.find((s) => s.name === "Part B").part);
+    const want = part.bars[4].steps;
+    part.bars[4] = { steps: "p3@8 - - - - - - - - - - - - - - -" };
+    part.bars[1] = { steps: "p6@0 - - - - - - -" };
+    await P.saveSectionPart("late-july", "Part B", part);
+    return want;
+  });
+  await page.reload();
+  await page.waitForSelector("html[data-ready]");
+  await show(page, "#/song/late-july/picking");
+  await page.waitForSelector("[data-pick-sec='3']");
+  await page.click("[data-pick-sec='3']");
+  await page.waitForSelector(".bar-edit[data-edit='4']");
+  await page.click(".bar-edit[data-edit='4']");
+  await page.waitForSelector(".popover [data-restore]");
+  check("restore: says it's the tab's", (await page.textContent(".popover [data-restore]")).includes("tab's"));
+  await page.click(".popover [data-restore]");
+  check("restore: the button goes once it matches", !(await page.$(".popover [data-restore]")));
+  await page.click(".popover .sg-c[data-st='0'][data-s='5']");
+  await page.$eval(".popover", (p) => { p.scrollTop = 0; });
+  await page.screenshot({ path: `${out}/restore-375.png` });
+  check("restore: selecting a spot changes nothing", !(await page.$(".popover [data-restore]")));
+  await page.click(".popover [data-save]");
+  await page.waitForTimeout(300);
+  const parts = await page.evaluate(() => import("/js/part.js").then((P) => P.loadParts("late-july")));
+  eq("restore: bar 5 is the tab's again", parts["Part B"].bars[4], { steps: want });
+  eq("restore: your other edits are kept", parts["Part B"].bars[1], { steps: "p6@0 - - - - - - -" });
+  check("restore: no page errors", errors.length === 0, errors.join("; "));
+  await context.close();
+});
 
 /* ---- A detected part: "?" bars, Mark as checked; parts from a bundle ---- */
 await section("detected part", async () => {

@@ -13,7 +13,7 @@ import { importBundle } from "./bundle.js";
 import { readZip } from "./zip.js";
 import { renderBatch } from "./batch.js";
 import { onAudioState, resumeAudio, StringVoices, strum, warmNotes, audioContext } from "./audio.js";
-import { esc, toast, hideToast, popoverOpen, closePopover } from "./ui.js";
+import { esc, toast, hideToast, popoverOpen, closePopover, dismissPopover } from "./ui.js";
 import { renderPractice } from "./practice.js";
 import { playerState, speedBy, pitchBy, loopCurrentSection, focusMixer, playerNow } from "./player.js";
 import { helperUrl, setHelperUrl, pingHelper } from "./helper-client.js";
@@ -335,7 +335,7 @@ onAudioState((state) => {
 document.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   // Esc closes a popover even from a text field inside it.
-  if (e.key === "Escape" && popoverOpen()) { closePopover(); return; }
+  if (e.key === "Escape" && popoverOpen()) { dismissPopover(); return; }
   if (e.target.closest && e.target.closest("input, textarea, select")) return;
   if (e.key === "Escape") {
     if (popoverOpen()) closePopover();

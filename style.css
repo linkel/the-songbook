@@ -761,9 +761,16 @@ button.pick.on { border-color: var(--mauve); background: color-mix(in srgb, var(
 .step-grid .sg-c.f-m { color: var(--ink-green); }
 .step-grid .sg-c.f-a { color: var(--ink-mauve); }
 .step-grid .sg-c.sel { outline: 2px solid var(--mauve); outline-offset: -3px; }
-.note-detail { padding: 10px 12px; margin: 6px 0 10px; display: flex; flex-direction: column; gap: 8px; }
-.nd-row { display: flex; align-items: center; gap: 8px; }
-.nd-row b { min-width: 52px; text-align: center; }
+.step-grid .sg-c:not([class*=" f-"]).sel { background: color-mix(in srgb, var(--mauve) 12%, var(--base)); }
+.step-grid .sg-c .sg-f { font-size: 9px; font-weight: 700; vertical-align: super; margin-left: 1px; opacity: .8; }
+.keypad { display: flex; flex-direction: column; gap: 8px; }
+.kp-status { margin: 0; font-size: 14px; min-height: 2.6em; color: var(--text); }
+.kp-keys { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.kp-keys .btn { min-height: 44px; padding: 0; font-size: 18px; font-weight: 800; }
+.kp-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.kp-row .small-seg { max-width: 100%; overflow-x: auto; }
+.ed-end { justify-content: flex-end; }
+.ed-end .btn { flex: 1; }
 .lib-list summary { min-height: 44px; display: flex; align-items: center; font-weight: 700; color: var(--ink-mauve); cursor: pointer; }
 
 /* A tall popover scrolls as a whole: its parts (shape boxes, the step grid) keep their size. */

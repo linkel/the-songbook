@@ -369,7 +369,7 @@ function pickPlan(si = null) {
 // What the part editor (js/partedit.js) works on.
 function partCtx(b, sec, bars, part, partFrom) {
   const ctx = {
-    bars, part, partFrom, sectionName: sec.name, beats: meter((b && b.time) || "4/4").beats, tuning: tun(), capo: capoNow(),
+    bars, part, partFrom, sectionName: sec.name, beats: meter((b && b.time) || "4/4").beats, tuning: tun(), capo: capoNow(), chartPart: sec.part || null,
     hear: (frets) => hear(frets),
   };
   // Saving keeps the edit on this device; the editor carries on with it.
@@ -380,10 +380,11 @@ function partCtx(b, sec, bars, part, partFrom) {
     render();
     if (player && player.playing && cur.mode === "picking") player.setBars(partPlayBars(ctx));
   };
-  ctx.playBar = async (i) => {
+  // c: the editor's draft, to hear it before it's saved.
+  ctx.playBar = async (i, c = ctx) => {
     const pl = getPlayer();
     if (pl.playing) pl.stop();
-    await pl.start({ bars: [partPlayBars(ctx)[i]], parts: true, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), countIn: false, loop: false, open: tun().open });
+    await pl.start({ bars: [partPlayBars(c)[i]], parts: true, bpm: tempo(), time: (b && b.time) || "4/4", capo: capoNow(), countIn: false, loop: false, open: tun().open });
   };
   return ctx;
 }

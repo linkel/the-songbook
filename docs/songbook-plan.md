@@ -489,7 +489,7 @@ Each phase ends with tests passing, screenshots reviewed at 375×752, 375×630 a
      - It's used everywhere that chord is shown or played, and it's labelled as yours.
   3. **Part editor in Picking mode:**
      - A bar strip showing each bar's pattern.
-     - Per bar, choose a library pattern or one of the song's own, or write the bar out on a step grid (strings × steps; tap to place a finger, long-press for fret, technique or mute). Repeat it over the following bars, or copy it.
+     - Per bar, choose a library pattern or one of the song's own, or write the bar out on a step grid (strings × steps; tap a spot, then type its fret on a pad; the finger is filled in and can be changed, as can a technique or mute). Edits are a draft until Save, Cancel puts it back, and a bar can go back to the chart's version. Repeat it over the following bars, or copy it.
      - Play picks the part bar by bar, with its frets and techniques, and the stage follows the pattern changes.
      - "Open in Pimapeggio" passes written-out steps; add a `steps=` URL parameter to Pimapeggio.
      - Tab | Notation | Picking (`js/tab.js`): the whole section as guitar tab (frets in the song's tuning, techniques, chord over each bar) or staff notation, a tappable bar each, lit as it plays. A part that's mostly written out opens as tab; one carried by library patterns opens on the picking stage. Your choice is kept per song.

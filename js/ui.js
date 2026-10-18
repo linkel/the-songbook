@@ -86,11 +86,13 @@ export const ICONS = {
 
 let pop = null;
 let popOnClose = null;
+let popGuard = null;
 
 export function closePopover() {
   if (pop) {
     pop.remove();
     pop = null;
+    popGuard = null;
     const fn = popOnClose;
     popOnClose = null;
     if (fn) fn();
@@ -99,16 +101,26 @@ export function closePopover() {
 
 export function popoverOpen() { return !!pop; }
 
-// html goes inside the sheet; [data-close] buttons close it.
-export function showPopover(html, label, onClose = null) {
+// Tapping outside or Esc: closes it, unless its guard says why not (unsaved changes).
+export function dismissPopover() {
+  const why = pop && popGuard ? popGuard() : null;
+  if (why) { toast(why); return false; }
+  closePopover();
+  return true;
+}
+
+// html goes inside the sheet; [data-close] buttons close it. guard() -> a
+// reason it can't be dismissed, or null.
+export function showPopover(html, label, onClose = null, guard = null) {
   closePopover();
   pop = document.createElement("div");
   pop.className = "popover-scrim";
   pop.innerHTML = `<div class='popover' role='dialog' aria-modal='true' aria-label='${esc(label)}'>${html}</div>`;
-  pop.addEventListener("click", (e) => { if (e.target === pop) closePopover(); });
+  pop.addEventListener("click", (e) => { if (e.target === pop) dismissPopover(); });
   document.body.appendChild(pop);
   pop.querySelectorAll("[data-close]").forEach((b) => b.addEventListener("click", closePopover));
   popOnClose = onClose;
+  popGuard = guard;
   return pop;
 }
 
