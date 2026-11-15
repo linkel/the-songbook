@@ -61,6 +61,7 @@ const ASSETS = [
   "vendor/signalsmith-stretch/SignalsmithStretch.mjs",
   "vendor/chords-db/guitar.json",
   "songs/index.json",
+  "songs/heartless.json",
   "songs/the-devil-i-know.json",
   "songs/every-second.json",
   "songs/someone-like-you.json",

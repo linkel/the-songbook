@@ -1,0 +1,1761 @@
+{
+  "type": "song",
+  "spotify": null,
+  "capo": 0,
+  "voicings": {},
+  "sources": [],
+  "form": [
+    "Part A",
+    "Part B",
+    "Part C",
+    "Part D",
+    "Part B (2)",
+    "Part C (2)",
+    "Part E",
+    "Part E (2)",
+    "Link 1",
+    "Part F",
+    "Part F (2)",
+    "End"
+  ],
+  "id": "heartless",
+  "title": "Heartless",
+  "artist": "Isabel van Gelder",
+  "key": "F",
+  "time": "4/4",
+  "tempo": 103,
+  "sections": [
+    {
+      "name": "Part A",
+      "chords": "N.C. | Dm Bb | C A | Dm Bb | C | Dm Bb | C Am | Dm Bb",
+      "part": {
+        "source": "detected",
+        "detector": "basic-pitch notes on the guitar stem, strings and frets by the Songbook's own pass (parts.py)",
+        "fingers": "inferred",
+        "bars": [
+          {},
+          {
+            "steps": "pB@0 pA m+a pA p5 pB p5+m pB+pA@0",
+            "match": null,
+            "shape": "x13231",
+            "confidence": 0.88
+          },
+          {
+            "steps": "pB i pB+m+a i pB@0+i@2 pA i@2+m@2 -",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.95
+          },
+          {
+            "steps": "pB pA m+a - - pB@3 pA@3+m -",
+            "match": null,
+            "shape": "xx0231",
+            "confidence": 0.96
+          },
+          {
+            "steps": "pB i pB+m+a i - - - -",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.88
+          },
+          {
+            "steps": "- - pA@2 - m - - - - - pB@3 - p5+i@3 - - pA",
+            "match": null,
+            "shape": "x10031",
+            "confidence": 0.96
+          },
+          {
+            "steps": "- i m i - pA - -",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 1
+          },
+          {
+            "steps": "- pA+pB m pA - pB@3 pA@3+m -",
+            "match": null,
+            "shape": "xx0231",
+            "confidence": 0.92
+          }
+        ]
+      }
+    },
+    {
+      "name": "Part B",
+      "chords": "C Am | Dm Bb | C Am7 | Dm Bb | C Am7 | Gm7 | Gm7 | Am",
+      "part": {
+        "source": "detected",
+        "detector": "basic-pitch notes on the guitar stem, strings and frets by the Songbook's own pass (parts.py)",
+        "fingers": "inferred",
+        "bars": [
+          {
+            "steps": "- i pB+m - - pA - -",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.95
+          },
+          {
+            "steps": "- pB+pA@2 pB - pA pB@3 pA+m pA+pB@3",
+            "match": null,
+            "shape": "xx0331",
+            "confidence": 0.84
+          },
+          {
+            "steps": "- i pB+a i - pA+i i@2 i+a",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.93
+          },
+          {
+            "steps": "pB pB pB+i+a pA - pB@3 m a@3",
+            "match": null,
+            "shape": "xx0231",
+            "confidence": 0.92
+          },
+          {
+            "steps": "- i pB+a i i@2 - m@2 a@5",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.88
+          },
+          {
+            "steps": "i+m - i@3 - pA+i pB - -",
+            "match": null,
+            "shape": "310031",
+            "confidence": 0.79
+          },
+          {
+            "steps": "- pA+i - - - pA pB+i -",
+            "match": null,
+            "shape": "310031",
+            "confidence": 0.85
+          },
+          {
+            "steps": "pB+pA pA - pA - pA i pA",
+            "match": null,
+            "shape": "x02210",
+            "confidence": 0.91
+          }
+        ]
+      }
+    },
+    {
+      "name": "Part C",
+      "chords": "A | Dm Bb | C A | Dm Bb | C A | Dm Bb | C A | Dm Bb",
+      "part": {
+        "source": "detected",
+        "detector": "basic-pitch notes on the guitar stem, strings and frets by the Songbook's own pass (parts.py)",
+        "fingers": "inferred",
+        "bars": [
+          {
+            "steps": "m - - - pB - - -",
+            "match": null,
+            "shape": "x02220",
+            "confidence": 0.9
+          },
+          {
+            "steps": "pB@0 pA - pA p5+i@3 pB pA@3 pB",
+            "match": null,
+            "shape": "x13231",
+            "confidence": 0.91
+          },
+          {
+            "steps": "pB@3+i i+m i+m+a i i@2 pB+i4+i@2 i@2 a",
+            "match": null,
+            "shape": "x02010",
+            "confidence": 0.88
+          },
+          {
+            "steps": "pB pB+i@2 pB pA@2 p5+i p5+i4@3 p5+i pB@3+i",
+            "match": null,
+            "shape": "x10331",
+            "confidence": 0.94
+          },
+          {
+            "steps": "pB+i i pB+m+a - pB@0 pA+i@2+a i@2 a@5",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.89
+          },
+          {
+            "steps": "pB pB pB pB@3 p5+i@3 a@3 - -",
+            "match": null,
+            "shape": "x10231",
+            "confidence": 0.89
+          },
+          {
+            "steps": "pB+i i m+a pA@3 i@2+m@2 a@5 i@2 -",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.94
+          },
+          {
+            "steps": "pB@0 pA+pB a p5@3+i p5 pB+i@3+a@3 - pB+pA@0",
+            "match": null,
+            "shape": "x13231",
+            "confidence": 0.88
+          }
+        ]
+      }
+    },
+    {
+      "name": "Part D",
+      "chords": "C Am | Dm Bb | C Am | Dm Bb",
+      "part": {
+        "source": "detected",
+        "detector": "basic-pitch notes on the guitar stem, strings and frets by the Songbook's own pass (parts.py)",
+        "fingers": "inferred",
+        "bars": [
+          {
+            "steps": "pB i a i - - - -",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.97
+          },
+          {
+            "steps": "- pB@0+i - pA - p5+i4 pA@3+m pB",
+            "match": null,
+            "shape": "x13231",
+            "confidence": 0.92
+          },
+          {
+            "steps": "- i m i - pA+i@2 i@2 -",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.95
+          },
+          {
+            "steps": "pB pB+i pB - - pB@3 pB@3+p5+i@3 -",
+            "match": null,
+            "shape": "x10231",
+            "confidence": 0.95
+          }
+        ]
+      }
+    },
+    {
+      "name": "Part B (2)",
+      "chords": "C Am | Dm Bb | C Am7 | Dm Bb | C Am7/C | Gm7 | Gm7 | Am7",
+      "part": {
+        "source": "detected",
+        "detector": "basic-pitch notes on the guitar stem, strings and frets by the Songbook's own pass (parts.py)",
+        "fingers": "inferred",
+        "bars": [
+          {
+            "steps": "- pB - i - pA m pA@3",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.93
+          },
+          {
+            "steps": "pB pB+i pB pA - pB@3+i@3 pA@3+m pB@3",
+            "match": null,
+            "shape": "xx0231",
+            "confidence": 0.96
+          },
+          {
+            "steps": "pB pB+i pB+m i pB@0+i@2+m@2 pA+i i -",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.94
+          },
+          {
+            "steps": "- pB@0+i@2 m - - pB pB+i+m pA",
+            "match": null,
+            "shape": "xx3331",
+            "confidence": 0.95
+          },
+          {
+            "steps": "i pB+i pB+a - - pA p6+m m@5+a@5",
+            "match": null,
+            "shape": "532020",
+            "confidence": 0.91
+          },
+          {
+            "steps": "- i@3 i - - - i -",
+            "match": null,
+            "shape": "310031",
+            "confidence": 0.81
+          },
+          {
+            "steps": "pA@3+i pA - - - pA i -",
+            "match": null,
+            "shape": "310331",
+            "confidence": 0.94
+          },
+          {
+            "steps": "pB+m pA - pA pB m pB pA",
+            "match": null,
+            "shape": "x02010",
+            "confidence": 0.87
+          }
+        ]
+      }
+    },
+    {
+      "name": "Part C (2)",
+      "chords": "A7 | Dm Bb | C A | Dm Bb | C | Dm Bb | C A | Dm Bb",
+      "part": {
+        "source": "detected",
+        "detector": "basic-pitch notes on the guitar stem, strings and frets by the Songbook's own pass (parts.py)",
+        "fingers": "inferred",
+        "bars": [
+          {
+            "steps": "m+a pA pB+m pA pB+m pA pB+i@2+m -",
+            "match": null,
+            "shape": "x02020",
+            "confidence": 0.91
+          },
+          {
+            "steps": "pB@0 - a - pA p5+i4+m3 pA pB",
+            "match": null,
+            "shape": "x13331",
+            "confidence": 0.93
+          },
+          {
+            "steps": "i pB+i+a i+m+a i - pA i@2 i@2+a",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.87
+          },
+          {
+            "steps": "pB@0 pA - pA pB pB - pB+pA@0",
+            "match": null,
+            "shape": "xx3231",
+            "confidence": 0.89
+          },
+          {
+            "steps": "- i m+a i i@2 pA pA pA",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.9
+          },
+          {
+            "steps": "pB@0 - - pA@2+pB+m pA pB pA+m@3 pB",
+            "match": null,
+            "shape": "xx3311",
+            "confidence": 0.91
+          },
+          {
+            "steps": "i+m pB+i i+m+a i i@2+m@2 - m@2 -",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.98
+          },
+          {
+            "steps": "pB pB+i@2 pB+a@1 pB@3 pA a pA+m+a pB@3",
+            "match": null,
+            "shape": "xx0333",
+            "confidence": 0.96
+          }
+        ]
+      }
+    },
+    {
+      "name": "Part E",
+      "chords": "C | Gm7 | Gm7 | Am7",
+      "part": {
+        "source": "detected",
+        "detector": "basic-pitch notes on the guitar stem, strings and frets by the Songbook's own pass (parts.py)",
+        "fingers": "inferred",
+        "bars": [
+          {
+            "steps": "pB+i+a - pB+i+a - i+m+a - i - i@2 - pA+i@2 -",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.89
+          },
+          {
+            "steps": "m m@5+a i@3 a@6 - - - -",
+            "match": null,
+            "shape": "310025",
+            "confidence": 0.92
+          },
+          {
+            "steps": "- - - pA@3+a@3 a - - - - - - -",
+            "match": null,
+            "shape": "310031",
+            "confidence": 0.9
+          },
+          {
+            "steps": "- - - pA pB+i4+m1@5 - - - - - - - - - - -",
+            "match": null,
+            "shape": "x02010",
+            "confidence": 0.81
+          }
+        ]
+      }
+    },
+    {
+      "name": "Part E (2)",
+      "chords": "Am7/E | Gm7 | Gm7 | Am7",
+      "part": {
+        "source": "detected",
+        "detector": "basic-pitch notes on the guitar stem, strings and frets by the Songbook's own pass (parts.py)",
+        "fingers": "inferred",
+        "bars": [
+          {
+            "steps": "- - - m - - - m - - - -",
+            "match": null,
+            "shape": "002010",
+            "confidence": 0.96
+          },
+          {
+            "steps": "- - io0+m i - - - -",
+            "match": null,
+            "shape": "310331",
+            "confidence": 0.75
+          },
+          {
+            "steps": "- - pA+i@7+m+a@10 a - - pA+m@3+a -",
+            "match": null,
+            "shape": "3-1-3-0-10-1",
+            "confidence": 0.81
+          },
+          {
+            "steps": "a@6 - pB+i4@7+a pB+i4+m m pA pB pA",
+            "match": null,
+            "shape": "x02018",
+            "confidence": 0.82
+          }
+        ]
+      }
+    },
+    {
+      "name": "Link 1",
+      "chords": "A",
+      "part": {
+        "source": "detected",
+        "detector": "basic-pitch notes on the guitar stem, strings and frets by the Songbook's own pass (parts.py)",
+        "fingers": "inferred",
+        "bars": [
+          {
+            "steps": "i pA - pA i+m pA i pA",
+            "match": null,
+            "shape": "x02220",
+            "confidence": 0.97
+          }
+        ]
+      }
+    },
+    {
+      "name": "Part F",
+      "chords": "A Dm/A | A7 | Dm | C | Dm | C | Dm | C",
+      "part": {
+        "source": "detected",
+        "detector": "basic-pitch notes on the guitar stem, strings and frets by the Songbook's own pass (parts.py)",
+        "fingers": "inferred",
+        "bars": [
+          {
+            "steps": "pA+i+m pA - m - - - -",
+            "match": null,
+            "shape": "x02220",
+            "confidence": 0.92
+          },
+          {
+            "steps": "- - - - - pA+i+m - m@3",
+            "match": null,
+            "shape": "x02020",
+            "confidence": 0.93
+          },
+          {
+            "steps": "pA - pB pA pB+m+a pA pB@3+i@3 pB@3",
+            "match": null,
+            "shape": "xx0231",
+            "confidence": 0.91
+          },
+          {
+            "steps": "i@3+m@3 pA@3 pB pB+i i+m+a i pA pA",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.92
+          },
+          {
+            "steps": "pA+a@0 pB@2 pB pA pB m@1 - pB@3",
+            "match": null,
+            "shape": "xx0231",
+            "confidence": 0.92
+          },
+          {
+            "steps": "i@3+m@3 pA@3 pB+i i m+a i i@2+m@2 pA",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.9
+          },
+          {
+            "steps": "pA@2+m - - a m@3 pB pA pB+i+a@3",
+            "match": null,
+            "shape": "xx3321",
+            "confidence": 0.87
+          },
+          {
+            "steps": "pB@1+i@3+m@3 i pB@3+i+a i+a i+m+a i+a pB pA",
+            "match": null,
+            "shape": "x02010",
+            "confidence": 0.83
+          }
+        ]
+      }
+    },
+    {
+      "name": "Part F (2)",
+      "chords": "Dm | C | Dm | C | Dm | C | Dm | C",
+      "part": {
+        "source": "detected",
+        "detector": "basic-pitch notes on the guitar stem, strings and frets by the Songbook's own pass (parts.py)",
+        "fingers": "inferred",
+        "bars": [
+          {
+            "steps": "p5+i+m pB@2+a - pA m@3+a@1 - pA@3+p6 p5@8+a@10",
+            "match": null,
+            "shape": "600220",
+            "confidence": 0.85
+          },
+          {
+            "steps": "p6+pA pA pB+i+a - m+a - m@2 -",
+            "match": null,
+            "shape": "633010",
+            "confidence": 0.8
+          },
+          {
+            "steps": "pA pB pB@0 pA+a - - p6 pB",
+            "match": null,
+            "shape": "6x3231",
+            "confidence": 0.87
+          },
+          {
+            "steps": "i@3+m@3 pA@3 pB+i pB+i m+a i+m pB@0 pA",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.91
+          },
+          {
+            "steps": "pA - pB pB+i pB pA pA@3 p5+i4@3",
+            "match": null,
+            "shape": "x10231",
+            "confidence": 0.93
+          },
+          {
+            "steps": "i@3+m@3+a@10 pA@3 pB+i pB+i pB i i@2+m -",
+            "match": null,
+            "shape": "x32020",
+            "confidence": 0.87
+          },
+          {
+            "steps": "pA+m@2 a pB p5+i4 - - - a@10",
+            "match": null,
+            "shape": "x-12-0-2-3-9",
+            "confidence": 0.84
+          },
+          {
+            "steps": "i@3+m@3 - pB+i+a i+a m i pA+i@2 pA",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.93
+          }
+        ]
+      }
+    },
+    {
+      "name": "End",
+      "chords": "Dm | C | Dm | Bb C/G | A",
+      "part": {
+        "source": "detected",
+        "detector": "basic-pitch notes on the guitar stem, strings and frets by the Songbook's own pass (parts.py)",
+        "fingers": "inferred",
+        "bars": [
+          {
+            "steps": "p5+m@2 - pB pA pB+a pA p5@1 pB@3",
+            "match": null,
+            "shape": "x00231",
+            "confidence": 0.95
+          },
+          {
+            "steps": "m@3 pA@3 pB i pB+a i pB@0 pA",
+            "match": null,
+            "shape": "x32010",
+            "confidence": 0.97
+          },
+          {
+            "steps": "m@2 - pB pA a pA p5 pB@3",
+            "match": null,
+            "shape": "x10231",
+            "confidence": 0.95
+          },
+          {
+            "steps": "i@3+m pA@3 pB@3 i a@0 i pB pA",
+            "match": null,
+            "shape": "x02031",
+            "confidence": 0.91
+          },
+          {
+            "steps": "i+m - - - - - i -",
+            "match": null,
+            "shape": "x02220",
+            "confidence": 0.86
+          }
+        ]
+      }
+    }
+  ],
+  "source": "detected",
+  "detector": "ChordMini BTC (aa6e3a8), beat_this ?, Demucs htdemucs_6s, on the PC helper",
+  "confidence": "low",
+  "notes": "Detected from your recording on the PC: a draft. Check it by ear with Play along.",
+  "style": null,
+  "strum": null,
+  "beats": [
+    17.4,
+    18,
+    18.58,
+    19.16,
+    19.74,
+    20.32,
+    20.9,
+    21.5,
+    22.08,
+    22.66,
+    23.24,
+    23.82,
+    24.4,
+    24.98,
+    25.56,
+    26.14,
+    26.76,
+    27.32,
+    27.9,
+    28.48,
+    29.06,
+    29.66,
+    30.22,
+    30.82,
+    31.4,
+    31.98,
+    32.56,
+    33.14,
+    33.72,
+    34.3,
+    34.88,
+    35.48,
+    36.06,
+    36.64,
+    37.22,
+    37.8,
+    38.38,
+    38.96,
+    39.54,
+    40.12,
+    40.72,
+    41.3,
+    41.88,
+    42.46,
+    43.04,
+    43.62,
+    44.2,
+    44.8,
+    45.38,
+    45.96,
+    46.54,
+    47.12,
+    47.7,
+    48.28,
+    48.86,
+    49.46,
+    50.04,
+    50.62,
+    51.2,
+    51.78,
+    52.36,
+    52.94,
+    53.54,
+    54.12,
+    54.7,
+    55.28,
+    55.86,
+    56.44,
+    57.02,
+    57.6,
+    58.18,
+    58.78,
+    59.36,
+    59.94,
+    60.52,
+    61.1,
+    61.68,
+    62.26,
+    62.84,
+    63.44,
+    64.02,
+    64.6,
+    65.18,
+    65.76,
+    66.34,
+    66.94,
+    67.5,
+    68.1,
+    68.68,
+    69.26,
+    69.84,
+    70.42,
+    71,
+    71.6,
+    72.16,
+    72.76,
+    73.34,
+    73.92,
+    74.5,
+    75.08,
+    75.66,
+    76.26,
+    76.82,
+    77.42,
+    78,
+    78.58,
+    79.16,
+    79.74,
+    80.32,
+    80.92,
+    81.48,
+    82.08,
+    82.66,
+    83.24,
+    83.82,
+    84.4,
+    84.98,
+    85.58,
+    86.16,
+    86.74,
+    87.32,
+    87.9,
+    88.48,
+    89.08,
+    89.66,
+    90.24,
+    90.82,
+    91.4,
+    91.98,
+    92.56,
+    93.14,
+    93.72,
+    94.3,
+    94.9,
+    95.46,
+    96.06,
+    96.64,
+    97.22,
+    97.8,
+    98.38,
+    98.96,
+    99.56,
+    100.14,
+    100.72,
+    101.3,
+    101.88,
+    102.46,
+    103.04,
+    103.62,
+    104.22,
+    104.78,
+    105.36,
+    105.96,
+    106.54,
+    107.12,
+    107.7,
+    108.28,
+    108.88,
+    109.46,
+    110.04,
+    110.62,
+    111.2,
+    111.78,
+    112.36,
+    112.94,
+    113.54,
+    114.12,
+    114.7,
+    115.28,
+    115.86,
+    116.44,
+    117.02,
+    117.6,
+    118.2,
+    118.78,
+    119.08,
+    119.36,
+    119.94,
+    120.52,
+    121.08,
+    121.66,
+    122.26,
+    122.86,
+    123.42,
+    124.02,
+    124.62,
+    125.18,
+    125.76,
+    126.34,
+    126.94,
+    127.52,
+    128.1,
+    128.68,
+    129.28,
+    129.88,
+    130.46,
+    131.02,
+    131.6,
+    132.18,
+    132.76,
+    133.36,
+    133.94,
+    134.5,
+    135.08,
+    135.66,
+    136.26,
+    136.84,
+    137.42,
+    138,
+    138.58,
+    139.16,
+    139.74,
+    140.34,
+    140.9,
+    141.5,
+    142.08,
+    142.64,
+    143.24,
+    143.82,
+    144.4,
+    145,
+    145.56,
+    146.16,
+    146.74,
+    147.32,
+    147.9,
+    148.48,
+    149.06,
+    149.64,
+    150.22,
+    150.82,
+    151.4,
+    151.98,
+    152.56,
+    153.14,
+    153.72,
+    154.32,
+    154.88,
+    155.48,
+    156.06,
+    156.64,
+    157.22,
+    157.8,
+    158.38,
+    158.96,
+    159.54,
+    160.14,
+    160.72,
+    161.3,
+    161.88,
+    162.46,
+    163.04,
+    163.62,
+    164.2,
+    164.8,
+    165.36,
+    165.96,
+    166.54,
+    167.14,
+    167.7,
+    168.28,
+    168.86,
+    169.46,
+    170.04,
+    170.62,
+    171.2,
+    171.8,
+    172.36,
+    172.96,
+    173.52,
+    174.12,
+    174.7,
+    175.28,
+    175.86,
+    176.46,
+    177.04,
+    177.6,
+    178.18,
+    178.78,
+    179.38,
+    179.96,
+    180.54,
+    181.12,
+    181.7,
+    182.3,
+    182.86,
+    183.44,
+    184.02,
+    184.6,
+    185.18,
+    185.76,
+    186.343
+  ],
+  "bars": [
+    {
+      "t": 17.4,
+      "n": 1,
+      "chords": [
+        "N.C."
+      ]
+    },
+    {
+      "t": 18,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 20.32,
+      "n": 4,
+      "chords": [
+        "C",
+        "A"
+      ]
+    },
+    {
+      "t": 22.66,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 24.98,
+      "n": 4,
+      "chords": [
+        "C"
+      ]
+    },
+    {
+      "t": 27.32,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 29.66,
+      "n": 4,
+      "chords": [
+        "C",
+        "Am"
+      ]
+    },
+    {
+      "t": 31.98,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 34.3,
+      "n": 4,
+      "chords": [
+        "C",
+        "Am"
+      ]
+    },
+    {
+      "t": 36.64,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 38.96,
+      "n": 4,
+      "chords": [
+        "C",
+        "Am7"
+      ]
+    },
+    {
+      "t": 41.3,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 43.62,
+      "n": 4,
+      "chords": [
+        "C",
+        "Am7"
+      ]
+    },
+    {
+      "t": 45.96,
+      "n": 4,
+      "chords": [
+        "Gm7"
+      ]
+    },
+    {
+      "t": 48.28,
+      "n": 4,
+      "chords": [
+        "Gm7"
+      ]
+    },
+    {
+      "t": 50.62,
+      "n": 4,
+      "chords": [
+        "Am"
+      ]
+    },
+    {
+      "t": 52.94,
+      "n": 4,
+      "chords": [
+        "A"
+      ]
+    },
+    {
+      "t": 55.28,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 57.6,
+      "n": 4,
+      "chords": [
+        "C",
+        "A"
+      ]
+    },
+    {
+      "t": 59.94,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 62.26,
+      "n": 4,
+      "chords": [
+        "C",
+        "A"
+      ]
+    },
+    {
+      "t": 64.6,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 66.94,
+      "n": 4,
+      "chords": [
+        "C",
+        "A"
+      ]
+    },
+    {
+      "t": 69.26,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 71.6,
+      "n": 4,
+      "chords": [
+        "C",
+        "Am"
+      ]
+    },
+    {
+      "t": 73.92,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 76.26,
+      "n": 4,
+      "chords": [
+        "C",
+        "Am"
+      ]
+    },
+    {
+      "t": 78.58,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 80.92,
+      "n": 4,
+      "chords": [
+        "C",
+        "Am"
+      ]
+    },
+    {
+      "t": 83.24,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 85.58,
+      "n": 4,
+      "chords": [
+        "C",
+        "Am7"
+      ]
+    },
+    {
+      "t": 87.9,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 90.24,
+      "n": 4,
+      "chords": [
+        "C",
+        "Am7/C"
+      ]
+    },
+    {
+      "t": 92.56,
+      "n": 4,
+      "chords": [
+        "Gm7"
+      ]
+    },
+    {
+      "t": 94.9,
+      "n": 4,
+      "chords": [
+        "Gm7"
+      ]
+    },
+    {
+      "t": 97.22,
+      "n": 4,
+      "chords": [
+        "Am7"
+      ]
+    },
+    {
+      "t": 99.56,
+      "n": 4,
+      "chords": [
+        "A7"
+      ]
+    },
+    {
+      "t": 101.88,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 104.22,
+      "n": 4,
+      "chords": [
+        "C",
+        "A"
+      ]
+    },
+    {
+      "t": 106.54,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 108.88,
+      "n": 4,
+      "chords": [
+        "C"
+      ]
+    },
+    {
+      "t": 111.2,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 113.54,
+      "n": 4,
+      "chords": [
+        "C",
+        "A"
+      ]
+    },
+    {
+      "t": 115.86,
+      "n": 4,
+      "chords": [
+        "Dm",
+        "Bb"
+      ]
+    },
+    {
+      "t": 118.2,
+      "n": 4,
+      "chords": [
+        "C"
+      ]
+    },
+    {
+      "t": 119.94,
+      "n": 4,
+      "chords": [
+        "Gm7"
+      ]
+    },
+    {
+      "t": 122.26,
+      "n": 4,
+      "chords": [
+        "Gm7"
+      ]
+    },
+    {
+      "t": 124.62,
+      "n": 4,
+      "chords": [
+        "Am7"
+      ]
+    },
+    {
+      "t": 126.94,
+      "n": 4,
+      "chords": [
+        "Am7/E"
+      ]
+    },
+    {
+      "t": 129.28,
+      "n": 4,
+      "chords": [
+        "Gm7"
+      ]
+    },
+    {
+      "t": 131.6,
+      "n": 4,
+      "chords": [
+        "Gm7"
+      ]
+    },
+    {
+      "t": 133.94,
+      "n": 4,
+      "chords": [
+        "Am7"
+      ]
+    },
+    {
+      "t": 136.26,
+      "n": 4,
+      "chords": [
+        "A"
+      ]
+    },
+    {
+      "t": 138.58,
+      "n": 4,
+      "chords": [
+        "A",
+        "Dm/A"
+      ]
+    },
+    {
+      "t": 140.9,
+      "n": 4,
+      "chords": [
+        "A7"
+      ],
+      "sure": false
+    },
+    {
+      "t": 143.24,
+      "n": 4,
+      "chords": [
+        "Dm"
+      ],
+      "sure": false
+    },
+    {
+      "t": 145.56,
+      "n": 4,
+      "chords": [
+        "C"
+      ],
+      "sure": false
+    },
+    {
+      "t": 147.9,
+      "n": 4,
+      "chords": [
+        "Dm"
+      ],
+      "sure": false
+    },
+    {
+      "t": 150.22,
+      "n": 4,
+      "chords": [
+        "C"
+      ],
+      "sure": false
+    },
+    {
+      "t": 152.56,
+      "n": 4,
+      "chords": [
+        "Dm"
+      ],
+      "sure": false
+    },
+    {
+      "t": 154.88,
+      "n": 4,
+      "chords": [
+        "C"
+      ],
+      "sure": false
+    },
+    {
+      "t": 157.22,
+      "n": 4,
+      "chords": [
+        "Dm"
+      ],
+      "sure": false
+    },
+    {
+      "t": 159.54,
+      "n": 4,
+      "chords": [
+        "C"
+      ],
+      "sure": false
+    },
+    {
+      "t": 161.88,
+      "n": 4,
+      "chords": [
+        "Dm"
+      ],
+      "sure": false
+    },
+    {
+      "t": 164.2,
+      "n": 4,
+      "chords": [
+        "C"
+      ],
+      "sure": false
+    },
+    {
+      "t": 166.54,
+      "n": 4,
+      "chords": [
+        "Dm"
+      ],
+      "sure": false
+    },
+    {
+      "t": 168.86,
+      "n": 4,
+      "chords": [
+        "C"
+      ],
+      "sure": false
+    },
+    {
+      "t": 171.2,
+      "n": 4,
+      "chords": [
+        "Dm"
+      ],
+      "sure": false
+    },
+    {
+      "t": 173.52,
+      "n": 4,
+      "chords": [
+        "C"
+      ],
+      "sure": false
+    },
+    {
+      "t": 175.86,
+      "n": 4,
+      "chords": [
+        "Dm"
+      ],
+      "sure": false
+    },
+    {
+      "t": 178.18,
+      "n": 4,
+      "chords": [
+        "C"
+      ],
+      "sure": false
+    },
+    {
+      "t": 180.54,
+      "n": 4,
+      "chords": [
+        "Dm"
+      ],
+      "sure": false
+    },
+    {
+      "t": 182.86,
+      "n": 4,
+      "chords": [
+        "Bb",
+        "C/G"
+      ],
+      "sure": false
+    },
+    {
+      "t": 185.18,
+      "n": 2,
+      "chords": [
+        "A"
+      ]
+    }
+  ],
+  "analysis": {
+    "bpm": 102.99,
+    "bpb": 4,
+    "phase": 1,
+    "tuning": 0,
+    "profile": "temperley",
+    "duration": 214.251,
+    "segments": [
+      {
+        "name": "Part A",
+        "bars": [
+          0,
+          7
+        ]
+      },
+      {
+        "name": "Part B",
+        "bars": [
+          8,
+          15
+        ]
+      },
+      {
+        "name": "Part C",
+        "bars": [
+          16,
+          23
+        ]
+      },
+      {
+        "name": "Part D",
+        "bars": [
+          24,
+          27
+        ]
+      },
+      {
+        "name": "Part B (2)",
+        "bars": [
+          28,
+          35
+        ]
+      },
+      {
+        "name": "Part C (2)",
+        "bars": [
+          36,
+          43
+        ]
+      },
+      {
+        "name": "Part E",
+        "bars": [
+          44,
+          47
+        ]
+      },
+      {
+        "name": "Part E (2)",
+        "bars": [
+          48,
+          51
+        ]
+      },
+      {
+        "name": "Link 1",
+        "bars": [
+          52,
+          52
+        ]
+      },
+      {
+        "name": "Part F",
+        "bars": [
+          53,
+          60
+        ]
+      },
+      {
+        "name": "Part F (2)",
+        "bars": [
+          61,
+          68
+        ]
+      },
+      {
+        "name": "End",
+        "bars": [
+          69,
+          73
+        ]
+      }
+    ],
+    "keys": {
+      "krumhansl": {
+        "key": "E",
+        "scale": "minor"
+      },
+      "temperley": {
+        "key": "F",
+        "scale": "major"
+      }
+    }
+  },
+  "stems": {
+    "detector": "ChordMini BTC (aa6e3a8), beat_this ?, Demucs htdemucs_6s, on the PC helper",
+    "from": "Isabel van Gelder - Heartless.mp3",
+    "files": [
+      {
+        "name": "vocals",
+        "label": "Vocals",
+        "file": "songs/stems/heartless/vocals.m4a"
+      },
+      {
+        "name": "guitar",
+        "label": "Guitar",
+        "file": "songs/stems/heartless/guitar.m4a"
+      },
+      {
+        "name": "bass",
+        "label": "Bass",
+        "file": "songs/stems/heartless/bass.m4a"
+      },
+      {
+        "name": "drums",
+        "label": "Drums",
+        "file": "songs/stems/heartless/drums.m4a"
+      },
+      {
+        "name": "other",
+        "label": "Other",
+        "file": "songs/stems/heartless/other.m4a"
+      }
+    ]
+  },
+  "arrangement": {
+    "file": "songs/arrangements/heartless.json",
+    "detector": "basic-pitch (bass and vocal stems), drum onsets by frequency band, on the PC helper",
+    "tracks": [
+      "bass",
+      "melody",
+      "drums"
+    ]
+  },
+  "lyricTiming": {
+    "source": "aligned",
+    "aligner": "stable-ts 2.19.1 (Whisper large-v3) on the vocal stem",
+    "lrclib": {
+      "id": 40006350,
+      "track": "Heartless",
+      "artist": "Isabel van Gelder"
+    },
+    "times": [
+      {
+        "j": 0,
+        "t": 25.8
+      },
+      {
+        "j": 1,
+        "t": 28.43
+      },
+      {
+        "j": 2,
+        "t": 32.89
+      },
+      {
+        "j": 3,
+        "t": 36.2
+      },
+      {
+        "j": 4,
+        "t": 40.58
+      },
+      {
+        "j": 5,
+        "t": 45.86
+      },
+      {
+        "j": 6,
+        "t": 48.34
+      },
+      {
+        "j": 7,
+        "t": 51.22
+      },
+      {
+        "j": 8,
+        "t": 55.2
+      },
+      {
+        "j": 9,
+        "t": 58.4
+      },
+      {
+        "j": 11,
+        "t": 67.22
+      },
+      {
+        "j": 12,
+        "t": 72
+      },
+      {
+        "j": 13,
+        "t": 74.81
+      },
+      {
+        "j": 14,
+        "t": 78.98
+      },
+      {
+        "j": 15,
+        "t": 82.56
+      },
+      {
+        "j": 16,
+        "t": 88.02
+      },
+      {
+        "j": 17,
+        "t": 90.02
+      },
+      {
+        "j": 18,
+        "t": 94.96
+      },
+      {
+        "j": 19,
+        "t": 96.86
+      },
+      {
+        "j": 20,
+        "t": 101.38
+      },
+      {
+        "j": 21,
+        "t": 104.38
+      },
+      {
+        "j": 23,
+        "t": 113.8
+      },
+      {
+        "j": 24,
+        "t": 119.03
+      },
+      {
+        "j": 25,
+        "t": 125.96
+      },
+      {
+        "j": 26,
+        "t": 128.94
+      },
+      {
+        "j": 27,
+        "t": 134.06
+      },
+      {
+        "j": 28,
+        "t": 138.6
+      },
+      {
+        "j": 29,
+        "t": 142.27
+      },
+      {
+        "j": 31,
+        "t": 151.08
+      },
+      {
+        "j": 32,
+        "t": 157.55
+      },
+      {
+        "j": 33,
+        "t": 160.38
+      },
+      {
+        "j": 35,
+        "t": 169.74
+      }
+    ]
+  },
+  "audio": {
+    "file": "songs/audio/Isabel van Gelder - Heartless.mp3",
+    "label": "Your recording. The chords' bar times fit it."
+  }
+}
